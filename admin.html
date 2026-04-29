@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Gestión Académica - Universidad del Aluminio</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-dark mb-4">
+        <div class="container">
+            <a class="navbar-brand" href="index.html">Universidad del Aluminio | Rectoría</a>
+            <button class="btn btn-outline-light btn-sm" onclick="logout()">Cerrar Sesión</button>
+        </div>
+    </nav>
+
+    <div class="container">
+        <h2 class="fw-bold mb-4">Panel de Control Académico</h2>
+        
+        <!-- Pestañas del Admin -->
+        <ul class="nav nav-tabs mb-4" id="adminTabs" role="tablist">
+            <li class="nav-item">
+                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-cursos">Cursos</button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-usuarios">Usuarios</button>
+            </li>
+            <!-- <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-carreras">Carreras</button>
+            </li> -->
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-reportes">Reportes</button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-solicitudes">Solicitudes Pendientes</button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-roles">Gestión de Roles</button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-config">Configuración</button>
+            </li>
+        </ul>
+
+        <div class="tab-content border p-4 bg-white rounded shadow-sm">
+            <!-- Pestaña 1: Cursos -->
+            <div class="tab-pane fade show active" id="tab-cursos">
+                <div class="d-flex justify-content-between mb-3">
+                    <h4>Gestión de Cursos</h4>
+                    <button class="btn btn-primary" onclick="prepararFormulario()" data-bs-toggle="modal" data-bs-target="#cursoModal">+ Nuevo Curso</button>
+                </div>
+                <table class="table table-hover">
+                    <thead><tr><th>ID</th><th>Título</th><th class="text-center">Acciones</th></tr></thead>
+                    <tbody id="tabla-cursos-body"></tbody>
+                </table>
+            </div>
+
+            <!-- Pestaña 2: Usuarios -->
+            <div class="tab-pane fade" id="tab-usuarios">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h4 class="mb-0">Gestión de Usuarios y Talento</h4>
+                    <button class="btn btn-dark" onclick="prepararFormularioUsuario()" data-bs-toggle="modal" data-bs-target="#userModal">+ Nuevo Colaborador</button>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Cédula</th>
+                                <th>Nombre</th>
+                                <th>Rol Académico</th>
+                                <th>Estado</th>
+                                <th class="text-end">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-usuarios-body"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Pestaña 3: Carreras -->
+            <div class="tab-pane fade" id="tab-carreras">
+                <div class="row">
+                    <div class="col-md-5">
+                        <h5>Crear Nueva Carrera</h5>
+                        <form onsubmit="crearCarrera(event)">
+                            <input type="hidden" id="edit-career-id">
+                            <input type="text" id="career-name" class="form-control mb-2" placeholder="Nombre de la Carrera" required>
+                            <label class="small text-muted">Selecciona los cursos:</label>
+                            <input type="text" class="form-control uni-search mb-2" placeholder="Buscar curso..." onkeyup="filtrarCursosCarrera(this.value)">
+                            <div id="career-courses-list" class="border rounded p-2 mb-3 bg-light" style="max-height: 200px; overflow-y: auto;">
+                            </div>
+                            <button class="btn btn-success w-100">Crear Carrera</button>
+                        </form>
+                    </div>
+                    <div class="col-md-7">
+                        <h5>Carreras Actuales</h5>
+                        <table class="table"><tbody id="tabla-carreras-body"></tbody></table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pestaña: Reportes -->
+            <div class="tab-pane fade" id="tab-reportes">
+                <!-- <div class="row g-4 mb-4">
+                    <div class="col-md-3">
+                        <div class="card bg-primary text-white p-3 shadow-sm">
+                            <h6 class="text-uppercase small">MTTC Promedio</h6>
+                            <h3 id="stat-mttc">-- d</h3>
+                            <small>Tiempo de finalización</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-success text-white p-3 shadow-sm">
+                            <h6 class="text-uppercase small">Tasa de Adopción</h6>
+                            <h3 id="stat-adopcion">-- %</h3>
+                            <small>Usuarios activos</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-warning text-dark p-3 shadow-sm">
+                            <h6 class="text-uppercase small">Ratio de Intensidad</h6>
+                            <h3 id="stat-intensidad">--</h3>
+                            <small>Hrs / Lección</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-info text-white p-3 shadow-sm">
+                            <h6 class="text-uppercase small">Evaluaciones</h6>
+                            <h3 id="stat-evaluaciones">--/-- (--%)</h3>
+                            <small>Aprobadas / Total</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row g-4 mb-4">
+                    <div class="col-md-6">
+                        <div class="card bg-secondary text-white p-3 shadow-sm">
+                            <h6 class="text-uppercase small">Promedio Evaluaciones</h6>
+                            <h3 id="stat-promedio-evaluaciones">--%</h3>
+                            <small>Calificación promedio</small>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card bg-danger text-white p-3 shadow-sm">
+                            <h6 class="text-uppercase small">Tasa de Lag</h6>
+                            <h3 id="stat-lag">-- %</h3>
+                            <small>Cursos con retraso</small>
+                        </div>
+                    </div>
+                </div> -->
+
+                <div class="row">
+                    <div class="col-lg-8">
+                        <h5 class="fw-bold"><i class="bi bi-trophy me-2"></i>Top Learners (Estudiantes Destacados)</h5>
+                        <table class="table table-sm table-hover mb-4">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Rol</th>
+                                    <!-- <th>Carreras</th> -->
+                                    <!-- <th>Intensidad</th> -->
+                                    <th>Evaluaciones</th>
+                                    <th>Promedio</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabla-top-learners"></tbody>
+                        </table>
+                        
+                        <!-- <h5 class="fw-bold text-info"><i class="bi bi-clipboard-check me-2"></i>Rendimiento en Evaluaciones por Curso</h5> -->
+                        <!-- <table class="table table-sm">
+                            <thead class="table-light"><tr><th>Curso</th><th>Evaluaciones Aprobadas</th><th>Dificultad Estimada</th></tr></thead>
+                            <tbody id="tabla-friccion"></tbody>
+                        </table> -->
+                    </div>
+                    <div class="col-lg-4">
+                        <h5 class="fw-bold"><i class="bi bi-pie-chart me-2"></i>Rendimiento en Evaluaciones por Área</h5>
+                        <div id="chart-cumplimiento" class="border rounded p-3 bg-light">
+                            <!-- Generado por JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pestaña 5: Solicitudes (Registro y Cursos) -->
+            <div class="tab-pane fade" id="tab-solicitudes">
+                <h5 class="fw-bold text-primary">Solicitudes de Nuevas Cuentas</h5>
+                <table class="table table-sm mb-4">
+                    <thead><tr><th>Cédula</th><th>Nombre</th><th>Cargo Aspirado</th><th>Acciones</th></tr></thead>
+                    <tbody id="tabla-solicitudes-registro">
+                        <!-- Se llena vía script.js -->
+                    </tbody>
+                </table>
+                <hr>
+                <h5 class="fw-bold text-warning">Solicitudes de Acceso a Contenido Especializado</h5>
+                <table class="table table-sm">
+                    <thead><tr><th>Estudiante</th><th>Curso Solicitado</th><th>Fecha</th><th>Acciones</th></tr></thead>
+                    <tbody id="tabla-solicitudes-cursos">
+                        <!-- Se llena vía script.js -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pestaña 6: Gestión de Roles -->
+            <div class="tab-pane fade" id="tab-roles">
+                <div class="d-flex justify-content-between mb-3">
+                    <h4>Gestión de Roles y Permisos</h4>
+                    <button class="btn btn-primary" onclick="prepararFormularioRol()" data-bs-toggle="modal" data-bs-target="#roleModal">+ Nuevo Rol</button>
+                </div>
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr><th>ID del Rol</th><th>Nombre Público</th><th>Acceso Asignado</th><th class="text-end">Acciones</th></tr>
+                    </thead>
+                    <tbody id="tabla-roles-body"></tbody>
+                </table>
+            </div>
+
+            <!-- Pestaña 6: Configuración -->
+            <div class="tab-pane fade" id="tab-config">
+                <div class="card p-4 border-0 shadow-sm">
+                    <h5 class="fw-bold text-primary mb-3">Administración del Sistema (MVP)</h5>
+                    
+                    <div class="mb-4 p-3 border rounded bg-light">
+                        <h6>Copia de Seguridad de Datos</h6>
+                        <p class="small text-muted">Descarga o sube tu archivo JSON de base de datos para mover el sistema a otro equipo.</p>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-dark btn-sm" onclick="exportarBaseDeDatos()">Exportar JSON</button>
+                            <label class="btn btn-outline-dark btn-sm mb-0">
+                                Importar JSON <input type="file" hidden onchange="importarBaseDeDatos(event)" accept=".json">
+                            </label>
+                        </div>
+                    </div>
+
+                    <h5 class="fw-bold text-primary mb-3">Identidad Institucional</h5>
+                    <p class="text-muted">Personaliza la apariencia de la Universidad del Aluminio.</p>
+                    <div class="mb-3">
+                        <label class="form-label">Logo de la Universidad (PNG/JPG)</label>
+                        <input type="file" class="form-control" onchange="cargarLogoInstitucion(event)" accept="image/*">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Edición/Creación -->
+    <div class="modal fade" id="cursoModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <form id="form-curso">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="modalTitulo">Nuevo Curso</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" id="edit-id">
+                        <div class="row g-3">
+                            <div class="col-md-9">
+                                <label class="form-label">Título del Curso</label>
+                                <input type="text" id="titulo" class="form-control" required>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Imagen de Portada (Sube el archivo)</label>
+                                <input type="file" class="form-control" onchange="cargarImagenPortada(event)" accept="image/*">
+                            </div>
+                            <!-- <div class="col-md-6">_
+                                <label class="form-label">Porcentaje de Aprobación (%)</label>
+                                <input type="number" id="min-aprobacion" class="form-control" value="70">
+                            </div> -->
+                            <div class="col-12">
+                                <label class="form-label">Descripción General</label>
+                                <textarea id="descripcion" class="form-control"></textarea>
+                            </div>
+                            <hr>
+                            <h5>Estructura de Módulos y Lecciones</h5>
+                            <div id="contenedor-modulos-editor"></div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn btn-success px-5">Guardar Todo</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Gestión de Usuario Integral -->
+    <div class="modal fade" id="userModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content border-0 shadow">
+                <form id="form-usuario-integral" onsubmit="guardarUsuario(event)">
+                    <div class="modal-header bg-dark text-white">
+                        <h5 class="modal-title" id="userModalTitle">Perfil de Usuario</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Identificación (Cédula)</label>
+                                <input type="text" id="u-id" class="form-control" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Nombre Completo</label>
+                                <input type="text" id="u-nombre" class="form-control" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">Rol</label>
+                                <select id="u-rol" class="form-select">
+                                    <!-- Se llena dinámicamente desde rolesConfig -->
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">Estatus</label>
+                                <select id="u-estado" class="form-select">
+                                    <option value="activo">Activo</option>
+                                    <option value="suspendido">Suspendido</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">Contraseña</label>
+                                <input type="password" id="u-clave" class="form-control" placeholder="Dejar en blanco para no cambiar">
+                            </div>
+                            
+                        </div>
+                    </div>
+                    <div class="modal-footer bg-light">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary px-4">Guardar Cambios</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Gestión de Roles -->
+    <div class="modal fade" id="roleModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content border-0 shadow">
+                <form id="form-rol-integral" onsubmit="guardarRol(event)">
+                    <div class="modal-header bg-dark text-white">
+                        <h5 class="modal-title" id="roleModalTitle">Nuevo Rol</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">ID del Rol (Ej: asesor_ventas)</label>
+                                <input type="text" id="r-id" class="form-control" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Nombre del Rol</label>
+                                <input type="text" id="r-nombre" class="form-control" required>
+                            </div>
+                            <hr>
+                            <center>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold text-primary">Cursos Incluidos</label>
+                                    <div id="r-lista-cursos" class="border rounded p-2 bg-light overflow-auto" style="max-height: 200px;"></div>
+                                </div>
+                            </center>
+                            <!-- <div class="col-md-6">
+                                <label class="form-label fw-bold text-success">VVVVVVVVVVVVVVVVVVVVVVVVVVVVVV</label>
+                                <div id="r-lista-carreras" class="border rounded p-2 bg-light overflow-auto" style="max-height: 200px;"></div>
+                            </div> -->
+                        </div>
+                    </div>
+                    <div class="modal-footer bg-light">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary px-4">Guardar Rol</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Gestión de Evaluación de Módulo -->
+    <div class="modal fade" id="moduloEvaluacionModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <form onsubmit="event.preventDefault(); guardarEvaluacionModulo()">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="modalModuloEvaluacionTitulo">Evaluación del Módulo</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" id="edit-modulo-idx">
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <hr>
+                                <h5 class="fw-bold text-primary mt-4">Preguntas de la Evaluación</h5>
+                                <p class="text-muted small">Añade preguntas de opción múltiple. Marca la opción correcta usando el botón circular.</p>
+                                <div id="contenedor-preguntas-modulo-editor">
+                                    <!-- Preguntas se renderizan aquí -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn btn-success px-5">Guardar Evaluación del Módulo</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Añadido en la pestaña de Configuración -->
+    <script>
+        // Inyectar el campo en la pestaña de configuración cuando se cargue
+        document.addEventListener('DOMContentLoaded', () => {
+            const configCard = document.querySelector('#tab-config .card');
+            if (configCard) {
+                const div = document.createElement('div');
+                div.className = 'mb-3';
+                div.innerHTML = `
+                    <label class="form-label fw-bold text-primary">Porcentaje de Aprobación Global (%)</label>
+                    <input type="number" class="form-control" id="cfg-min-aprobacion" onchange="actualizarMinAprobacionGlobal(this.value)">
+                    <p class="text-muted small">Este porcentaje se aplicará a todas las evaluaciones de módulos del sistema.</p>
+                `;
+                configCard.insertBefore(div, configCard.querySelector('h5:nth-of-type(2)'));
+            }
+        });
+    </script>
+
+<footer class="py-3 text-center">
+    <div class="container">
+        <p class="mb-0">Desarrollado por Ambar Vegas</p>
+    </div>
+</footer>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
