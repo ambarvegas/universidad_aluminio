@@ -280,6 +280,19 @@ window.solicitarAccesoCurso = (cursoId) => {
     location.reload();
 };
 
+window.guardarcurso = () => {
+    const idEdit = document.getElementById('form-curso').value;
+    if (idEdit) {
+        const idx = cursos.findIndex(c => c.id == idEdit);
+        cursos[idx] = nuevoCurso;
+    } else {
+        cursos.push(nuevoCurso);
+    }
+    guardar();
+    location.reload();
+};
+
+
 window.gestionarSolicitudCurso = (userId, cursoId, aprobado) => {
     const idx = solicitudesCursos.findIndex(s => s.userId === userId && s.cursoId === cursoId);
     if (aprobado) {
@@ -390,6 +403,13 @@ window.guardarEvaluacionModulo = () => {
     const bModal = bootstrap.Modal.getInstance(modalElement);
     bModal.hide();
 };
+
+window.guardarmodulocurso = () => {
+    const mIdx = document.getElementById('edit-modulo-idx').value;
+    tempModulos[mIdx].evaluacion = JSON.parse(JSON.stringify(tempModuloEvaluacion));
+    renderModulosEditor();
+};
+
 
 function renderPreguntasModuloEditor() {
     const container = document.getElementById('contenedor-preguntas-modulo-editor');
