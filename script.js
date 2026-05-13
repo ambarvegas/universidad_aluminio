@@ -340,6 +340,18 @@ window.prepararFormulario = (modo) => {
     document.getElementById('modalTitulo').innerText = "Nuevo Curso";
     renderModulosEditor();
 };
+// funcion para mostrar la portada ya cargada en la base de datos de un curso como vista previa dentro del modal de edicion
+window.mostrarVistaPreviaPortada = () => {
+    const vistaPrev = document.getElementById('vista-previa-portada');
+    const imgPrev = document.getElementById('img-vista-previa');
+    if (tempImagenPortada) {
+        imgPrev.src = tempImagenPortada;
+        vistaPrev.style.display = 'block';
+    } else {
+        vistaPrev.style.display = 'none';
+    }
+};
+
 
 window.abrirEditor = (id) => {
     const c = cursos.find(item => item.id === id);
@@ -349,6 +361,7 @@ window.abrirEditor = (id) => {
     document.getElementById('titulo').value = c.titulo;
     document.getElementById('descripcion').value = c.descripcion;
     tempImagenPortada = c.imagen || "";
+    mostrarVistaPreviaPortada();
 
     tempModulos = JSON.parse(JSON.stringify(c.modulos || [])); 
     renderModulosEditor();
@@ -409,6 +422,11 @@ window.guardarmodulocurso = () => {
     tempModulos[mIdx].evaluacion = JSON.parse(JSON.stringify(tempModuloEvaluacion));
     renderModulosEditor();
 };
+// funcion para eliminar opciones de las preguntas del modulo de evaluacion
+function eliminarPreguntaOpcionesModulo(idx) {
+    tempModuloEvaluacion.preguntas[idx].opciones.pop();
+    renderPreguntasModuloEditor();
+}
 
 
 function renderPreguntasModuloEditor() {
@@ -425,6 +443,7 @@ function renderPreguntasModuloEditor() {
                 <div class="input-group mb-1">
                     <div class="input-group-text">
                         <input type="radio" name="correcta-mod-${pIdx}" ${p.correcta == oIdx ? 'checked' : ''} onclick="tempModuloEvaluacion.preguntas[${pIdx}].correcta = ${oIdx}">
+                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="eliminarPreguntaOpcionesModulo(${pIdx})">X</button>
                     </div>
                     <input type="text" class="form-control form-control-sm" value="${opt}" oninput="tempModuloEvaluacion.preguntas[${pIdx}].opciones[${oIdx}] = this.value">
                 </div>
@@ -513,8 +532,8 @@ window.cargarArchivoLeccion = (event, mIdx, lIdx) => {
     const file = event.target.files[0];
     if (!file) return;
     
-    if (file.size > 2 * 1024 * 1024) { 
-        alert("El archivo es demasiado grande. Por favor, sube archivos de máximo 2MB.");
+    if (file.size > 100 * 1024 * 1024) { 
+        alert("El archivo es demasiado grande. Por favor, sube archivos de máximo 100MB.");
         event.target.value = "";
         return;
     }
