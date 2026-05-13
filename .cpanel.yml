@@ -12,3 +12,4 @@ deployment:
     - /bin/cp script.js $DEPLOYPATH
     - /bin/cp api.php $DEPLOYPATH
     - /bin/cp server.js $DEPLOYPATH
+    - /bin/cp script_new.js $DEPLOYPATH
