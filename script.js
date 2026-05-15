@@ -610,13 +610,18 @@ function renderModulosEditor() {
     container.innerHTML = tempModulos.map((mod, mIdx) => `
         <div class="border p-3 mb-3 bg-light rounded shadow-sm">
             <div class="d-flex align-items-center mb-2">
-                <div class="btn-group-vertical me-2">
-                    <button type="button" class="btn btn-xs btn-outline-secondary" onclick="subirModulo(${mIdx})" ${mIdx === 0 ? 'disabled' : ''}><i class="bi bi-caret-up-fill"></i></button>
-                    <button type="button" class="btn btn-xs btn-outline-secondary" onclick="bajarModulo(${mIdx})" ${mIdx === tempModulos.length - 1 ? 'disabled' : ''}><i class="bi bi-caret-down-fill"></i></button>
+                <div class="btn-group me-3">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="subirModulo(${mIdx})" ${mIdx === 0 ? 'disabled' : ''} title="Subir Módulo"><i class="bi bi-arrow-up"></i></button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="bajarModulo(${mIdx})" ${mIdx === tempModulos.length - 1 ? 'disabled' : ''} title="Bajar Módulo"><i class="bi bi-arrow-down"></i></button>
                 </div>
-                <input type="text" class="form-control form-control-sm fw-bold me-2" value="${mod.titulo}" oninput="tempModulos[${mIdx}].titulo = this.value">
-                <button type="button" class="btn btn-sm btn-outline-info me-2" onclick="abrirEditorModuloEvaluacion(${mIdx})">Evaluación</button>
-                <button type="button" class="btn btn-sm btn-danger" onclick="eliminarModulo(${mIdx})"><i class="bi bi-trash"></i></button>
+                <input type="text" class="form-control fw-bold me-2" value="${mod.titulo}" oninput="tempModulos[${mIdx}].titulo = this.value">
+                <button type="button" class="btn btn-sm btn-primary me-2" onclick="abrirEditorModuloEvaluacion(${mIdx})">
+                    <i class="bi bi-clipboard-check"></i> Evaluación
+                </button>
+                <button type="button" class="btn btn-sm btn-danger" onclick="eliminarModulo(${mIdx})" title="Eliminar Módulo">
+                    <i class="bi bi-trash"></i> Eliminar
+                </button>
+            </div>
             </div>
             <div class="ms-4 border-start ps-3">
                 ${mod.lecciones.map((lec, lIdx) => `
