@@ -1724,7 +1724,7 @@ function renderizarCursoTeachlr(curso) {
                         <div class="d-flex flex-wrap gap-2">
                             ${modulosAprobados.length > 0 ? modulosAprobados.map(m => `
                                 <div class="badge bg-light text-dark border p-2 d-flex align-items-center" title="Módulo ${parseInt(m)+1} Aprobado">
-                                    <span class="fs-5 me-1">ðŸ…</span>
+                                    <span class="fs-5 me-1">🥈</span>
                                     <small>Mod ${parseInt(m)+1}</small>
                                 </div>
                             `).join('') : '<small class="text-muted italic">Aún no has ganado medallas</small>'}
