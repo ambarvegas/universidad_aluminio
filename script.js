@@ -155,24 +155,44 @@ function renderizarGaleria() {
 
         if (cursosVisibles.length === 0) {
             galeria.innerHTML = '<div class="col-12 text-center py-5"><p class="lead text-muted">Aún no tienes cursos asignados.</p></div>';
+            return;
         }
 
+        let galeriaHTML = '';
         cursosVisibles.forEach(c => {
+            // Verificar prelación
+            let bloqueadoPorPrelacion = false;
+            let mensajePrelacion = "";
+            if (c.prelacion) {
+                const cursoPrevio = cursos.find(cp => cp.id === c.prelacion);
+                if (cursoPrevio) {
+                    const progresoPrevio = sesion.progreso[c.prelacion];
+                    const modulosConEval = cursoPrevio.modulos.filter(m => m.evaluacion && m.evaluacion.preguntas && m.evaluacion.preguntas.length > 0).length;
+                    const modulosAprobados = (progresoPrevio && progresoPrevio.modulosAprobados) ? progresoPrevio.modulosAprobados.length : 0;
+                    
+                    if (modulosAprobados < modulosConEval) {
+                        bloqueadoPorPrelacion = true;
+                        mensajePrelacion = `Requiere: ${cursoPrevio.titulo}`;
+                    }
+                }
+            }
+
             const badgeTipo = c.tipo === 'especializado' ? '<span class="badge bg-warning text-dark">Especializado</span>' : '<span class="badge bg-success">Público</span>';
-            const btnAccion = c.bloqueado 
-                ? `<button class="btn btn-outline-secondary w-100" onclick="solicitarAccesoCurso('${c.id}')">Solicitar Acceso</button>` 
+            const btnAccion = (c.bloqueado || bloqueadoPorPrelacion) 
+                ? `<button class="btn btn-outline-secondary w-100" onclick="${bloqueadoPorPrelacion ? "alert('Debes completar primero: " + mensajePrelacion + "')" : "solicitarAccesoCurso('" + c.id + "')" }">${bloqueadoPorPrelacion ? mensajePrelacion : 'Solicitar Acceso'}</button>` 
                 : `<a href="detalle.html?id=${c.id}" class="btn btn-primary w-100">Ver curso</a>`;
 
-            galeria.innerHTML += `
-                <div class="col-md-4 mb-4 ${c.bloqueado ? 'opacity-75' : ''}">
+            galeriaHTML += `
+                <div class="col-md-4 mb-4 ${(c.bloqueado || bloqueadoPorPrelacion) ? 'opacity-75' : ''}">
                     <div class="card h-100 shadow-sm border-0">
                         <div class="position-relative">
-                            <img src="${c.imagen}" class="card-img-top" style="height:200px; object-fit:cover; ${c.bloqueado ? 'filter: grayscale(1)' : ''}">
-                            ${c.bloqueado ? '<div class="position-absolute top-50 start-50 translate-middle"><i class="bi bi-lock-fill display-4 text-white"></i></div>' : ''}
+                            <img src="${c.imagen}" class="card-img-top" style="height:200px; object-fit:cover; ${(c.bloqueado || bloqueadoPorPrelacion) ? 'filter: grayscale(1)' : ''}">
+                            ${(c.bloqueado || bloqueadoPorPrelacion) ? '<div class="position-absolute top-50 start-50 translate-middle"><i class="bi bi-lock-fill display-4 text-white"></i></div>' : ''}
                         </div>
                         <div class="card-body">
                             <div class="d-flex justify-content-between mb-2">
                                 ${badgeTipo}
+                                ${c.prelacion ? '<span class="badge bg-info text-dark">Con Prelación</span>' : ''}
                             </div>
                             <h5 class="fw-bold">${c.titulo}</h5>
                             ${btnAccion}
@@ -180,6 +200,7 @@ function renderizarGaleria() {
                     </div>
                 </div>`;
         });
+        galeria.innerHTML = galeriaHTML;
     }
 }
 
@@ -204,7 +225,7 @@ window.login = (id, clave) => {
     return false;
 };
 
-window.solicitarRegistro = (id, nombre, clave, perfilDeseado) => {
+window.solicitarRegistro = async (id, nombre, clave, perfilDeseado) => {
     if (usuarios.find(u => u.id === id)) return alert("La cédula ya se encuentra registrada.");
     const nuevaSolicitud = { id, nombre, clave, perfilDeseado, fecha: new Date().toLocaleDateString() };
     
@@ -220,7 +241,7 @@ window.solicitarRegistro = (id, nombre, clave, perfilDeseado) => {
     }
 
     solicitudesRegistro.push(nuevaSolicitud);
-    guardarSolicitudes();
+    await guardarSolicitudes();
     alert("Solicitud enviada. Un administrador revisará su acceso pronto.");
     location.reload();
 };
@@ -236,7 +257,7 @@ const getCareerIdFromRole = (roleId) => {
     return careerMap[roleId] || null;
 };
 
-window.gestionarSolicitudRegistro = (id, aprobado) => {
+window.gestionarSolicitudRegistro = async (id, aprobado) => {
     const idx = solicitudesRegistro.findIndex(s => s.id === id);
     const sol = solicitudesRegistro[idx];
     if (aprobado) {
@@ -262,48 +283,37 @@ window.gestionarSolicitudRegistro = (id, aprobado) => {
             certificadosCurso: [],
             certificadosCarrera: []
         });
-        guardarUsuarios();
+        await guardarUsuarios();
         console.log(`Enviando correo a ${sol.id}... Credenciales aprobadas para perfil ${sol.perfilDeseado}`);
     }
     solicitudesRegistro.splice(idx, 1);
-    guardarSolicitudes();
+    await guardarSolicitudes();
     location.reload();
 };
 
-window.solicitarAccesoCurso = (cursoId) => {
+window.solicitarAccesoCurso = async (cursoId) => {
     const yaSolicitado = solicitudesCursos.find(s => s.userId === sesion.id && s.cursoId === cursoId);
     if (yaSolicitado) return alert("Ya tienes una solicitud pendiente para este curso.");
     
     solicitudesCursos.push({ userId: sesion.id, cursoId, userName: sesion.nombre, fecha: new Date().toLocaleDateString() });
-    guardarSolicitudes();
+    await guardarSolicitudes();
     alert("Solicitud de acceso enviada al administrador.");
     location.reload();
 };
 
-window.guardarcurso = () => {
-    const idEdit = document.getElementById('form-curso').value;
-    if (idEdit) {
-        const idx = cursos.findIndex(c => c.id == idEdit);
-        cursos[idx] = nuevoCurso;
-    } else {
-        cursos.push(nuevoCurso);
-    }
-    guardar();
-    location.reload();
-};
 
 
-window.gestionarSolicitudCurso = (userId, cursoId, aprobado) => {
+window.gestionarSolicitudCurso = async (userId, cursoId, aprobado) => {
     const idx = solicitudesCursos.findIndex(s => s.userId === userId && s.cursoId === cursoId);
     if (aprobado) {
         const uIdx = usuarios.findIndex(u => u.id === userId);
         if (uIdx !== -1) {
             usuarios[uIdx].asignados.push(cursoId);
-            guardarUsuarios();
+            await guardarUsuarios();
         }
     }
     solicitudesCursos.splice(idx, 1);
-    guardarSolicitudes();
+    await guardarSolicitudes();
     location.reload();
 };
 
@@ -337,7 +347,19 @@ window.prepararFormulario = (modo) => {
 
     if (form) form.reset();
     document.getElementById('edit-id').value = '';
+    document.getElementById('titulo').value = '';
+    document.getElementById('descripcion').value = '';
+    document.getElementById('curso-prelacion').value = '';
+    tempModulos = [];
+    tempImagenPortada = "";
+    mostrarVistaPreviaPortada();
     document.getElementById('modalTitulo').innerText = "Nuevo Curso";
+    
+    const selPrelacion = document.getElementById('curso-prelacion');
+    if (selPrelacion) {
+        selPrelacion.innerHTML = '<option value="">Ninguno</option>' + cursos.map(c => `<option value="${c.id}">${c.titulo}</option>`).join('');
+    }
+
     renderModulosEditor();
 };
 // funcion para mostrar la portada ya cargada en la base de datos de un curso como vista previa dentro del modal de edicion
@@ -360,6 +382,9 @@ window.abrirEditor = (id) => {
     document.getElementById('edit-id').value = c.id;
     document.getElementById('titulo').value = c.titulo;
     document.getElementById('descripcion').value = c.descripcion;
+    if (document.getElementById('curso-prelacion')) {
+        document.getElementById('curso-prelacion').value = c.prelacion || '';
+    }
     tempImagenPortada = c.imagen || "";
     mostrarVistaPreviaPortada();
 
@@ -368,9 +393,34 @@ window.abrirEditor = (id) => {
 
     document.getElementById('modalTitulo').innerText = "Editar Curso";
     
+    const selPrelacion = document.getElementById('curso-prelacion');
+    if (selPrelacion) {
+        selPrelacion.innerHTML = '<option value="">Ninguno</option>' + cursos.filter(item => item.id !== id).map(c => `<option value="${c.id}">${c.titulo}</option>`).join('');
+        selPrelacion.value = c.prelacion || '';
+    }
+
     const modalElement = document.getElementById('cursoModal');
     const bModal = new bootstrap.Modal(modalElement);
     bModal.show();
+};
+
+window.eliminarModulo = (idx) => {
+    tempModulos.splice(idx, 1);
+    renderModulosEditor();
+};
+
+window.subirModulo = (idx) => {
+    if (idx > 0) {
+        [tempModulos[idx], tempModulos[idx - 1]] = [tempModulos[idx - 1], tempModulos[idx]];
+        renderModulosEditor();
+    }
+};
+
+window.bajarModulo = (idx) => {
+    if (idx < tempModulos.length - 1) {
+        [tempModulos[idx], tempModulos[idx + 1]] = [tempModulos[idx + 1], tempModulos[idx]];
+        renderModulosEditor();
+    }
 };
 
 window.agregarModulo = () => {
@@ -411,10 +461,17 @@ window.guardarEvaluacionModulo = () => {
     const mIdx = document.getElementById('edit-modulo-idx').value;
     tempModulos[mIdx].evaluacion = JSON.parse(JSON.stringify(tempModuloEvaluacion));
     
-    alert("Evaluación del módulo guardada temporalmente. Recuerde guardar el curso para persistir los cambios.");
+    alert("Evaluación del módulo guardada temporalmente.");
     const modalElement = document.getElementById('moduloEvaluacionModal');
-    const bModal = bootstrap.Modal.getInstance(modalElement);
+    const bModal = bootstrap.Modal.getOrCreateInstance(modalElement);
     bModal.hide();
+    
+    // Forzar remoción de backdrop si se queda pegado
+    const backdrop = document.querySelector('.modal-backdrop');
+    if (backdrop) backdrop.remove();
+    document.body.classList.remove('modal-open');
+    document.body.style.overflow = '';
+    document.body.style.paddingRight = '';
 };
 
 window.guardarmodulocurso = () => {
@@ -551,35 +608,40 @@ function renderModulosEditor() {
     const container = document.getElementById('contenedor-modulos-editor');
     if (!container) return;
     container.innerHTML = tempModulos.map((mod, mIdx) => `
-        <div class="border p-3 mb-3 bg-light rounded">
-            <div class="d-flex mb-2">
+        <div class="border p-3 mb-3 bg-light rounded shadow-sm">
+            <div class="d-flex align-items-center mb-2">
+                <div class="btn-group-vertical me-2">
+                    <button type="button" class="btn btn-xs btn-outline-secondary" onclick="subirModulo(${mIdx})" ${mIdx === 0 ? 'disabled' : ''}><i class="bi bi-caret-up-fill"></i></button>
+                    <button type="button" class="btn btn-xs btn-outline-secondary" onclick="bajarModulo(${mIdx})" ${mIdx === tempModulos.length - 1 ? 'disabled' : ''}><i class="bi bi-caret-down-fill"></i></button>
+                </div>
                 <input type="text" class="form-control form-control-sm fw-bold me-2" value="${mod.titulo}" oninput="tempModulos[${mIdx}].titulo = this.value">
-                <button type="button" class="btn btn-sm btn-outline-info me-2" onclick="abrirEditorModuloEvaluacion(${mIdx})">Gestionar Evaluación</button>
-                <button type="button" class="btn btn-sm btn-danger" onclick="eliminarModulo(${mIdx})">Eliminar Módulo</button>
+                <button type="button" class="btn btn-sm btn-outline-info me-2" onclick="abrirEditorModuloEvaluacion(${mIdx})">Evaluación</button>
+                <button type="button" class="btn btn-sm btn-danger" onclick="eliminarModulo(${mIdx})"><i class="bi bi-trash"></i></button>
             </div>
-            <div class="ms-4">
+            <div class="ms-4 border-start ps-3">
                 ${mod.lecciones.map((lec, lIdx) => `
-                    <div class="card p-2 mb-2">
+                    <div class="card p-2 mb-2 bg-white">
                         <input type="text" class="form-control form-control-sm mb-1" placeholder="Título Lección" value="${lec.titulo}" oninput="tempModulos[${mIdx}].lecciones[${lIdx}].titulo = this.value">
                         <div class="row g-2">
                             <div class="col-8">
                                 <input type="text" class="form-control form-control-sm mb-1" placeholder="URL de YouTube" value="${lec.videoID ? 'https://www.youtube.com/watch?v='+lec.videoID : ''}" oninput="tempModulos[${mIdx}].lecciones[${lIdx}].videoID = extraerID(this.value)">
                             </div>
                             <div class="col-4">
-                                ${lec.videoID ? `<button type="button" class="btn btn-sm btn-dark w-100" onclick="window.open('https://youtube.com/embed/${lec.videoID}')">Previsualizar</button>` : ''}
+                                ${lec.videoID ? `<button type="button" class="btn btn-sm btn-dark w-100" onclick="window.open('https://youtube.com/embed/${lec.videoID}')">Ver</button>` : ''}
                             </div>
                         </div>
-                        <textarea class="form-control form-control-sm mb-1" placeholder="Descripción de la lección..." oninput="tempModulos[${mIdx}].lecciones[${lIdx}].contenido = this.value">${lec.contenido || ''}</textarea>
-                        <label class="small text-muted mb-0">Cargar documento (PDF/Word):</label>
-                        <input type="file" class="form-control form-control-sm mb-1" onchange="cargarArchivoLeccion(event, ${mIdx}, ${lIdx})">
-                        ${lec.nombreAdjunto ? `<div class="small text-success mb-1 fw-bold"><i class="bi bi-file-check"></i> ${lec.nombreAdjunto}</div>` : ''}
-                        <button type="button" class="btn btn-link btn-sm text-danger" onclick="eliminarLeccion(${mIdx}, ${lIdx})">Quitar Lección</button>
+                        <textarea class="form-control form-control-sm mb-1" placeholder="Contenido..." oninput="tempModulos[${mIdx}].lecciones[${lIdx}].contenido = this.value">${lec.contenido || ''}</textarea>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <input type="file" class="form-control form-control-sm" style="max-width: 200px;" onchange="cargarArchivoLeccion(event, ${mIdx}, ${lIdx})">
+                            <button type="button" class="btn btn-link btn-sm text-danger" onclick="eliminarLeccion(${mIdx}, ${lIdx})">Eliminar</button>
+                        </div>
+                        ${lec.nombreAdjunto ? `<div class="small text-success mt-1"><i class="bi bi-paperclip"></i> ${lec.nombreAdjunto}</div>` : ''}
                     </div>
                 `).join('')}
-                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="agregarLeccion(${mIdx})">+ Añadir Lección</button>
+                <button type="button" class="btn btn-sm btn-outline-primary" onclick="agregarLeccion(${mIdx})">+ Añadir Lección</button>
             </div>
         </div>
-    `).join('') + `<button type="button" class="btn btn-dark w-100" onclick="agregarModulo()">+ Añadir Módulo</button>`;
+    `).join('') + `<button type="button" class="btn btn-primary w-100 mt-2" onclick="agregarModulo()">+ Añadir Nuevo Módulo</button>`;
 }
 
 window.eliminarCurso = (id) => {
@@ -623,7 +685,7 @@ function renderSelectRoles() {
     }
 }
 
-window.guardarUsuario = (e) => {
+window.guardarUsuario = async (e) => {
     e.preventDefault();
     const id = document.getElementById('u-id').value;
     const nombre = document.getElementById('u-nombre').value;
@@ -655,21 +717,21 @@ window.guardarUsuario = (e) => {
         usuarios.push({ id, nombre, clave: claveNueva || "12345", rol, estado, asignados: [], carrerasAsignadas: userCareers, progreso: {}, certificadosCurso: [], certificadosCarrera: [] });
     }
 
-    guardarUsuarios();
+    await guardarUsuarios();
     location.reload();
 };
 
-window.actualizarMinAprobacionGlobal = (val) => {
+window.actualizarMinAprobacionGlobal = async (val) => {
     if (!db.configuracion) db.configuracion = {};
     db.configuracion.minAprobacion = parseInt(val) || 70;
-    guardarTodo();
+    await guardarTodo();
 };
 
-window.eliminarUsuario = (id) => {
+window.eliminarUsuario = async (id) => {
     if (id === '25482938') return alert("No se puede eliminar al administrador principal.");
     if (confirm('¿Eliminar acceso para este usuario?')) {
         usuarios = usuarios.filter(u => u.id !== id);
-        guardarUsuarios();
+        await guardarUsuarios();
         location.reload();
     }
 };
@@ -714,7 +776,7 @@ function renderContenidoRol(cursosActuales = [], carrerasActuales = []) {
     //     </div>`).join('') || '<p class="text-muted small">No hay carreras disponibles.</p>';
 }
 
-window.guardarRol = (e) => {
+window.guardarRol = async (e) => {
     e.preventDefault();
     const id = document.getElementById('r-id').value;
     const nombre = document.getElementById('r-nombre').value;
@@ -730,23 +792,23 @@ window.guardarRol = (e) => {
         if (rolesConfig.find(r => r.id === id)) return alert("ID de rol ya registrado.");
         rolesConfig.push({ id, nombre, cursos: cursosSel, carreras: carrerasSel });
     }
-    guardarRoles();
+    await guardarRoles();
     location.reload();
 };
 
-window.eliminarRol = (id) => {
+window.eliminarRol = async (id) => {
     const usuariosConRol = usuarios.filter(u => u.rol === id);
     if (usuariosConRol.length > 0) {
         return alert(`No se puede eliminar el rol "${id}" porque tiene ${usuariosConRol.length} usuario(s) asignados.`);
     }
     if (confirm('¿Estás seguro de eliminar este rol? Los usuarios con este rol podrían perder acceso a cursos.')) {
         rolesConfig = rolesConfig.filter(r => r.id !== id);
-        guardarRoles();
+        await guardarRoles();
         location.reload();
     }
 };
 
-window.crearCarrera = (e) => {
+window.crearCarrera = async (e) => {
     e.preventDefault();
     const idEdit = document.getElementById('edit-career-id').value;
     const nombre = document.getElementById('career-name').value;
@@ -763,7 +825,7 @@ window.crearCarrera = (e) => {
             cursos: selectedCursos
         });
     }
-    guardarCarreras();
+    await guardarCarreras();
     location.reload();
 };
 
@@ -798,9 +860,9 @@ window.abrirEditorCarrera = (id) => {
     });
 };
 
-window.eliminarCarrera = (id) => {
+window.eliminarCarrera = async (id) => {
     carreras = carreras.filter(c => c.id !== id);
-    guardarCarreras();
+    await guardarCarreras();
     location.reload();
 };
 
@@ -921,8 +983,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
-        renderRobustReports();
+    // Optimización: Solo renderizar reportes si estamos en la pestaña de reportes
+    const tabReportes = document.querySelector('button[data-bs-target="#tab-reportes"]');
+    if (tabReportes) {
+        tabReportes.addEventListener('shown.bs.tab', () => {
+            renderRobustReports();
+        });
     }
+}
 function renderRobustReports() {
     // Elementos del DOM
     const topLearnersTable = document.getElementById('tabla-top-learners');
@@ -975,7 +1043,7 @@ function renderRobustReports() {
                 const evaluaciones = progresoCurso?.evaluaciones || {};
                 const evaluacionesCurso = Object.values(evaluaciones);
                 evaluacionesTotales += evaluacionesCurso.length;
-                sumaCalificaciones += evaluacionesCurso.reduce((sum, eval) => sum + (eval.calificacion || 0), 0);
+                sumaCalificaciones += evaluacionesCurso.reduce((sum, ev) => sum + (ev.calificacion || 0), 0);
             }
         });
 
@@ -1225,46 +1293,47 @@ function renderRobustReports() {
     `).join('');
 }
 /////////////////////////////////////////////////////////////////////////////////////REPORTES////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    const form = document.getElementById('form-curso');
-    if (form) {
-        form.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const idEdit = document.getElementById('edit-id').value;
+    const formCurso = document.getElementById('form-curso');
+    // No agregamos listener, usamos el onsubmit="guardarCurso(event)" definido en admin.html
 
-            if (tempModulos.length === 0) {
-                alert("Error: El curso debe tener al menos un módulo.");
-                return;
-            }
-            const todasTienenLecciones = tempModulos.every(m => m.lecciones && m.lecciones.length > 0);
-            if (!todasTienenLecciones) {
-                alert("Error: Cada módulo debe contener al menos una lección.");
-                return;
-            }
-            
-            const nuevoCurso = {
-                id: idEdit ? idEdit : "CUR-" + Date.now(),
-                titulo: document.getElementById('titulo').value,
-                //tipo: document.getElementById('tipo-conocimiento').value,
-                imagen: tempImagenPortada,
-                descripcion: document.getElementById('descripcion').value,
-                modulos: tempModulos
-            };
+window.guardarCurso = async (e) => {
+    if (e) e.preventDefault();
+    const idEdit = document.getElementById('edit-id').value;
 
-            try {
-                if (idEdit) {
-                    const idx = cursos.findIndex(c => c.id == idEdit);
-                    cursos[idx] = nuevoCurso;
-                } else {
-                    cursos.push(nuevoCurso);
-                }
-                guardar();
-                location.reload();
-            } catch (err) {
-                console.error("Error de almacenamiento:", err);
-                alert("No se pudo guardar el curso. Es muy probable que la imagen de portada sea demasiado pesada para la memoria del navegador. Intenta con una imagen más pequeña o sin imagen.");
-            }
-        });
+    if (tempModulos.length === 0) {
+        alert("Error: El curso debe tener al menos un módulo.");
+        return;
     }
+    const todasTienenLecciones = tempModulos.every(m => m.lecciones && m.lecciones.length > 0);
+    if (!todasTienenLecciones) {
+        alert("Error: Cada módulo debe contener al menos una lección.");
+        return;
+    }
+    
+    const nuevoCurso = {
+        id: idEdit ? idEdit : "CUR-" + Date.now(),
+        titulo: document.getElementById('titulo').value,
+        imagen: tempImagenPortada,
+        descripcion: document.getElementById('descripcion').value,
+        prelacion: document.getElementById('curso-prelacion').value,
+        modulos: tempModulos
+    };
+
+    try {
+        if (idEdit) {
+            const idx = cursos.findIndex(c => c.id == idEdit);
+            cursos[idx] = nuevoCurso;
+        } else {
+            cursos.push(nuevoCurso);
+        }
+        await guardarTodo();
+        alert("Curso guardado con éxito.");
+        location.reload();
+    } catch (err) {
+        console.error("Error de almacenamiento:", err);
+        alert("No se pudo guardar el curso. Es muy probable que la imagen de portada sea demasiado pesada para la memoria del navegador. Intenta con una imagen más pequeña o sin imagen.");
+    }
+};
 
     const urlParams = new URLSearchParams(window.location.search);
     const cursoId = urlParams.get('id');
@@ -1481,6 +1550,12 @@ window.validarEvaluacionModulo = async (mIdx) => {
             }
         }
         
+        // Asignar Medalla
+        if (!sesion.progreso[cursoActualData.id].medallas) sesion.progreso[cursoActualData.id].medallas = [];
+        if (!sesion.progreso[cursoActualData.id].medallas.includes(String(mIdx))) {
+            sesion.progreso[cursoActualData.id].medallas.push(String(mIdx));
+        }
+
         sessionStorage.setItem('aluSesion', JSON.stringify(sesion));
         
         const uIdx = usuarios.findIndex(u => u.id === sesion.id);
@@ -1493,6 +1568,8 @@ window.validarEvaluacionModulo = async (mIdx) => {
             <div class="alert alert-success text-center p-4">
                 <i class="bi bi-patch-check-fill display-4"></i>
                 <h4 class="mt-3">¡Módulo Aprobado con ${porcentaje}%!</h4>
+                <p>Has ganado una medalla por completar este módulo.</p>
+                <div class="display-1 mb-3">🏅</div>
                 <p>Ahora puedes continuar con el siguiente contenido.</p>
                 <button class="btn btn-primary" onclick="window.location.reload()">Continuar</button>
             </div>`;
@@ -1541,7 +1618,7 @@ window.descargarCertificado = (nombre, cedula, curso) => {
     doc.save(`Certificado_${curso}_${nombre}.pdf`);
 };
 
-window.duplicarCarrera = (originalCareerId) => {
+window.duplicarCarrera = async (originalCareerId) => {
     if (!confirm('¿Estás seguro de duplicar esta carrera? Se crearán nuevos cursos y módulos.')) return;
 
     const originalCareer = carreras.find(c => c.id === originalCareerId);
@@ -1565,7 +1642,7 @@ window.duplicarCarrera = (originalCareerId) => {
     });
 
     carreras.push(newCareer);
-    guardarTodo();
+    await guardarTodo();
     location.reload();
 };
 
@@ -1635,8 +1712,22 @@ function renderizarCursoTeachlr(curso) {
                         <small class="text-muted">${progreso}% completado</small>
                         ${yaTieneCertificado ? '<span class="badge bg-success">Certificado</span>' : ''}
                     </div>
+                    
+                    <!-- Sección de Medallas -->
+                    <div class="mt-3">
+                        <h6 class="small fw-bold text-muted text-uppercase mb-2">Medallas Obtenidas</h6>
+                        <div class="d-flex flex-wrap gap-2">
+                            ${modulosAprobados.length > 0 ? modulosAprobados.map(m => `
+                                <div class="badge bg-light text-dark border p-2 d-flex align-items-center" title="Módulo ${parseInt(m)+1} Aprobado">
+                                    <span class="fs-5 me-1">🏅</span>
+                                    <small>Mod ${parseInt(m)+1}</small>
+                                </div>
+                            `).join('') : '<small class="text-muted italic">Aún no has ganado medallas</small>'}
+                        </div>
+                    </div>
+
                     ${yaTieneCertificado ? `
-                        <button class="btn btn-sm btn-dark w-100 mt-2" onclick="descargarCertificado('${sesion.nombre}', '${sesion.id}', '${curso.titulo}')">
+                        <button class="btn btn-sm btn-dark w-100 mt-3" onclick="descargarCertificado('${sesion.nombre}', '${sesion.id}', '${curso.titulo}')">
                             <i class="bi bi-download"></i> Descargar PDF
                         </button>
                     ` : ''}
