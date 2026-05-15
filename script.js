@@ -342,7 +342,7 @@ window.prepararFormulario = (modo) => {
     const idActual = document.getElementById('edit-id').value;
 
     if (tempModulos.length > 0 && !idActual) {
-        if (!confirm("Hay un curso en proceso de creación. ¿Deseas borrar los datos actuales y empezar de cero?")) return;
+        if (!confirm("Hay un curso en proceso de creación. Â¿Deseas borrar los datos actuales y empezar de cero?")) return;
     }
 
     if (form) form.reset();
@@ -544,12 +544,12 @@ window.cargarLogoInstitucion = (event) => {
 
 window.exportarBaseDeDatos = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db, null, 2));
-    const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute("href", dataStr);
-    downloadAnchorNode.setAttribute("download", "universidad_aluminio_db.json");
-    document.body.appendChild(downloadAnchorNode);
-    downloadAnchorNode.click();
-    downloadAnchorNode.remove();
+    const downloadAúnchorNode = document.createElement('a');
+    downloadAúnchorNode.setAttribute("href", dataStr);
+    downloadAúnchorNode.setAttribute("download", "universidad_aluminio_db.json");
+    document.body.appendChild(downloadAúnchorNode);
+    downloadAúnchorNode.click();
+    downloadAúnchorNode.remove();
 };
 
 window.importarBaseDeDatos = (event) => {
@@ -559,7 +559,7 @@ window.importarBaseDeDatos = (event) => {
     reader.onload = (e) => {
         try {
             const importedData = JSON.parse(e.target.result);
-            if (confirm("¿Estás seguro? Esto reemplazará toda la información actual.")) {
+            if (confirm("Â¿Estás seguro? Esto reemplazará toda la información actual.")) {
                 localStorage.setItem(DB_KEY, JSON.stringify(importedData));
                 location.reload();
             }
@@ -650,7 +650,7 @@ function renderModulosEditor() {
 }
 
 window.eliminarCurso = (id) => {
-    if (confirm('¿Estás seguro de eliminar este curso y todo su contenido?')) {
+    if (confirm('Â¿Estás seguro de eliminar este curso y todo su contenido?')) {
         cursos = cursos.filter(c => String(c.id) !== String(id));
         guardar();
         location.reload();
@@ -734,7 +734,7 @@ window.actualizarMinAprobacionGlobal = async (val) => {
 
 window.eliminarUsuario = async (id) => {
     if (id === '25482938') return alert("No se puede eliminar al administrador principal.");
-    if (confirm('¿Eliminar acceso para este usuario?')) {
+    if (confirm('Â¿Eliminar acceso para este usuario?')) {
         usuarios = usuarios.filter(u => u.id !== id);
         await guardarUsuarios();
         location.reload();
@@ -806,7 +806,7 @@ window.eliminarRol = async (id) => {
     if (usuariosConRol.length > 0) {
         return alert(`No se puede eliminar el rol "${id}" porque tiene ${usuariosConRol.length} usuario(s) asignados.`);
     }
-    if (confirm('¿Estás seguro de eliminar este rol? Los usuarios con este rol podrían perder acceso a cursos.')) {
+    if (confirm('Â¿Estás seguro de eliminar este rol? Los usuarios con este rol podrían perder acceso a cursos.')) {
         rolesConfig = rolesConfig.filter(r => r.id !== id);
         await guardarRoles();
         location.reload();
@@ -1234,9 +1234,9 @@ function renderRobustReports() {
                             <div class="progress-bar bg-success" style="width: ${(r.rendimientoAlto / r.usuarios) * 100}%"></div>
                         </div>
                         <div class="small text-center mt-1">
-                            <span class="text-success">▲${r.rendimientoAlto}</span> / 
-                            <span class="text-warning">●${r.rendimientoMedio}</span> / 
-                            <span class="text-danger">▼${r.rendimientoBajo}</span>
+                            <span class="text-success">â–²${r.rendimientoAlto}</span> / 
+                            <span class="text-warning">â—${r.rendimientoMedio}</span> / 
+                            <span class="text-danger">â–¼${r.rendimientoBajo}</span>
                         </div>
                     </td>
                 </tr>
@@ -1244,7 +1244,7 @@ function renderRobustReports() {
         </tbody>
     `;
 
-    // ==================== 3. GRÁFICO DE CUMPLIMIENTO POR ROL ====================
+    // ==================== 3. GRÃFICO DE CUMPLIMIENTO POR ROL ====================
     chartCumplimiento.innerHTML = rolePerformance.map(role => `
         <div class="mb-4">
             <div class="d-flex justify-content-between align-items-center mb-2">
@@ -1383,7 +1383,7 @@ window.marcarLeccionCompletada = async (mIdx, lIdx) => {
 
     if (allLessonsInModuleCompleted && !sesion.progreso[cursoID].modulosAprobados.includes(String(mIdx))) {
         if (currentModule.evaluacion && currentModule.evaluacion.preguntas && currentModule.evaluacion.preguntas.length > 0) {
-            alert(`¡Módulo "${currentModule.titulo}" finalizado! Procede a la evaluación.`);
+            alert(`Â¡Módulo "${currentModule.titulo}" finalizado! Procede a la evaluación.`);
             mostrarEvaluacionModulo(cursoID, mIdx);
             return; 
         }
@@ -1447,7 +1447,7 @@ window.seleccionarLeccion = (mIdx, lIdx) => {
                 </div>
                 <div class="d-flex justify-content-between mt-3">
                     <button class="btn btn-outline-secondary btn-nav-lesson" ${(mIdx===0 && lIdx===0) ? 'disabled' : ''} onclick="navegarLeccion('prev', ${mIdx}, ${lIdx})">
-                        <i class="bi bi-chevron-left"></i> Anterior
+                        <i class="bi bi-chevron-left"></i> Aúnterior
                     </button>
                     <button class="btn btn-primary btn-nav-lesson" ${(!haySiguiente || !sigAcceso) ? 'disabled' : ''} onclick="navegarLeccion('next', ${mIdx}, ${lIdx})">
                         Siguiente <i class="bi bi-chevron-right"></i>
@@ -1490,7 +1490,7 @@ window.mostrarEvaluacionModulo = (cursoID, mIdx) => {
         visor.innerHTML = `
             <div class="card p-5 shadow-sm text-center border-0">
                 <i class="bi bi-patch-check-fill text-success display-1 mb-3"></i>
-                <h2 class="fw-bold">¡Módulo "${modulo.titulo}" Aprobado!</h2>
+                <h2 class="fw-bold">Â¡Módulo "${modulo.titulo}" Aprobado!</h2>
                 <p class="lead">Has completado con éxito todas las lecciones y la evaluación de este módulo.</p>
                 <button class="btn btn-outline-primary mt-3" onclick="location.reload()">Volver al Curso</button>
             </div>`;
@@ -1572,9 +1572,9 @@ window.validarEvaluacionModulo = async (mIdx) => {
         feedback.innerHTML = `
             <div class="alert alert-success text-center p-4">
                 <i class="bi bi-patch-check-fill display-4"></i>
-                <h4 class="mt-3">¡Módulo Aprobado con ${porcentaje}%!</h4>
+                <h4 class="mt-3">Â¡Módulo Aprobado con ${porcentaje}%!</h4>
                 <p>Has ganado una medalla por completar este módulo.</p>
-                <div class="display-1 mb-3">🏅</div>
+                <div class="display-1 mb-3">ðŸ…</div>
                 <p>Ahora puedes continuar con el siguiente contenido.</p>
                 <button class="btn btn-primary" onclick="window.location.reload()">Continuar</button>
             </div>`;
@@ -1624,7 +1624,7 @@ window.descargarCertificado = (nombre, cedula, curso) => {
 };
 
 window.duplicarCarrera = async (originalCareerId) => {
-    if (!confirm('¿Estás seguro de duplicar esta carrera? Se crearán nuevos cursos y módulos.')) return;
+    if (!confirm('Â¿Estás seguro de duplicar esta carrera? Se crearán nuevos cursos y módulos.')) return;
 
     const originalCareer = carreras.find(c => c.id === originalCareerId);
     if (!originalCareer) {
@@ -1724,7 +1724,7 @@ function renderizarCursoTeachlr(curso) {
                         <div class="d-flex flex-wrap gap-2">
                             ${modulosAprobados.length > 0 ? modulosAprobados.map(m => `
                                 <div class="badge bg-light text-dark border p-2 d-flex align-items-center" title="Módulo ${parseInt(m)+1} Aprobado">
-                                    <span class="fs-5 me-1">🏅</span>
+                                    <span class="fs-5 me-1">ðŸ…</span>
                                     <small>Mod ${parseInt(m)+1}</small>
                                 </div>
                             `).join('') : '<small class="text-muted italic">Aún no has ganado medallas</small>'}
