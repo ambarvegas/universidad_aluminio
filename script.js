@@ -871,6 +871,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     verificarProteccion();
 
+    // Inicializar detalle de curso si estamos en detalle.html
+    const urlParams = new URLSearchParams(window.location.search);
+    const cursoId = urlParams.get('id');
+    if (document.getElementById('contenido-curso') && cursoId) {
+        mostrarDetalleCurso(cursoId);
+    }
+
     const tablaBody = document.getElementById('tabla-cursos-body');
     const tablaReportes = document.getElementById('tabla-reportes-body');
     renderListaCursosCarrera();
@@ -947,7 +954,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (userTable) {
             userTable.innerHTML = '';
-            usuarios.filter(u => u.rol !== 'admin').forEach(u => {
+            usuarios.forEach(u => {
                 const assignedCareersNames = (u.carrerasAsignadas || []).map(ca => {
                     const car = carreras.find(c => c.id === ca.id);
                     return car ? `${car.nombre} (${ca.estado})` : `Desconocida (${ca.estado})`;
@@ -1357,12 +1364,8 @@ window.guardarCurso = async (e) => {
     }
 };
 
-const urlParams = new URLSearchParams(window.location.search);
-const cursoId = urlParams.get('id');
-
-if (document.getElementById('contenido-curso')) {
-    mostrarDetalleCurso(cursoId);
-}
+// La inicialización del detalle del curso se hace dentro del DOMContentLoaded
+// para asegurar que los datos del servidor ya estén cargados.
 
 window.marcarLeccionCompletada = async (mIdx, lIdx) => {
     const cursoID = cursoActualData.id;
@@ -1873,37 +1876,78 @@ function renderizarCursoTeachlr(curso) {
     }).join('') : '<small class="text-muted italic">Aún no has ganado medallas</small>'}
                         </div>
                     </div>
+                    ${yaTieneCertificado ? `
+                        <button class="btn btn-sm btn-dark w-100 mt-3" onclick="descargarCertificado('${sesion.nombre}', '${sesion.id}', '${curso.titulo}')">
+                            <i class="bi bi-download"></i> Descargar PDF
+                        </button>
+                    ` : ''}
                 </div>
-                ${modulosList.map((mod, mIdx) => `
-                    <div class="accordion-item border-0 mb-2">
-                        <h2 class="accordion-header">
-                            <button class="accordion-button collapsed rounded-pill bg-light" type="button" data-bs-toggle="collapse" data-bs-target="#pan-${mIdx}">
-                                <strong class="me-2">${mod.titulo}</strong>
-                                ${modulosAprobados.includes(String(mIdx)) ? '<span class="badge bg-success ms-auto">✔️ Completado</span>' : ''}
-                            </button>
-                        </h2>
-                        <div id="pan-${mIdx}" class="accordion-collapse collapse">
-                            <div class="accordion-body p-0 mt-2">
-                                ${mod.lecciones.map((lec, lIdx) => {
-        const lecID = `${mIdx}-${lIdx}`;
-        const completada = leccionesCompletadas.includes(lecID);
-        const bloqueada = !verificarAccesoLeccion(mIdx, lIdx);
-        return `
-                                        <button class="btn-leccion w-100 text-start d-flex justify-content-between align-items-center p-2 mb-1 rounded ${completada ? 'bg-success bg-opacity-10' : 'bg-light'} ${bloqueada ? 'opacity-50' : ''}" 
-                                                id="btn-l-${mIdx}-${lIdx}"
-                                                ${bloqueada ? 'disabled' : `onclick="seleccionarLeccion(${mIdx}, ${lIdx})"`}>
-                                            <div>
-                                                ${completada ? '<i class="bi bi-check-circle-fill text-success me-2"></i>' : '<i class="bi bi-play-circle me-2"></i>'}
-                                                ${lec.titulo}
+                <div class="accordion sidebar-modulos shadow-sm" id="accordionModulos">
+                    ${modulosList.map((mod, idx) => {
+                        const tieneLecciones = mod.lecciones && mod.lecciones.length > 0;
+                        const todasLeccionesMod = tieneLecciones && mod.lecciones.every((_, lIdx) => leccionesCompletadas.includes(`${idx}-${lIdx}`));
+                        const moduloAprobado = modulosAprobados.includes(String(idx));
+                        const tieneEvaluacion = mod.evaluacion && mod.evaluacion.preguntas && mod.evaluacion.preguntas.length > 0;
+                        const estaEnCurso = tieneLecciones && mod.lecciones.some((_, lIdx) => leccionesCompletadas.includes(`${idx}-${lIdx}`)) && !moduloAprobado;
+
+                        let estadoEvaluacion = 'pendiente';
+                        if (moduloAprobado) estadoEvaluacion = 'aprobado';
+                        else if (!tieneLecciones || !todasLeccionesMod) estadoEvaluacion = 'bloqueado';
+                        else if (tieneEvaluacion) estadoEvaluacion = 'disponible';
+
+                        return `
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button ${idx === 0 ? '' : 'collapsed'}" type="button" data-bs-toggle="collapse" data-bs-target="#mod${idx}">
+                                    ${moduloAprobado ? '<i class="bi bi-check-circle-fill lesson-completed-icon me-2"></i>' : (estaEnCurso ? '<i class="bi bi-play-circle-fill text-primary me-2"></i>' : '<i class="bi bi-folder me-2"></i>')} 
+                                    Módulo ${idx + 1}: ${mod.titulo}
+                                </button>
+                            </h2>
+                            <div id="mod${idx}" class="accordion-collapse collapse ${idx === 0 ? 'show' : ''}" data-bs-parent="#accordionModulos">
+                                <div class="list-group list-group-flush">
+                                    ${tieneLecciones ? mod.lecciones.map((lec, lIdx) => {
+                                        const lecID = `${idx}-${lIdx}`;
+                                        const estaCompletada = leccionesCompletadas.includes(lecID);
+                                        const estaBloqueada = !verificarAccesoLeccion(idx, lIdx);
+                                        return `
+                                        <button class="list-group-item list-group-item-action btn-leccion ${estaBloqueada ? 'lesson-locked' : ''}"
+                                                ${estaBloqueada ? 'disabled' : ''} 
+                                                id="btn-l-${idx}-${lIdx}"
+                                                onclick="seleccionarLeccion(${idx}, ${lIdx})">
+                                            <div class="d-flex justify-content-between">
+                                                <span><i class="bi ${estaCompletada ? 'bi-check-circle-fill text-success' : 'bi-play-circle'} me-2"></i> ${lec.titulo}</span>
+                                                ${estaBloqueada ? '<i class="bi bi-lock-fill"></i>' : ''}
                                             </div>
-                                            ${completada ? '<i class="bi bi-check-lg text-success"></i>' : ''}
                                         </button>
-                                    `;
-    }).join('')}
+                                    `}).join('') : `
+                                        <div class="list-group-item text-muted text-center py-3">
+                                            <i class="bi bi-exclamation-triangle me-2"></i>Este módulo no tiene lecciones
+                                        </div>
+                                    `}
+                                    <button class="list-group-item list-group-item-action text-center py-2 fw-bold 
+                                        ${estadoEvaluacion === 'aprobado' ? 'bg-success bg-opacity-10 text-success' : ''}
+                                        ${estadoEvaluacion === 'disponible' ? 'bg-primary bg-opacity-10 text-primary' : ''}
+                                        ${estadoEvaluacion === 'bloqueado' ? 'bg-secondary bg-opacity-10 text-secondary disabled opacity-50' : ''}
+                                        ${estadoEvaluacion === 'pendiente' && !tieneEvaluacion ? 'bg-warning bg-opacity-10 text-warning' : ''}"
+                                        onclick="${estadoEvaluacion === 'disponible' ? `event.stopPropagation(); mostrarEvaluacionModulo('${curso.id}', ${idx})` : 'return false'}"
+                                        ${estadoEvaluacion === 'bloqueado' || (estadoEvaluacion === 'pendiente' && !tieneEvaluacion) ? 'disabled' : ''}>
+                                        <i class="bi ${
+                                            estadoEvaluacion === 'aprobado' ? 'bi-check-circle-fill' : 
+                                            estadoEvaluacion === 'disponible' ? 'bi-clipboard-check' : 
+                                            estadoEvaluacion === 'bloqueado' ? 'bi-lock-fill' : 'bi-hourglass-split'
+                                        } me-2"></i> 
+                                        ${
+                                            estadoEvaluacion === 'aprobado' ? 'Evaluación Aprobada' :
+                                            estadoEvaluacion === 'disponible' ? 'Realizar Evaluación' :
+                                            estadoEvaluacion === 'bloqueado' ? (tieneLecciones ? 'Completa las lecciones primero' : 'Agrega lecciones a este módulo') :
+                                            !tieneEvaluacion ? 'Sin evaluación disponible' : 'Evaluación bloqueada'
+                                        }
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                `).join('')}
+                    `}).join('')}
+                </div>
             </div>
             <div class="col-md-8 col-lg-9" id="visor-contenido">
                 <div class="text-center py-5 text-muted bg-white rounded shadow-sm">
