@@ -33,17 +33,17 @@ async function cargarDatosDelServidor() {
     try {
         const response = await fetch('api.php');
         const data = await response.json();
-        
+
         if (data && Object.keys(data).length > 0) {
             db = data;
         }
 
         usuarios = db.usuarios || [];
         cursos = db.cursos || [];
-        usuarios.forEach(u => { 
-            u.carrerasAsignadas = u.carrerasAsignadas || []; 
-            u.progreso = u.progreso || {}; 
-            u.certificadosCurso = u.certificadosCurso || []; 
+        usuarios.forEach(u => {
+            u.carrerasAsignadas = u.carrerasAsignadas || [];
+            u.progreso = u.progreso || {};
+            u.certificadosCurso = u.certificadosCurso || [];
             u.certificadosCarrera = u.certificadosCarrera || [];
             // Normalizar progreso: convertir arrays a objetos
             if (u.progreso) {
@@ -58,7 +58,7 @@ async function cargarDatosDelServidor() {
         rolesConfig = db.rolesConfig || [];
         solicitudesRegistro = db.solicitudesRegistro || [];
         solicitudesCursos = db.solicitudesCursos || [];
-        
+
         if (typeof actualizarTablas === 'function') actualizarTablas();
         if (document.getElementById('cfg-min-aprobacion')) {
             document.getElementById('cfg-min-aprobacion').value = db.configuracion.minAprobacion || 70;
@@ -73,10 +73,10 @@ async function cargarDatosDelServidor() {
                 usuarios = db.usuarios || [];
                 cursos = db.cursos || [];
                 carreras = db.carreras || [];
-                usuarios.forEach(u => { 
-                    u.carrerasAsignadas = u.carrerasAsignadas || []; 
-                    u.progreso = u.progreso || {}; 
-                    u.certificadosCurso = u.certificadosCurso || []; 
+                usuarios.forEach(u => {
+                    u.carrerasAsignadas = u.carrerasAsignadas || [];
+                    u.progreso = u.progreso || {};
+                    u.certificadosCurso = u.certificadosCurso || [];
                     u.certificadosCarrera = u.certificadosCarrera || [];
                     // Normalizar progreso: convertir arrays a objetos
                     if (u.progreso) {
@@ -131,7 +131,7 @@ function renderizarGaleria() {
     const galeria = document.querySelector('#galeria-cursos .row');
     if (galeria) {
         galeria.innerHTML = '';
-        
+
         let cursosVisibles = [];
         if (sesion.rol === 'admin') {
             cursosVisibles = cursos;
@@ -169,7 +169,7 @@ function renderizarGaleria() {
                     const progresoPrevio = sesion.progreso[c.prelacion];
                     const modulosConEval = cursoPrevio.modulos.filter(m => m.evaluacion && m.evaluacion.preguntas && m.evaluacion.preguntas.length > 0).length;
                     const modulosAprobados = (progresoPrevio && progresoPrevio.modulosAprobados) ? progresoPrevio.modulosAprobados.length : 0;
-                    
+
                     if (modulosAprobados < modulosConEval) {
                         bloqueadoPorPrelacion = true;
                         mensajePrelacion = `Requiere: ${cursoPrevio.titulo}`;
@@ -178,8 +178,8 @@ function renderizarGaleria() {
             }
 
             const badgeTipo = c.tipo === 'especializado' ? '<span class="badge bg-warning text-dark">Especializado</span>' : '<span class="badge bg-success">Público</span>';
-            const btnAccion = (c.bloqueado || bloqueadoPorPrelacion) 
-                ? `<button class="btn btn-outline-secondary w-100" onclick="${bloqueadoPorPrelacion ? "alert('Debes completar primero: " + mensajePrelacion + "')" : "solicitarAccesoCurso('" + c.id + "')" }">${bloqueadoPorPrelacion ? mensajePrelacion : 'Solicitar Acceso'}</button>` 
+            const btnAccion = (c.bloqueado || bloqueadoPorPrelacion)
+                ? `<button class="btn btn-outline-secondary w-100" onclick="${bloqueadoPorPrelacion ? "alert('Debes completar primero: " + mensajePrelacion + "')" : "solicitarAccesoCurso('" + c.id + "')"}">${bloqueadoPorPrelacion ? mensajePrelacion : 'Solicitar Acceso'}</button>`
                 : `<a href="detalle.html?id=${c.id}" class="btn btn-primary w-100">Ver curso</a>`;
 
             galeriaHTML += `
@@ -228,7 +228,7 @@ window.login = (id, clave) => {
 window.solicitarRegistro = async (id, nombre, clave, perfilDeseado) => {
     if (usuarios.find(u => u.id === id)) return alert("La cédula ya se encuentra registrada.");
     const nuevaSolicitud = { id, nombre, clave, perfilDeseado, fecha: new Date().toLocaleDateString() };
-    
+
     const autoAssignCareerMap = {
         "asesor_ventas": "CAR-ASESOR-VENTAS",
         "retail": "CAR-RETAIL",
@@ -271,12 +271,12 @@ window.gestionarSolicitudRegistro = async (id, aprobado) => {
             }
         }
 
-        usuarios.push({ 
-            id: sol.id, 
-            nombre: sol.nombre, 
-            clave: sol.clave, 
-            rol: sol.perfilDeseado, 
-            estado: "activo", 
+        usuarios.push({
+            id: sol.id,
+            nombre: sol.nombre,
+            clave: sol.clave,
+            rol: sol.perfilDeseado,
+            estado: "activo",
             asignados: [],
             carrerasAsignadas: userCareers,
             progreso: {},
@@ -294,14 +294,12 @@ window.gestionarSolicitudRegistro = async (id, aprobado) => {
 window.solicitarAccesoCurso = async (cursoId) => {
     const yaSolicitado = solicitudesCursos.find(s => s.userId === sesion.id && s.cursoId === cursoId);
     if (yaSolicitado) return alert("Ya tienes una solicitud pendiente para este curso.");
-    
+
     solicitudesCursos.push({ userId: sesion.id, cursoId, userName: sesion.nombre, fecha: new Date().toLocaleDateString() });
     await guardarSolicitudes();
     alert("Solicitud de acceso enviada al administrador.");
     location.reload();
 };
-
-
 
 window.gestionarSolicitudCurso = async (userId, cursoId, aprobado) => {
     const idx = solicitudesCursos.findIndex(s => s.userId === userId && s.cursoId === cursoId);
@@ -342,7 +340,7 @@ window.prepararFormulario = (modo) => {
     const idActual = document.getElementById('edit-id').value;
 
     if (tempModulos.length > 0 && !idActual) {
-        if (!confirm("Hay un curso en proceso de creación. Â¿Deseas borrar los datos actuales y empezar de cero?")) return;
+        if (!confirm("Hay un curso en proceso de creación. ¿Deseas borrar los datos actuales y empezar de cero?")) return;
     }
 
     if (form) form.reset();
@@ -354,7 +352,7 @@ window.prepararFormulario = (modo) => {
     tempImagenPortada = "";
     mostrarVistaPreviaPortada();
     document.getElementById('modalTitulo').innerText = "Nuevo Curso";
-    
+
     const selPrelacion = document.getElementById('curso-prelacion');
     if (selPrelacion) {
         selPrelacion.innerHTML = '<option value="">Ninguno</option>' + cursos.map(c => `<option value="${c.id}">${c.titulo}</option>`).join('');
@@ -362,6 +360,7 @@ window.prepararFormulario = (modo) => {
 
     renderModulosEditor();
 };
+
 // funcion para mostrar la portada ya cargada en la base de datos de un curso como vista previa dentro del modal de edicion
 window.mostrarVistaPreviaPortada = () => {
     const vistaPrev = document.getElementById('vista-previa-portada');
@@ -373,7 +372,6 @@ window.mostrarVistaPreviaPortada = () => {
         vistaPrev.style.display = 'none';
     }
 };
-
 
 window.abrirEditor = (id) => {
     const c = cursos.find(item => item.id === id);
@@ -388,11 +386,11 @@ window.abrirEditor = (id) => {
     tempImagenPortada = c.imagen || "";
     mostrarVistaPreviaPortada();
 
-    tempModulos = JSON.parse(JSON.stringify(c.modulos || [])); 
+    tempModulos = JSON.parse(JSON.stringify(c.modulos || []));
     renderModulosEditor();
 
     document.getElementById('modalTitulo').innerText = "Editar Curso";
-    
+
     const selPrelacion = document.getElementById('curso-prelacion');
     if (selPrelacion) {
         selPrelacion.innerHTML = '<option value="">Ninguno</option>' + cursos.filter(item => item.id !== id).map(c => `<option value="${c.id}">${c.titulo}</option>`).join('');
@@ -431,12 +429,12 @@ window.agregarModulo = () => {
 window.abrirEditorModuloEvaluacion = (mIdx) => {
     const modulo = tempModulos[mIdx];
     tempModuloEvaluacion = JSON.parse(JSON.stringify(modulo.evaluacion || { preguntas: [] }));
-    
+
     document.getElementById('modalModuloEvaluacionTitulo').innerText = `Evaluación: ${modulo.titulo}`;
     document.getElementById('edit-modulo-idx').value = mIdx;
-    
+
     renderPreguntasModuloEditor();
-    
+
     const modalElement = document.getElementById('moduloEvaluacionModal');
     const bModal = new bootstrap.Modal(modalElement);
     bModal.show();
@@ -460,12 +458,12 @@ window.eliminarPreguntaModulo = (idx) => {
 window.guardarEvaluacionModulo = () => {
     const mIdx = document.getElementById('edit-modulo-idx').value;
     tempModulos[mIdx].evaluacion = JSON.parse(JSON.stringify(tempModuloEvaluacion));
-    
+
     alert("Evaluación del módulo guardada temporalmente.");
     const modalElement = document.getElementById('moduloEvaluacionModal');
     const bModal = bootstrap.Modal.getOrCreateInstance(modalElement);
     bModal.hide();
-    
+
     // Forzar remoción de backdrop si se queda pegado
     const backdrop = document.querySelector('.modal-backdrop');
     if (backdrop) backdrop.remove();
@@ -479,17 +477,17 @@ window.guardarmodulocurso = () => {
     tempModulos[mIdx].evaluacion = JSON.parse(JSON.stringify(tempModuloEvaluacion));
     renderModulosEditor();
 };
+
 // funcion para eliminar opciones de las preguntas del modulo de evaluacion
 function eliminarPreguntaOpcionesModulo(idx) {
     tempModuloEvaluacion.preguntas[idx].opciones.pop();
     renderPreguntasModuloEditor();
 }
 
-
 function renderPreguntasModuloEditor() {
     const container = document.getElementById('contenedor-preguntas-modulo-editor');
     if (!container) return;
-    
+
     container.innerHTML = (tempModuloEvaluacion.preguntas || []).map((p, pIdx) => `
         <div class="card p-3 mb-3 bg-white shadow-sm">
             <div class="d-flex justify-content-between mb-2">
@@ -544,12 +542,12 @@ window.cargarLogoInstitucion = (event) => {
 
 window.exportarBaseDeDatos = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db, null, 2));
-    const downloadAúnchorNode = document.createElement('a');
-    downloadAúnchorNode.setAttribute("href", dataStr);
-    downloadAúnchorNode.setAttribute("download", "universidad_aluminio_db.json");
-    document.body.appendChild(downloadAúnchorNode);
-    downloadAúnchorNode.click();
-    downloadAúnchorNode.remove();
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("download", "universidad_aluminio_db.json");
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
 };
 
 window.importarBaseDeDatos = (event) => {
@@ -559,7 +557,7 @@ window.importarBaseDeDatos = (event) => {
     reader.onload = (e) => {
         try {
             const importedData = JSON.parse(e.target.result);
-            if (confirm("Â¿Estás seguro? Esto reemplazará toda la información actual.")) {
+            if (confirm("¿Estás seguro? Esto reemplazará toda la información actual.")) {
                 localStorage.setItem(DB_KEY, JSON.stringify(importedData));
                 location.reload();
             }
@@ -581,6 +579,7 @@ window.cargarImagenPortada = (event) => {
     reader.onload = (e) => {
         tempImagenPortada = e.target.result;
         alert("Imagen de portada cargada con éxito.");
+        mostrarVistaPreviaPortada();
     };
     reader.readAsDataURL(file);
 };
@@ -588,8 +587,8 @@ window.cargarImagenPortada = (event) => {
 window.cargarArchivoLeccion = (event, mIdx, lIdx) => {
     const file = event.target.files[0];
     if (!file) return;
-    
-    if (file.size > 100 * 1024 * 1024) { 
+
+    if (file.size > 100 * 1024 * 1024) {
         alert("El archivo es demasiado grande. Por favor, sube archivos de máximo 100MB.");
         event.target.value = "";
         return;
@@ -615,6 +614,10 @@ function renderModulosEditor() {
                     <button type="button" class="btn btn-sm btn-outline-secondary" onclick="bajarModulo(${mIdx})" ${mIdx === tempModulos.length - 1 ? 'disabled' : ''} title="Bajar Módulo"><i class="bi bi-arrow-down"></i></button>
                 </div>
                 <input type="text" class="form-control fw-bold me-2" value="${mod.titulo}" oninput="tempModulos[${mIdx}].titulo = this.value">
+                <div class="input-group me-2" style="max-width: 140px;" title="Intentos máximos para la evaluación (0 o vacío para ilimitados)">
+                    <span class="input-group-text"><i class="bi bi-arrow-repeat"></i></span>
+                    <input type="number" class="form-control form-control-sm" placeholder="Intentos" value="${mod.maxIntentos || ''}" oninput="tempModulos[${mIdx}].maxIntentos = parseInt(this.value) || 0">
+                </div>
                 <button type="button" class="btn btn-sm btn-primary me-2" onclick="abrirEditorModuloEvaluacion(${mIdx})">
                     <i class="bi bi-clipboard-check"></i> Evaluación
                 </button>
@@ -622,14 +625,13 @@ function renderModulosEditor() {
                     <i class="bi bi-trash"></i> Eliminar
                 </button>
             </div>
-            </div>
             <div class="ms-4 border-start ps-3">
                 ${mod.lecciones.map((lec, lIdx) => `
                     <div class="card p-2 mb-2 bg-white">
                         <input type="text" class="form-control form-control-sm mb-1" placeholder="Título Lección" value="${lec.titulo}" oninput="tempModulos[${mIdx}].lecciones[${lIdx}].titulo = this.value">
                         <div class="row g-2">
                             <div class="col-8">
-                                <input type="text" class="form-control form-control-sm mb-1" placeholder="URL de YouTube" value="${lec.videoID ? 'https://www.youtube.com/watch?v='+lec.videoID : ''}" oninput="tempModulos[${mIdx}].lecciones[${lIdx}].videoID = extraerID(this.value)">
+                                <input type="text" class="form-control form-control-sm mb-1" placeholder="URL de YouTube" value="${lec.videoID ? 'https://www.youtube.com/watch?v=' + lec.videoID : ''}" oninput="tempModulos[${mIdx}].lecciones[${lIdx}].videoID = extraerID(this.value)">
                             </div>
                             <div class="col-4">
                                 ${lec.videoID ? `<button type="button" class="btn btn-sm btn-dark w-100" onclick="window.open('https://youtube.com/embed/${lec.videoID}')">Ver</button>` : ''}
@@ -650,7 +652,7 @@ function renderModulosEditor() {
 }
 
 window.eliminarCurso = (id) => {
-    if (confirm('Â¿Estás seguro de eliminar este curso y todo su contenido?')) {
+    if (confirm('¿Estás seguro de eliminar este curso y todo su contenido?')) {
         cursos = cursos.filter(c => String(c.id) !== String(id));
         guardar();
         location.reload();
@@ -673,11 +675,11 @@ window.abrirEditorUsuario = (id) => {
     document.getElementById('u-id').value = u.id;
     document.getElementById('u-id').disabled = true;
     document.getElementById('u-nombre').value = u.nombre;
-    
+
     renderSelectRoles();
     document.getElementById('u-rol').value = u.rol;
     document.getElementById('u-estado').value = u.estado || 'activo';
-    document.getElementById('u-clave').value = ''; 
+    document.getElementById('u-clave').value = '';
 
     const modal = new bootstrap.Modal(document.getElementById('userModal'));
     modal.show();
@@ -734,7 +736,7 @@ window.actualizarMinAprobacionGlobal = async (val) => {
 
 window.eliminarUsuario = async (id) => {
     if (id === '25482938') return alert("No se puede eliminar al administrador principal.");
-    if (confirm('Â¿Eliminar acceso para este usuario?')) {
+    if (confirm('¿Eliminar acceso para este usuario?')) {
         usuarios = usuarios.filter(u => u.id !== id);
         await guardarUsuarios();
         location.reload();
@@ -765,20 +767,13 @@ window.abrirEditorRol = (id) => {
 
 function renderContenidoRol(cursosActuales = [], carrerasActuales = []) {
     const cursosCont = document.getElementById('r-lista-cursos');
-    //const carrerasCont = document.getElementById('r-lista-carreras');
-    if (!cursosCont ) return;
+    if (!cursosCont) return;
 
     cursosCont.innerHTML = cursos.map(c => `
         <div class="form-check small">
             <input class="form-check-input check-r-curso" type="checkbox" value="${c.id}" ${cursosActuales.includes(c.id) ? 'checked' : ''}>
             <label class="form-check-label">${c.titulo}</label>
         </div>`).join('') || '<p class="text-muted small">No hay cursos disponibles.</p>';
-
-    // carrerasCont.innerHTML = carreras.map(car => `
-    //     <div class="form-check small">
-    //         <input class="form-check-input check-r-carrera" type="checkbox" value="${car.id}" ${carrerasActuales.includes(car.id) ? 'checked' : ''}>
-    //         <label class="form-check-label">${car.nombre}</label>
-    //     </div>`).join('') || '<p class="text-muted small">No hay carreras disponibles.</p>';
 }
 
 window.guardarRol = async (e) => {
@@ -806,7 +801,7 @@ window.eliminarRol = async (id) => {
     if (usuariosConRol.length > 0) {
         return alert(`No se puede eliminar el rol "${id}" porque tiene ${usuariosConRol.length} usuario(s) asignados.`);
     }
-    if (confirm('Â¿Estás seguro de eliminar este rol? Los usuarios con este rol podrían perder acceso a cursos.')) {
+    if (confirm('¿Estás seguro de eliminar este rol? Los usuarios con este rol podrían perder acceso a cursos.')) {
         rolesConfig = rolesConfig.filter(r => r.id !== id);
         await guardarRoles();
         location.reload();
@@ -818,7 +813,7 @@ window.crearCarrera = async (e) => {
     const idEdit = document.getElementById('edit-career-id').value;
     const nombre = document.getElementById('career-name').value;
     const selectedCursos = Array.from(document.querySelectorAll('.curso-check:checked')).map(cb => cb.value);
-    
+
     if (idEdit) {
         const idx = carreras.findIndex(c => c.id === idEdit);
         carreras[idx].nombre = nombre;
@@ -891,7 +886,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <button class="btn btn-sm btn-outline-primary me-2" onclick="abrirEditor('${c.id}')">Editar</button>
                         <button class="btn btn-sm btn-outline-danger" onclick="eliminarCurso('${c.id}')">Borrar</button>
                     </td>
-                </table>`;
+                </tr>`;
         });
 
         const rolesTable = document.getElementById('tabla-roles-body');
@@ -961,16 +956,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <tr>
                         <td><code class="fw-bold">${u.id}</code></td>
                         <td>${u.nombre}</td>
-                        <td><span class="badge border text-dark bg-light">${u.rol.replace('_',' ')}</span><br><small class="text-muted">${assignedCareersNames}</small></td>
+                        <td><span class="badge border text-dark bg-light">${u.rol.replace('_', ' ')}</span><br><small class="text-muted">${assignedCareersNames}</small></td>
                         <td><span class="badge ${u.estado === 'suspendido' ? 'bg-danger' : 'bg-success'}">${u.estado || 'activo'}</span></td>
                         <td class="text-end">
-                            <button class="btn btn-sm btn-outline-primary" onclick="abrirEditorUsuario('${u.id}')">Editar Perfil</button>
+                            <button class="btn btn-sm btn-outline-primary me-1" onclick="abrirEditorUsuario('${u.id}')">Editar Perfil</button>
+                            <button class="btn btn-sm btn-outline-warning me-1" onclick="abrirRestablecerAvance('${u.id}')"><i class="bi bi-arrow-counterclockwise"></i> Restablecer</button>
                             <button class="btn btn-sm btn-outline-danger" onclick="eliminarUsuario('${u.id}')"><i class="bi bi-trash"></i></button>
                         </td>
                     </tr>`;
             });
         }
-        
+
         if (careerTable) {
             carreras.forEach(car => {
                 careerTable.innerHTML += `
@@ -988,20 +984,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
-    // Optimización: Solo renderizar reportes si estamos en la pestaña de reportes
-    const tabReportes = document.querySelector('button[data-bs-target="#tab-reportes"]');
-    if (tabReportes) {
-        tabReportes.addEventListener('shown.bs.tab', () => {
-            renderRobustReports();
-        });
+        // Optimización: Solo renderizar reportes si estamos en la pestaña de reportes
+        const tabReportes = document.querySelector('button[data-bs-target="#tab-reportes"]');
+        if (tabReportes) {
+            tabReportes.addEventListener('shown.bs.tab', () => {
+                renderRobustReports();
+            });
+        }
     }
-}
+});
+
 function renderRobustReports() {
     // Elementos del DOM
     const topLearnersTable = document.getElementById('tabla-top-learners');
     const performanceByRole = document.getElementById('chart-cumplimiento'); // Reutilizamos para rendimiento por rol
     const chartCumplimiento = document.getElementById('chart-cumplimiento');
-    
+
     if (!topLearnersTable) return;
 
     // Filtrar usuarios no administradores
@@ -1012,7 +1010,7 @@ function renderRobustReports() {
         // Calcular progreso en cursos
         const userProgress = user.progreso || {};
         const cursosIds = Object.keys(userProgress);
-        
+
         let totalModulosCurso = 0;
         let modulosAprobados = 0;
         let totalLecciones = 0;
@@ -1020,23 +1018,24 @@ function renderRobustReports() {
         let promedioEvaluaciones = 0;
         let evaluacionesTotales = 0;
         let sumaCalificaciones = 0;
+        let totalIntentos = 0;
 
         // Procesar cada curso del usuario
         cursosIds.forEach(cursoId => {
             const progresoCurso = userProgress[cursoId];
             const cursoInfo = cursos.find(c => c.id === cursoId);
-            
+
             if (cursoInfo && cursoInfo.modulos) {
                 // Módulos del curso
                 const totalModulosCursoActual = cursoInfo.modulos.length;
                 totalModulosCurso += totalModulosCursoActual;
-                
+
                 // Módulos aprobados por el usuario
                 const modulosAprobadosActual = progresoCurso?.modulosAprobados?.length || 0;
                 modulosAprobados += modulosAprobadosActual;
 
                 // Lecciones del curso
-                const totalLeccionesCurso = cursoInfo.modulos.reduce((sum, modulo) => 
+                const totalLeccionesCurso = cursoInfo.modulos.reduce((sum, modulo) =>
                     sum + (modulo.lecciones?.length || 0), 0);
                 totalLecciones += totalLeccionesCurso;
 
@@ -1049,6 +1048,12 @@ function renderRobustReports() {
                 const evaluacionesCurso = Object.values(evaluaciones);
                 evaluacionesTotales += evaluacionesCurso.length;
                 sumaCalificaciones += evaluacionesCurso.reduce((sum, ev) => sum + (ev.calificacion || 0), 0);
+
+                // Intentos
+                const intentos = progresoCurso?.intentos || {};
+                Object.values(intentos).forEach(val => {
+                    totalIntentos += parseInt(val) || 0;
+                });
             }
         });
 
@@ -1072,6 +1077,7 @@ function renderRobustReports() {
             porcentajeLecciones: porcentajeLecciones.toFixed(1),
             promedioEvaluaciones: promedioEvaluaciones.toFixed(1),
             tasaCompletitud: tasaCompletitud.toFixed(1),
+            totalIntentos: totalIntentos,
             estado: user.estado
         };
     }).sort((a, b) => b.tasaCompletitud - a.tasaCompletitud); // Ordenar por mejor rendimiento
@@ -1086,6 +1092,7 @@ function renderRobustReports() {
                 <th>Módulos <br><small>(aprob/total)</small></th>
                 <th>Lecciones <br><small>(complet/total)</small></th>
                 <th>Promedio <br>Evaluaciones</th>
+                <th>Intentos <br>Totales</th>
                 <th>Tasa <br>Completitud</th>
             </tr>
         </thead>
@@ -1124,6 +1131,11 @@ function renderRobustReports() {
                         </span>
                     </td>
                     <td class="text-center">
+                        <span class="badge bg-secondary">
+                            ${u.totalIntentos}
+                        </span>
+                    </td>
+                    <td class="text-center">
                         <span class="badge bg-${u.tasaCompletitud >= 70 ? 'success' : u.tasaCompletitud >= 40 ? 'warning' : 'danger'} fs-6">
                             ${u.tasaCompletitud}%
                         </span>
@@ -1138,7 +1150,7 @@ function renderRobustReports() {
         .filter(role => role.id !== 'admin')
         .map(role => {
             const usersInRole = userPerformanceData.filter(u => u.rol === role.id);
-            
+
             if (usersInRole.length === 0) {
                 return {
                     rol: role.id,
@@ -1188,118 +1200,123 @@ function renderRobustReports() {
         .sort((a, b) => b.promedioCompletitud - a.promedioCompletitud);
 
     // Renderizar tabla de rendimiento por roles
-    performanceByRole.innerHTML = `
-        <thead>
-            <tr class="table-dark">
-                <th>Rol</th>
-                <th>Usuarios</th>
-                <th>Módulos <br><small>(% promedio)</small></th>
-                <th>Lecciones <br><small>(% promedio)</small></th>
-                <th>Evaluaciones <br><small>(promedio)</small></th>
-                <th>Tasa <br>Completitud</th>
-                <th>Distribución</th>
-            </tr>
-        </thead>
-        <tbody>
-            ${rolePerformance.map(r => `
-                <tr>
-                    <td>
-                        <strong>${r.nombre}</strong>
-                        <div class="small text-muted">${r.cursosAsignados} cursos | ${r.carrerasAsignadas} carreras</div>
-                    </td>
-                    <td class="text-center">
-                        <span class="badge bg-secondary">${r.usuarios}</span>
-                    </td>
-                    <td>
-                        <div class="progress" style="height: 5px;">
-                            <div class="progress-bar bg-info" style="width: ${r.promedioModulos}%"></div>
-                        </div>
-                        <div class="small text-center">${r.promedioModulos}%</div>
-                    </td>
-                    <td>
-                        <div class="progress" style="height: 5px;">
-                            <div class="progress-bar bg-info" style="width: ${r.promedioLecciones}%"></div>
-                        </div>
-                        <div class="small text-center">${r.promedioLecciones}%</div>
-                    </td>
-                    <td class="text-center">
-                        <span class="fw-bold ${r.promedioEvaluaciones >= 70 ? 'text-success' : 'text-warning'}">
-                            ${r.promedioEvaluaciones}
-                        </span>
-                    </td>
-                    <td>
-                        <div class="progress" style="height: 8px;">
-                            <div class="progress-bar bg-danger" style="width: ${(r.rendimientoBajo / r.usuarios) * 100}%"></div>
-                            <div class="progress-bar bg-warning" style="width: ${(r.rendimientoMedio / r.usuarios) * 100}%"></div>
-                            <div class="progress-bar bg-success" style="width: ${(r.rendimientoAlto / r.usuarios) * 100}%"></div>
-                        </div>
-                        <div class="small text-center mt-1">
-                            <span class="text-success">â–²${r.rendimientoAlto}</span> / 
-                            <span class="text-warning">â—${r.rendimientoMedio}</span> / 
-                            <span class="text-danger">â–¼${r.rendimientoBajo}</span>
-                        </div>
-                    </td>
+    if (performanceByRole) {
+        performanceByRole.innerHTML = `
+            <thead>
+                <tr class="table-dark">
+                    <th>Rol</th>
+                    <th>Usuarios</th>
+                    <th>Módulos <br><small>(% promedio)</small></th>
+                    <th>Lecciones <br><small>(% promedio)</small></th>
+                    <th>Evaluaciones <br><small>(promedio)</small></th>
+                    <th>Tasa <br>Completitud</th>
+                    <th>Distribución</th>
                 </tr>
-            `).join('')}
-        </tbody>
-    `;
+            </thead>
+            <tbody>
+                ${rolePerformance.map(r => `
+                    <tr>
+                        <td>
+                            <strong>${r.nombre}</strong>
+                            <div class="small text-muted">${r.cursosAsignados} cursos | ${r.carrerasAsignadas} carreras</div>
+                        </td>
+                        <td class="text-center">
+                            <span class="badge bg-secondary">${r.usuarios}</span>
+                        </td>
+                        <td>
+                            <div class="progress" style="height: 5px;">
+                                <div class="progress-bar bg-info" style="width: ${r.promedioModulos}%"></div>
+                            </div>
+                            <div class="small text-center">${r.promedioModulos}%</div>
+                        </td>
+                        <td>
+                            <div class="progress" style="height: 5px;">
+                                <div class="progress-bar bg-info" style="width: ${r.promedioLecciones}%"></div>
+                            </div>
+                            <div class="small text-center">${r.promedioLecciones}%</div>
+                        </td>
+                        <td class="text-center">
+                            <span class="fw-bold ${r.promedioEvaluaciones >= 70 ? 'text-success' : 'text-warning'}">
+                                ${r.promedioEvaluaciones}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="progress" style="height: 8px;">
+                                <div class="progress-bar bg-danger" style="width: ${(r.rendimientoBajo / r.usuarios) * 100}%"></div>
+                                <div class="progress-bar bg-warning" style="width: ${(r.rendimientoMedio / r.usuarios) * 100}%"></div>
+                                <div class="progress-bar bg-success" style="width: ${(r.rendimientoAlto / r.usuarios) * 100}%"></div>
+                            </div>
+                            <div class="small text-center mt-1">
+                                <span class="text-success">▲${r.rendimientoAlto}</span> / 
+                                <span class="text-warning">●${r.rendimientoMedio}</span> / 
+                                <span class="text-danger">▼${r.rendimientoBajo}</span>
+                            </div>
+                        </td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        `;
+    }
 
-    // ==================== 3. GRÃFICO DE CUMPLIMIENTO POR ROL ====================
-    chartCumplimiento.innerHTML = rolePerformance.map(role => `
-        <div class="mb-4">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <div>
-                    <strong>${role.nombre}</strong>
-                    <span class="badge bg-secondary ms-2">${role.usuarios} usuarios</span>
+    // ==================== 3. GRÁFICO DE CUMPLIMIENTO POR ROL ====================
+    if (chartCumplimiento) {
+        chartCumplimiento.innerHTML = rolePerformance.map(role => `
+            <div class="mb-4">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div>
+                        <strong>${role.nombre}</strong>
+                        <span class="badge bg-secondary ms-2">${role.usuarios} usuarios</span>
+                    </div>
+                    <span class="h5 mb-0 fw-bold text-${role.promedioCompletitud >= 70 ? 'success' : role.promedioCompletitud >= 40 ? 'warning' : 'danger'}">
+                        ${role.promedioCompletitud}%
+                    </span>
                 </div>
-                <span class="h5 mb-0 fw-bold text-${role.promedioCompletitud >= 70 ? 'success' : role.promedioCompletitud >= 40 ? 'warning' : 'danger'}">
-                    ${role.promedioCompletitud}%
-                </span>
-            </div>
-            <div class="progress mb-2" style="height: 20px;">
-                <div class="progress-bar bg-success" style="width: ${role.promedioCompletitud}%">
-                    ${role.promedioCompletitud}%
-                </div>
-            </div>
-            <div class="row small text-muted">
-                <div class="col-4">
-                    <i class="fas fa-check-circle text-success"></i> Módulos: ${role.promedioModulos}%
-                </div>
-                <div class="col-4">
-                    <i class="fas fa-book-open text-info"></i> Lecciones: ${role.promedioLecciones}%
-                </div>
-                <div class="col-4">
-                    <i class="fas fa-star text-warning"></i> Evaluaciones: ${role.promedioEvaluaciones}
-                </div>
-            </div>
-            ${role.detalleUsuarios.length > 0 ? `
-                <div class="mt-2">
-                    <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#roleDetail-${role.rol.replace(/[^a-zA-Z0-9]/g, '')}">
-                        <i class="fas fa-users"></i> Ver usuarios (${role.usuarios})
-                    </button>
-                    <div class="collapse mt-2" id="roleDetail-${role.rol.replace(/[^a-zA-Z0-9]/g, '')}">
-                        <div class="card card-body bg-light">
-                            ${role.detalleUsuarios.map(u => `
-                                <div class="d-flex justify-content-between align-items-center mb-1">
-                                    <span>${u.nombre}</span>
-                                    <div class="progress flex-grow-1 mx-2" style="height: 5px; max-width: 200px;">
-                                        <div class="progress-bar bg-${u.completitud >= 70 ? 'success' : u.completitud >= 40 ? 'warning' : 'danger'}" 
-                                             style="width: ${u.completitud}%"></div>
-                                    </div>
-                                    <span class="small fw-bold">${u.completitud}%</span>
-                                </div>
-                            `).join('')}
-                        </div>
+                <div class="progress mb-2" style="height: 20px;">
+                    <div class="progress-bar bg-success" style="width: ${role.promedioCompletitud}%">
+                        ${role.promedioCompletitud}%
                     </div>
                 </div>
-            ` : ''}
-        </div>
-        ${role !== rolePerformance[rolePerformance.length - 1] ? '<hr>' : ''}
-    `).join('');
+                <div class="row small text-muted">
+                    <div class="col-4">
+                        <i class="fas fa-check-circle text-success"></i> Módulos: ${role.promedioModulos}%
+                    </div>
+                    <div class="col-4">
+                        <i class="fas fa-book-open text-info"></i> Lecciones: ${role.promedioLecciones}%
+                    </div>
+                    <div class="col-4">
+                        <i class="fas fa-star text-warning"></i> Evaluaciones: ${role.promedioEvaluaciones}
+                    </div>
+                </div>
+                ${role.detalleUsuarios.length > 0 ? `
+                    <div class="mt-2">
+                        <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#roleDetail-${role.rol.replace(/[^a-zA-Z0-9]/g, '')}">
+                            <i class="fas fa-users"></i> Ver usuarios (${role.usuarios})
+                        </button>
+                        <div class="collapse mt-2" id="roleDetail-${role.rol.replace(/[^a-zA-Z0-9]/g, '')}">
+                            <div class="card card-body bg-light">
+                                ${role.detalleUsuarios.map(u => `
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <span>${u.nombre}</span>
+                                        <div class="progress flex-grow-1 mx-2" style="height: 5px; max-width: 200px;">
+                                            <div class="progress-bar bg-${u.completitud >= 70 ? 'success' : u.completitud >= 40 ? 'warning' : 'danger'}" 
+                                                 style="width: ${u.completitud}%"></div>
+                                        </div>
+                                        <span class="small fw-bold">${u.completitud}%</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                ` : ''}
+            </div>
+            ${role !== rolePerformance[rolePerformance.length - 1] ? '<hr>' : ''}
+        `).join('');
+    }
 }
-/////////////////////////////////////////////////////////////////////////////////////REPORTES////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    const formCurso = document.getElementById('form-curso');
-    // No agregamos listener, usamos el onsubmit="guardarCurso(event)" definido en admin.html
+
+// REPORTES
+const formCurso = document.getElementById('form-curso');
+// No agregamos listener, usamos el onsubmit="guardarCurso(event)" definido en admin.html
 
 window.guardarCurso = async (e) => {
     if (e) e.preventDefault();
@@ -1314,7 +1331,7 @@ window.guardarCurso = async (e) => {
         alert("Error: Cada módulo debe contener al menos una lección.");
         return;
     }
-    
+
     const nuevoCurso = {
         id: idEdit ? idEdit : "CUR-" + Date.now(),
         titulo: document.getElementById('titulo').value,
@@ -1340,23 +1357,22 @@ window.guardarCurso = async (e) => {
     }
 };
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const cursoId = urlParams.get('id');
-    
-    if (document.getElementById('contenido-curso')) {
-        mostrarDetalleCurso(cursoId);
-    }
-});
+const urlParams = new URLSearchParams(window.location.search);
+const cursoId = urlParams.get('id');
+
+if (document.getElementById('contenido-curso')) {
+    mostrarDetalleCurso(cursoId);
+}
 
 window.marcarLeccionCompletada = async (mIdx, lIdx) => {
     const cursoID = cursoActualData.id;
     const lecID = `${mIdx}-${lIdx}`;
-    
+
     if (!sesion.progreso[cursoID]) sesion.progreso[cursoID] = { leccionesCompletadas: [], modulosAprobados: [] };
     if (Array.isArray(sesion.progreso[cursoID])) {
         sesion.progreso[cursoID] = { leccionesCompletadas: sesion.progreso[cursoID], modulosAprobados: [] };
     }
-    
+
     if (!sesion.progreso[cursoID].leccionesCompletadas.includes(lecID)) {
         sesion.progreso[cursoID].leccionesCompletadas.push(lecID);
     }
@@ -1377,15 +1393,15 @@ window.marcarLeccionCompletada = async (mIdx, lIdx) => {
     document.getElementById('contenido-curso').innerHTML = renderizarCursoTeachlr(cursoActualData);
 
     const currentModule = cursoActualData.modulos[mIdx];
-    const allLessonsInModuleCompleted = currentModule.lecciones.every((_, index) => 
+    const allLessonsInModuleCompleted = currentModule.lecciones.every((_, index) =>
         sesion.progreso[cursoID].leccionesCompletadas.includes(`${mIdx}-${index}`)
     );
 
     if (allLessonsInModuleCompleted && !sesion.progreso[cursoID].modulosAprobados.includes(String(mIdx))) {
         if (currentModule.evaluacion && currentModule.evaluacion.preguntas && currentModule.evaluacion.preguntas.length > 0) {
-            alert(`Â¡Módulo "${currentModule.titulo}" finalizado! Procede a la evaluación.`);
+            alert(`¡Módulo "${currentModule.titulo}" finalizado! Procede a la evaluación.`);
             mostrarEvaluacionModulo(cursoID, mIdx);
-            return; 
+            return;
         }
     }
 
@@ -1396,14 +1412,14 @@ window.navegarLeccion = (dir, m, l) => {
     let newM = m, newL = l;
     if (dir === 'next') {
         newL++;
-        if (newL >= cursoActualData.modulos[m].lecciones.length) { 
-            newM++; 
-            newL = 0; 
+        if (newL >= cursoActualData.modulos[m].lecciones.length) {
+            newM++;
+            newL = 0;
         }
     } else {
         newL--;
-        if (newL < 0) { 
-            newM--; 
+        if (newL < 0) {
+            newM--;
             if (newM >= 0) newL = cursoActualData.modulos[newM].lecciones.length - 1;
         }
     }
@@ -1412,21 +1428,19 @@ window.navegarLeccion = (dir, m, l) => {
     }
 };
 
-
-
 window.seleccionarLeccion = (mIdx, lIdx) => {
     if (!verificarAccesoLeccion(mIdx, lIdx)) return;
     const leccion = cursoActualData.modulos[mIdx].lecciones[lIdx];
     const visor = document.getElementById('visor-contenido');
-    
+
     document.querySelectorAll('.btn-leccion').forEach(btn => btn.classList.remove('active'));
     const btnActivo = document.getElementById(`btn-l-${mIdx}-${lIdx}`);
     if (btnActivo) btnActivo.classList.add('active');
 
     const lecID = `${mIdx}-${lIdx}`;
     const progreso = sesion.progreso[cursoActualData.id];
-    const estaCompletada = progreso && (Array.isArray(progreso) ? 
-        progreso.includes(lecID) : 
+    const estaCompletada = progreso && (Array.isArray(progreso) ?
+        progreso.includes(lecID) :
         (progreso.leccionesCompletadas && progreso.leccionesCompletadas.includes(lecID)));
 
     let haySiguiente = false;
@@ -1446,8 +1460,8 @@ window.seleccionarLeccion = (mIdx, lIdx) => {
                     <iframe src="https://www.youtube.com/embed/${leccion.videoID}" frameborder="0" allowfullscreen></iframe>
                 </div>
                 <div class="d-flex justify-content-between mt-3">
-                    <button class="btn btn-outline-secondary btn-nav-lesson" ${(mIdx===0 && lIdx===0) ? 'disabled' : ''} onclick="navegarLeccion('prev', ${mIdx}, ${lIdx})">
-                        <i class="bi bi-chevron-left"></i> Aúnterior
+                    <button class="btn btn-outline-secondary btn-nav-lesson" ${(mIdx === 0 && lIdx === 0) ? 'disabled' : ''} onclick="navegarLeccion('prev', ${mIdx}, ${lIdx})">
+                        <i class="bi bi-chevron-left"></i> Anterior
                     </button>
                     <button class="btn btn-primary btn-nav-lesson" ${(!haySiguiente || !sigAcceso) ? 'disabled' : ''} onclick="navegarLeccion('next', ${mIdx}, ${lIdx})">
                         Siguiente <i class="bi bi-chevron-right"></i>
@@ -1460,9 +1474,9 @@ window.seleccionarLeccion = (mIdx, lIdx) => {
                     <hr>
                     <div class="text-secondary mb-4 leccion-texto" style="white-space: pre-wrap;">${leccion.contenido || 'No hay descripción disponible para esta lección.'}</div>
                     <div class="mt-auto">
-                        ${!estaCompletada ? 
-                            `<button class="btn btn-success w-100 mb-2 py-2" onclick="marcarLeccionCompletada(${mIdx}, ${lIdx})"><i class="bi bi-check-lg"></i> Finalizar Lección</button>` : 
-                            `<button class="btn btn-outline-success w-100 mb-2" disabled><i class="bi bi-check-all"></i> Lección Completada</button>`}
+                        ${!estaCompletada ?
+            `<button class="btn btn-success w-100 mb-2 py-2" onclick="marcarLeccionCompletada(${mIdx}, ${lIdx})"><i class="bi bi-check-lg"></i> Finalizar Lección</button>` :
+            `<button class="btn btn-outline-success w-100 mb-2" disabled><i class="bi bi-check-all"></i> Lección Completada</button>`}
                         
                         ${leccion.adjunto ? `
                             <a href="${leccion.adjunto}" download="${leccion.nombreAdjunto || 'recurso'}" class="btn btn-outline-primary w-100 mt-2">
@@ -1479,7 +1493,7 @@ window.mostrarEvaluacionModulo = (cursoID, mIdx) => {
     const curso = cursos.find(c => c.id === cursoID);
     const modulo = curso.modulos[mIdx];
     const visor = document.getElementById('visor-contenido');
-    
+
     if (!sesion.progreso[curso.id]) sesion.progreso[curso.id] = { leccionesCompletadas: [], modulosAprobados: [] };
     const progreso = sesion.progreso[curso.id];
     const modulosAprobados = Array.isArray(progreso) ? [] : (progreso.modulosAprobados || []);
@@ -1490,7 +1504,7 @@ window.mostrarEvaluacionModulo = (cursoID, mIdx) => {
         visor.innerHTML = `
             <div class="card p-5 shadow-sm text-center border-0">
                 <i class="bi bi-patch-check-fill text-success display-1 mb-3"></i>
-                <h2 class="fw-bold">Â¡Módulo "${modulo.titulo}" Aprobado!</h2>
+                <h2 class="fw-bold">¡Módulo "${modulo.titulo}" Aprobado!</h2>
                 <p class="lead">Has completado con éxito todas las lecciones y la evaluación de este módulo.</p>
                 <button class="btn btn-outline-primary mt-3" onclick="location.reload()">Volver al Curso</button>
             </div>`;
@@ -1504,7 +1518,7 @@ window.mostrarEvaluacionModulo = (cursoID, mIdx) => {
             <div class="quiz-area mb-4">
                 ${modulo.evaluacion.preguntas.map((p, i) => `
                     <div class="mb-4 p-3 border rounded">
-                        <h6 class="fw-bold">${i+1}. ${p.enunciado}</h6>
+                        <h6 class="fw-bold">${i + 1}. ${p.enunciado}</h6>
                         ${p.opciones.map((opt, oIdx) => `
                             <div class="form-check py-1">
                                 <input class="form-check-input" type="radio" name="q${i}" value="${oIdx}" id="q${i}o${oIdx}">
@@ -1514,10 +1528,9 @@ window.mostrarEvaluacionModulo = (cursoID, mIdx) => {
                     </div>
                 `).join('')}
             </div>
-            <button class="btn btn-primary btn-lg w-100" onclick="validarEvaluacionModulo(${mIdx})">Enviar Respuestas</button>
+            <button id="btn-enviar-evaluacion" class="btn btn-primary btn-lg w-100" onclick="validarEvaluacionModulo(${mIdx})">Enviar Respuestas</button>
             <div id="feedback" class="mt-4"></div>
-        </div>
-    `;
+        </div>`;
 };
 
 window.validarEvaluacionModulo = async (mIdx) => {
@@ -1525,6 +1538,21 @@ window.validarEvaluacionModulo = async (mIdx) => {
     const preguntas = (modulo.evaluacion && modulo.evaluacion.preguntas) || [];
     let aciertos = 0;
     const feedback = document.getElementById('feedback');
+
+    // Validar que se respondieron todas las preguntas
+    let todasRespondidas = true;
+    for (let i = 0; i < preguntas.length; i++) {
+        const sel = document.querySelector(`input[name="q${i}"]:checked`);
+        if (!sel) {
+            todasRespondidas = false;
+            break;
+        }
+    }
+
+    if (!todasRespondidas) {
+        alert("Por favor, responde todas las preguntas antes de enviar.");
+        return;
+    }
 
     preguntas.forEach((p, i) => {
         const sel = document.querySelector(`input[name="q${i}"]:checked`);
@@ -1534,35 +1562,89 @@ window.validarEvaluacionModulo = async (mIdx) => {
     const porcentaje = Math.round((aciertos / preguntas.length) * 100);
     const min = (db.configuracion && db.configuracion.minAprobacion) || 70;
 
+    // Inicializar progreso del curso
+    if (!sesion.progreso[cursoActualData.id]) sesion.progreso[cursoActualData.id] = { leccionesCompletadas: [], modulosAprobados: [] };
+    if (Array.isArray(sesion.progreso[cursoActualData.id])) {
+        sesion.progreso[cursoActualData.id] = { leccionesCompletadas: sesion.progreso[cursoActualData.id], modulosAprobados: [] };
+    }
+    const progreso = sesion.progreso[cursoActualData.id];
+
+    // Incrementar intentos
+    if (!progreso.intentos) progreso.intentos = {};
+    if (!progreso.intentos[mIdx]) progreso.intentos[mIdx] = 0;
+    progreso.intentos[mIdx]++;
+
+    const numIntentos = progreso.intentos[mIdx];
+    const maxIntentos = modulo.maxIntentos || 0;
+
+    // Guardar detalles de la última evaluación
+    if (!progreso.evaluaciones) progreso.evaluaciones = {};
+    progreso.evaluaciones[mIdx] = {
+        calificacion: porcentaje,
+        aprobado: porcentaje >= min
+    };
+
+    // Renderizar feedback de cada respuesta
+    const quizArea = document.querySelector('.quiz-area');
+    if (quizArea) {
+        document.querySelectorAll('.quiz-area input').forEach(input => input.disabled = true);
+        quizArea.innerHTML = preguntas.map((p, i) => {
+            const selectedInput = document.querySelector(`input[name="q${i}"]:checked`);
+            const selectedVal = selectedInput ? parseInt(selectedInput.value) : -1;
+            const isCorrect = selectedVal === p.correcta;
+            return `
+                <div class="mb-4 p-3 border rounded ${isCorrect ? 'border-success bg-success bg-opacity-10' : 'border-danger bg-danger bg-opacity-10'}">
+                    <h6 class="fw-bold">
+                        ${i + 1}. ${p.enunciado} 
+                        ${isCorrect ? '<span class="text-success ms-2"><i class="bi bi-check-circle-fill"></i> Correcto</span>' : '<span class="text-danger ms-2"><i class="bi bi-x-circle-fill"></i> Incorrecto</span>'}
+                    </h6>
+                    ${p.opciones.map((opt, oIdx) => {
+                let optionClass = "";
+                let icon = "";
+                if (oIdx === p.correcta) {
+                    optionClass = "text-success fw-bold";
+                    icon = '<i class="bi bi-check2 text-success me-1"></i>';
+                } else if (oIdx === selectedVal) {
+                    optionClass = "text-danger text-decoration-line-through";
+                    icon = '<i class="bi bi-x text-danger me-1"></i>';
+                }
+                return `
+                            <div class="py-1 d-flex align-items-center">
+                                <input class="form-check-input me-2" type="radio" name="q_feedback_${i}" value="${oIdx}" ${oIdx === selectedVal ? 'checked' : ''} disabled>
+                                <span class="${optionClass}">${icon}${opt}</span>
+                            </div>`;
+            }).join('')}
+                </div>`;
+        }).join('');
+    }
+
+    // Ocultar botón enviar
+    const submitBtn = document.getElementById('btn-enviar-evaluacion');
+    if (submitBtn) submitBtn.style.display = 'none';
+
+    // Procesar Aprobado / Reprobado
     if (porcentaje >= min) {
         sesion.certificadosCurso = sesion.certificadosCurso || [];
-
-        if (!sesion.progreso[cursoActualData.id]) sesion.progreso[cursoActualData.id] = { leccionesCompletadas: [], modulosAprobados: [] };
-        if (Array.isArray(sesion.progreso[cursoActualData.id])) {
-            sesion.progreso[cursoActualData.id] = { leccionesCompletadas: sesion.progreso[cursoActualData.id], modulosAprobados: [] };
+        if (!progreso.modulosAprobados) progreso.modulosAprobados = [];
+        if (!progreso.modulosAprobados.includes(String(mIdx))) {
+            progreso.modulosAprobados.push(String(mIdx));
         }
-        
-        if (!sesion.progreso[cursoActualData.id].modulosAprobados) sesion.progreso[cursoActualData.id].modulosAprobados = [];
 
-        if (!sesion.progreso[cursoActualData.id].modulosAprobados.includes(String(mIdx))) {
-            sesion.progreso[cursoActualData.id].modulosAprobados.push(String(mIdx));
-        }
-        
         const modulosConEvaluacion = cursoActualData.modulos.filter(m => m.evaluacion && m.evaluacion.preguntas && m.evaluacion.preguntas.length > 0).length;
-        if (sesion.progreso[cursoActualData.id].modulosAprobados.length === modulosConEvaluacion) {
+        if (progreso.modulosAprobados.length === modulosConEvaluacion) {
             if (!sesion.certificadosCurso.includes(cursoActualData.id)) {
                 sesion.certificadosCurso.push(cursoActualData.id);
             }
         }
-        
+
         // Asignar Medalla
-        if (!sesion.progreso[cursoActualData.id].medallas) sesion.progreso[cursoActualData.id].medallas = [];
-        if (!sesion.progreso[cursoActualData.id].medallas.includes(String(mIdx))) {
-            sesion.progreso[cursoActualData.id].medallas.push(String(mIdx));
+        if (!progreso.medallas) progreso.medallas = [];
+        if (!progreso.medallas.includes(String(mIdx))) {
+            progreso.medallas.push(String(mIdx));
         }
 
         sessionStorage.setItem('aluSesion', JSON.stringify(sesion));
-        
+
         const uIdx = usuarios.findIndex(u => u.id === sesion.id);
         if (uIdx !== -1) {
             usuarios[uIdx].progreso = sesion.progreso;
@@ -1571,16 +1653,73 @@ window.validarEvaluacionModulo = async (mIdx) => {
 
         feedback.innerHTML = `
             <div class="alert alert-success text-center p-4">
-                <i class="bi bi-patch-check-fill display-4"></i>
-                <h4 class="mt-3">Â¡Módulo Aprobado con ${porcentaje}%!</h4>
+                <i class="bi bi-patch-check-fill display-4 text-success"></i>
+                <h4 class="mt-3">¡Módulo Aprobado con ${porcentaje}%!</h4>
+                <p>Calificación: <strong>${porcentaje}%</strong> | Intentos realizados: <strong>${numIntentos}</strong></p>
                 <p>Has ganado una medalla por completar este módulo.</p>
-                <div class="display-1 mb-3">ðŸ…</div>
+                <div class="display-1 mb-3">🏆</div>
                 <p>Ahora puedes continuar con el siguiente contenido.</p>
                 <button class="btn btn-primary" onclick="window.location.reload()">Continuar</button>
             </div>`;
     } else {
-        feedback.innerHTML = `<div class="alert alert-danger text-center"><h4>${porcentaje}%</h4><p>Mínimo requerido: ${min}%</p></div>`;
+        // Reprobado
+        let puedeReintentar = true;
+        if (maxIntentos > 0 && numIntentos >= maxIntentos) {
+            puedeReintentar = false;
+        }
+
+        if (puedeReintentar) {
+            sessionStorage.setItem('aluSesion', JSON.stringify(sesion));
+            const uIdx = usuarios.findIndex(u => u.id === sesion.id);
+            if (uIdx !== -1) {
+                usuarios[uIdx].progreso = sesion.progreso;
+                await guardarTodo();
+            }
+
+            let intentosMsg = `Intento realizado: <strong>${numIntentos}</strong>`;
+            if (maxIntentos > 0) {
+                intentosMsg += ` / <strong>${maxIntentos}</strong> máximo`;
+            }
+
+            feedback.innerHTML = `
+                <div class="alert alert-danger text-center p-4">
+                    <i class="bi bi-x-circle-fill display-4 text-danger"></i>
+                    <h4 class="mt-3">Módulo No Aprobado: ${porcentaje}%</h4>
+                    <p>Mínimo requerido: ${min}% | ${intentosMsg}</p>
+                    <p class="mt-3 fw-bold">¿Deseas volver a intentarlo?</p>
+                    <div class="d-flex justify-content-center gap-3 mt-2">
+                        <button class="btn btn-warning" onclick="reintentarEvaluacion('${cursoActualData.id}', ${mIdx})">Sí, intentar de nuevo</button>
+                        <button class="btn btn-secondary" onclick="window.location.reload()">No, volver al curso</button>
+                    </div>
+                </div>`;
+        } else {
+            // Superó los intentos: reiniciar intentos y lecciones completadas para este módulo
+            progreso.intentos[mIdx] = 0;
+            if (progreso.leccionesCompletadas) {
+                progreso.leccionesCompletadas = progreso.leccionesCompletadas.filter(lecId => !lecId.startsWith(mIdx + '-'));
+            }
+
+            sessionStorage.setItem('aluSesion', JSON.stringify(sesion));
+            const uIdx = usuarios.findIndex(u => u.id === sesion.id);
+            if (uIdx !== -1) {
+                usuarios[uIdx].progreso = sesion.progreso;
+                await guardarTodo();
+            }
+
+            feedback.innerHTML = `
+                <div class="alert alert-danger text-center p-4">
+                    <i class="bi bi-exclamation-triangle-fill display-4 text-warning"></i>
+                    <h4 class="mt-3">Superaste el límite de intentos</h4>
+                    <p>Has realizado ${numIntentos} de ${maxIntentos} intentos permitidos y no lograste aprobar.</p>
+                    <p class="text-muted">Como consecuencia, debes volver a ver todas las lecciones de este módulo para poder realizar la evaluación de nuevo.</p>
+                    <button class="btn btn-primary mt-2" onclick="window.location.reload()">Entendido, ir a las lecciones</button>
+                </div>`;
+        }
     }
+};
+
+window.reintentarEvaluacion = (cursoID, mIdx) => {
+    mostrarEvaluacionModulo(cursoID, mIdx);
 };
 
 window.descargarCertificado = (nombre, cedula, curso) => {
@@ -1595,17 +1734,17 @@ window.descargarCertificado = (nombre, cedula, curso) => {
     doc.rect(12, 12, 273, 186);
 
     if (logo) {
-        try { doc.addImage(logo, 'PNG', 20, 20, 40, 40); } catch(e) { console.error("Error al cargar logo", e); }
+        try { doc.addImage(logo, 'PNG', 20, 20, 40, 40); } catch (e) { console.error("Error al cargar logo", e); }
     }
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(30);
     doc.text("UNIVERSIDAD DEL ALUMINIO", 148, 45, { align: "center" });
-    
+
     doc.setFontSize(20);
     doc.setFont("helvetica", "normal");
     doc.text("Otorga el presente certificado a:", 148, 80, { align: "center" });
-    
+
     doc.setFontSize(35);
     doc.text(nombre.toUpperCase(), 148, 100, { align: "center" });
     doc.setFontSize(16);
@@ -1624,7 +1763,7 @@ window.descargarCertificado = (nombre, cedula, curso) => {
 };
 
 window.duplicarCarrera = async (originalCareerId) => {
-    if (!confirm('Â¿Estás seguro de duplicar esta carrera? Se crearán nuevos cursos y módulos.')) return;
+    if (!confirm('¿Estás seguro de duplicar esta carrera? Se crearán nuevos cursos y módulos.')) return;
 
     const originalCareer = carreras.find(c => c.id === originalCareerId);
     if (!originalCareer) {
@@ -1653,22 +1792,22 @@ window.duplicarCarrera = async (originalCareerId) => {
 
 function verificarAccesoLeccion(mIdx, lIdx) {
     if (mIdx === 0 && lIdx === 0) return true;
-    
+
     const progreso = sesion.progreso[cursoActualData.id];
     if (!progreso) return false;
-    
+
     // Normalizar si es array
     if (Array.isArray(progreso)) {
         sesion.progreso[cursoActualData.id] = { leccionesCompletadas: progreso, modulosAprobados: [] };
     }
-    
+
     const prog = sesion.progreso[cursoActualData.id];
-    
+
     // Si es la primera lección de un módulo posterior al primero, verificar módulo anterior aprobado
     if (lIdx === 0 && mIdx > 0) {
         return prog.modulosAprobados && prog.modulosAprobados.includes(String(mIdx - 1));
     }
-    
+
     // Verificar lección anterior
     let prevM = mIdx, prevL = lIdx - 1;
     if (prevL < 0) {
@@ -1692,7 +1831,7 @@ function normalizarCurso(curso) {
 function renderizarCursoTeachlr(curso) {
     curso = normalizarCurso(curso);
     cursoActualData = curso;
-    
+
     if (!sesion.progreso[curso.id]) sesion.progreso[curso.id] = { leccionesCompletadas: [], modulosAprobados: [] };
     if (Array.isArray(sesion.progreso[curso.id])) {
         sesion.progreso[curso.id] = { leccionesCompletadas: sesion.progreso[curso.id], modulosAprobados: [] };
@@ -1704,9 +1843,9 @@ function renderizarCursoTeachlr(curso) {
     const totalLecciones = modulosList.reduce((acc, m) => acc + (m.lecciones ? m.lecciones.length : 0), 0);
     const completadas = leccionesCompletadas.length;
     const progreso = totalLecciones > 0 ? Math.round((completadas / totalLecciones) * 100) : 0;
-    
+
     const yaTieneCertificado = sesion.certificadosCurso && sesion.certificadosCurso.includes(curso.id);
-    
+
     return `
         <div class="row mt-2 g-4">
             <div class="col-md-4 col-lg-3">
@@ -1722,87 +1861,49 @@ function renderizarCursoTeachlr(curso) {
                     <div class="mt-3">
                         <h6 class="small fw-bold text-muted text-uppercase mb-2">Medallas Obtenidas</h6>
                         <div class="d-flex flex-wrap gap-2">
-                            ${modulosAprobados.length > 0 ? modulosAprobados.map(m => `
-                                <div class="badge bg-light text-dark border p-2 d-flex align-items-center" title="Módulo ${parseInt(m)+1} Aprobado">
-                                    <span class="fs-5 me-1">🥈</span>
-                                    <small>Mod ${parseInt(m)+1}</small>
-                                </div>
-                            `).join('') : '<small class="text-muted italic">Aún no has ganado medallas</small>'}
+                            ${modulosAprobados.length > 0 ? modulosAprobados.map(m => {
+        const modIndex = parseInt(m);
+        const moduloNombre = curso.modulos[modIndex] ? curso.modulos[modIndex].titulo : `Módulo ${modIndex + 1}`;
+        return `
+                                    <div class="badge bg-light text-dark border p-2 d-flex align-items-center" title="${moduloNombre} Aprobado">
+                                        <span class="fs-5 me-1">🏆</span>
+                                        <small>${moduloNombre}</small>
+                                    </div>
+                                `;
+    }).join('') : '<small class="text-muted italic">Aún no has ganado medallas</small>'}
                         </div>
                     </div>
-
-                    ${yaTieneCertificado ? `
-                        <button class="btn btn-sm btn-dark w-100 mt-3" onclick="descargarCertificado('${sesion.nombre}', '${sesion.id}', '${curso.titulo}')">
-                            <i class="bi bi-download"></i> Descargar PDF
-                        </button>
-                    ` : ''}
                 </div>
-                <div class="accordion sidebar-modulos shadow-sm" id="accordionModulos">
-                    ${modulosList.map((mod, idx) => {
-                        const tieneLecciones = mod.lecciones && mod.lecciones.length > 0;
-                        const todasLeccionesMod = tieneLecciones && mod.lecciones.every((_, lIdx) => leccionesCompletadas.includes(`${idx}-${lIdx}`));
-                        const moduloAprobado = modulosAprobados.includes(String(idx));
-                        const tieneEvaluacion = mod.evaluacion && mod.evaluacion.preguntas && mod.evaluacion.preguntas.length > 0;
-                        const estaEnCurso = tieneLecciones && mod.lecciones.some((_, lIdx) => leccionesCompletadas.includes(`${idx}-${lIdx}`)) && !moduloAprobado;
-
-                        let estadoEvaluacion = 'pendiente';
-                        if (moduloAprobado) estadoEvaluacion = 'aprobado';
-                        else if (!tieneLecciones || !todasLeccionesMod) estadoEvaluacion = 'bloqueado';
-                        else if (tieneEvaluacion) estadoEvaluacion = 'disponible';
-
-                        return `
-                        <div class="accordion-item">
-                            <h2 class="accordion-header">
-                                <button class="accordion-button ${idx === 0 ? '' : 'collapsed'}" type="button" data-bs-toggle="collapse" data-bs-target="#mod${idx}">
-                                    ${moduloAprobado ? '<i class="bi bi-check-circle-fill lesson-completed-icon me-2"></i>' : (estaEnCurso ? '<i class="bi bi-play-circle-fill text-primary me-2"></i>' : '<i class="bi bi-folder me-2"></i>')} 
-                                    Módulo ${idx + 1}: ${mod.titulo}
-                                </button>
-                            </h2>
-                            <div id="mod${idx}" class="accordion-collapse collapse ${idx === 0 ? 'show' : ''}" data-bs-parent="#accordionModulos">
-                                <div class="list-group list-group-flush">
-                                    ${tieneLecciones ? mod.lecciones.map((lec, lIdx) => {
-                                        const lecID = `${idx}-${lIdx}`;
-                                        const estaCompletada = leccionesCompletadas.includes(lecID);
-                                        const estaBloqueada =  !verificarAccesoLeccion(idx, lIdx);
-                                        return `
-                                        <button class="list-group-item list-group-item-action btn-leccion ${estaBloqueada ? 'lesson-locked' : ''}"
-                                                ${estaBloqueada ? 'disabled' : ''} 
-                                                id="btn-l-${idx}-${lIdx}"
-                                                onclick="seleccionarLeccion(${idx}, ${lIdx})">
-                                            <div class="d-flex justify-content-between">
-                                                <span><i class="bi ${estaCompletada ? 'bi-check-circle-fill text-success' : 'bi-play-circle'} me-2"></i> ${lec.titulo}</span>
-                                                ${estaBloqueada ? '<i class="bi bi-lock-fill"></i>' : ''}
+                ${modulosList.map((mod, mIdx) => `
+                    <div class="accordion-item border-0 mb-2">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed rounded-pill bg-light" type="button" data-bs-toggle="collapse" data-bs-target="#pan-${mIdx}">
+                                <strong class="me-2">${mod.titulo}</strong>
+                                ${modulosAprobados.includes(String(mIdx)) ? '<span class="badge bg-success ms-auto">✔️ Completado</span>' : ''}
+                            </button>
+                        </h2>
+                        <div id="pan-${mIdx}" class="accordion-collapse collapse">
+                            <div class="accordion-body p-0 mt-2">
+                                ${mod.lecciones.map((lec, lIdx) => {
+        const lecID = `${mIdx}-${lIdx}`;
+        const completada = leccionesCompletadas.includes(lecID);
+        const bloqueada = !verificarAccesoLeccion(mIdx, lIdx);
+        return `
+                                        <button class="btn-leccion w-100 text-start d-flex justify-content-between align-items-center p-2 mb-1 rounded ${completada ? 'bg-success bg-opacity-10' : 'bg-light'} ${bloqueada ? 'opacity-50' : ''}" 
+                                                id="btn-l-${mIdx}-${lIdx}"
+                                                ${bloqueada ? 'disabled' : `onclick="seleccionarLeccion(${mIdx}, ${lIdx})"`}>
+                                            <div>
+                                                ${completada ? '<i class="bi bi-check-circle-fill text-success me-2"></i>' : '<i class="bi bi-play-circle me-2"></i>'}
+                                                ${lec.titulo}
                                             </div>
+                                            ${completada ? '<i class="bi bi-check-lg text-success"></i>' : ''}
                                         </button>
-                                    `}).join('') : `
-                                        <div class="list-group-item text-muted text-center py-3">
-                                            <i class="bi bi-exclamation-triangle me-2"></i>Este módulo no tiene lecciones
-                                        </div>
-                                    `}
-                                    <button class="list-group-item list-group-item-action text-center py-2 fw-bold 
-                                        ${estadoEvaluacion === 'aprobado' ? 'bg-success bg-opacity-10 text-success' : ''}
-                                        ${estadoEvaluacion === 'disponible' ? 'bg-primary bg-opacity-10 text-primary' : ''}
-                                        ${estadoEvaluacion === 'bloqueado' ? 'bg-secondary bg-opacity-10 text-secondary disabled opacity-50' : ''}
-                                        ${estadoEvaluacion === 'pendiente' && !tieneEvaluacion ? 'bg-warning bg-opacity-10 text-warning' : ''}"
-                                        onclick="${estadoEvaluacion === 'disponible' ? `event.stopPropagation(); mostrarEvaluacionModulo('${curso.id}', ${idx})` : 'return false'}"
-                                        ${estadoEvaluacion === 'bloqueado' || (estadoEvaluacion === 'pendiente' && !tieneEvaluacion) ? 'disabled' : ''}>
-                                        <i class="bi ${
-                                            estadoEvaluacion === 'aprobado' ? 'bi-check-circle-fill' : 
-                                            estadoEvaluacion === 'disponible' ? 'bi-clipboard-check' : 
-                                            estadoEvaluacion === 'bloqueado' ? 'bi-lock-fill' : 'bi-hourglass-split'
-                                        } me-2"></i> 
-                                        ${
-                                            estadoEvaluacion === 'aprobado' ? 'Evaluación Aprobada' :
-                                            estadoEvaluacion === 'disponible' ? 'Realizar Evaluación' :
-                                            estadoEvaluacion === 'bloqueado' ? (tieneLecciones ? 'Completa las lecciones primero' : 'Agrega lecciones a este módulo') :
-                                            !tieneEvaluacion ? 'Sin evaluación disponible' : 'Evaluación bloqueada'
-                                        }
-                                    </button>
-                                </div>
+                                    `;
+    }).join('')}
                             </div>
                         </div>
-                    `}).join('')}
-                </div>
+                    </div>
+                `).join('')}
             </div>
             <div class="col-md-8 col-lg-9" id="visor-contenido">
                 <div class="text-center py-5 text-muted bg-white rounded shadow-sm">
@@ -1829,3 +1930,200 @@ function mostrarDetalleCurso(cursoId) {
     }
 }
 
+window.abrirRestablecerAvance = (userId) => {
+    const u = usuarios.find(user => user.id === userId);
+    if (!u) return;
+
+    document.getElementById('restablecer-user-id').value = u.id;
+    document.getElementById('restablecer-user-nombre').value = u.nombre;
+
+    const select = document.getElementById('restablecer-carrera-select');
+    select.innerHTML = '<option value="">-- Seleccionar Carrera --</option>';
+
+    // Cargar carreras asignadas al usuario
+    const assignedCareers = u.carrerasAsignadas || [];
+    assignedCareers.forEach(ca => {
+        const car = carreras.find(c => c.id === ca.id);
+        if (car) {
+            select.innerHTML += `<option value="${car.id}">${car.nombre}</option>`;
+        }
+    });
+
+    document.getElementById('restablecer-modulos-container').style.display = 'none';
+
+    const modalEl = document.getElementById('restablecerAvanceModal');
+    const bModal = new bootstrap.Modal(modalEl);
+    bModal.show();
+};
+
+window.cambiarCarreraRestablecer = () => {
+    const carId = document.getElementById('restablecer-carrera-select').value;
+    const container = document.getElementById('restablecer-modulos-container');
+    const body = document.getElementById('restablecer-modulos-body');
+    const checkAll = document.getElementById('restablecer-select-all');
+
+    if (checkAll) checkAll.checked = false;
+
+    if (!carId) {
+        container.style.display = 'none';
+        body.innerHTML = '';
+        return;
+    }
+
+    const car = carreras.find(c => c.id === carId);
+    if (!car) {
+        container.style.display = 'none';
+        body.innerHTML = '';
+        return;
+    }
+
+    container.style.display = 'block';
+    body.innerHTML = '';
+
+    let tieneModulos = false;
+    car.cursos.forEach(courseId => {
+        const curso = cursos.find(c => c.id === courseId);
+        if (curso && curso.modulos) {
+            curso.modulos.forEach((mod, mIdx) => {
+                tieneModulos = true;
+                body.innerHTML += `
+                    <tr>
+                        <td style="width: 40px;" class="text-center">
+                            <input type="checkbox" class="form-check-input modulo-restablecer-checkbox" data-course-id="${curso.id}" data-module-idx="${mIdx}">
+                        </td>
+                        <td>
+                            <strong>${curso.titulo}</strong>
+                        </td>
+                        <td>
+                            ${mod.titulo}
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+    });
+
+    if (!tieneModulos) {
+        body.innerHTML = '<tr><td colspan="3" class="text-center text-muted">Esta carrera no tiene módulos.</td></tr>';
+    }
+};
+
+window.seleccionarTodosModulosRestablecer = (check) => {
+    document.querySelectorAll('.modulo-restablecer-checkbox').forEach(cb => {
+        cb.checked = check;
+    });
+};
+
+window.confirmarRestablecerAvance = async (completa) => {
+    const userId = document.getElementById('restablecer-user-id').value;
+    const carId = document.getElementById('restablecer-carrera-select').value;
+    const uIdx = usuarios.findIndex(u => u.id === userId);
+    if (uIdx === -1) return;
+    const u = usuarios[uIdx];
+
+    if (!carId) {
+        alert("Por favor selecciona una carrera.");
+        return;
+    }
+
+    if (completa) {
+        if (!confirm(`¿Estás seguro de restablecer por completo el avance de la carrera seleccionada para el usuario ${u.nombre}?`)) return;
+        const car = carreras.find(c => c.id === carId);
+        if (!car) return;
+
+        // Limpiar progreso de todos los cursos de la carrera
+        car.cursos.forEach(courseId => {
+            if (u.progreso && u.progreso[courseId]) {
+                delete u.progreso[courseId];
+            }
+            if (u.certificadosCurso) {
+                u.certificadosCurso = u.certificadosCurso.filter(id => id !== courseId);
+            }
+        });
+
+        // Limpiar certificado de la carrera
+        if (u.certificadosCarrera) {
+            u.certificadosCarrera = u.certificadosCarrera.filter(id => id !== carId);
+        }
+
+        // Cambiar estado a incompleta en carrerasAsignadas
+        if (u.carrerasAsignadas) {
+            const ca = u.carrerasAsignadas.find(item => item.id === carId);
+            if (ca) ca.estado = "Incompleta";
+        }
+    } else {
+        // Restablecer sólo módulos seleccionados
+        const checked = Array.from(document.querySelectorAll('.modulo-restablecer-checkbox:checked'));
+        if (checked.length === 0) {
+            alert("Selecciona al menos un módulo para restablecer.");
+            return;
+        }
+        if (!confirm(`¿Estás seguro de restablecer el avance de los ${checked.length} módulos seleccionados para el usuario ${u.nombre}?`)) return;
+
+        checked.forEach(cb => {
+            const courseId = cb.getAttribute('data-course-id');
+            const mIdx = cb.getAttribute('data-module-idx');
+
+            if (u.progreso && u.progreso[courseId]) {
+                const prog = u.progreso[courseId];
+
+                // Quitar de módulos aprobados
+                if (prog.modulosAprobados) {
+                    prog.modulosAprobados = prog.modulosAprobados.filter(idx => String(idx) !== String(mIdx));
+                }
+
+                // Quitar medallas
+                if (prog.medallas) {
+                    prog.medallas = prog.medallas.filter(idx => String(idx) !== String(mIdx));
+                }
+
+                // Quitar calificaciones de evaluación
+                if (prog.evaluaciones && prog.evaluaciones[mIdx]) {
+                    delete prog.evaluaciones[mIdx];
+                }
+
+                // Reiniciar intentos
+                if (prog.intentos && prog.intentos[mIdx]) {
+                    delete prog.intentos[mIdx];
+                }
+
+                // Quitar lecciones completadas de este módulo
+                if (prog.leccionesCompletadas) {
+                    prog.leccionesCompletadas = prog.leccionesCompletadas.filter(lecId => !lecId.startsWith(mIdx + '-'));
+                }
+            }
+
+            // Quitar certificado del curso ya que no está completo
+            if (u.certificadosCurso) {
+                u.certificadosCurso = u.certificadosCurso.filter(id => id !== courseId);
+            }
+        });
+
+        // Quitar certificado de carrera ya que no está completa
+        if (u.certificadosCarrera) {
+            u.certificadosCarrera = u.certificadosCarrera.filter(id => id !== carId);
+        }
+        if (u.carrerasAsignadas) {
+            const ca = u.carrerasAsignadas.find(item => item.id === carId);
+            if (ca) ca.estado = "Incompleta";
+        }
+    }
+
+    // Guardar cambios
+    await guardarTodo();
+
+    alert("Avance restablecido con éxito.");
+
+    // Cerrar modal
+    const modalEl = document.getElementById('restablecerAvanceModal');
+    const bModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    bModal.hide();
+
+    const backdrop = document.querySelector('.modal-backdrop');
+    if (backdrop) backdrop.remove();
+    document.body.classList.remove('modal-open');
+    document.body.style.overflow = '';
+    document.body.style.paddingRight = '';
+
+    location.reload();
+};
