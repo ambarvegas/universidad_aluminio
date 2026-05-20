@@ -1884,18 +1884,18 @@ function renderizarCursoTeachlr(curso) {
                 </div>
                 <div class="accordion sidebar-modulos shadow-sm" id="accordionModulos">
                     ${modulosList.map((mod, idx) => {
-                        const tieneLecciones = mod.lecciones && mod.lecciones.length > 0;
-                        const todasLeccionesMod = tieneLecciones && mod.lecciones.every((_, lIdx) => leccionesCompletadas.includes(`${idx}-${lIdx}`));
-                        const moduloAprobado = modulosAprobados.includes(String(idx));
-                        const tieneEvaluacion = mod.evaluacion && mod.evaluacion.preguntas && mod.evaluacion.preguntas.length > 0;
-                        const estaEnCurso = tieneLecciones && mod.lecciones.some((_, lIdx) => leccionesCompletadas.includes(`${idx}-${lIdx}`)) && !moduloAprobado;
+        const tieneLecciones = mod.lecciones && mod.lecciones.length > 0;
+        const todasLeccionesMod = tieneLecciones && mod.lecciones.every((_, lIdx) => leccionesCompletadas.includes(`${idx}-${lIdx}`));
+        const moduloAprobado = modulosAprobados.includes(String(idx));
+        const tieneEvaluacion = mod.evaluacion && mod.evaluacion.preguntas && mod.evaluacion.preguntas.length > 0;
+        const estaEnCurso = tieneLecciones && mod.lecciones.some((_, lIdx) => leccionesCompletadas.includes(`${idx}-${lIdx}`)) && !moduloAprobado;
 
-                        let estadoEvaluacion = 'pendiente';
-                        if (moduloAprobado) estadoEvaluacion = 'aprobado';
-                        else if (!tieneLecciones || !todasLeccionesMod) estadoEvaluacion = 'bloqueado';
-                        else if (tieneEvaluacion) estadoEvaluacion = 'disponible';
+        let estadoEvaluacion = 'pendiente';
+        if (moduloAprobado) estadoEvaluacion = 'aprobado';
+        else if (!tieneLecciones || !todasLeccionesMod) estadoEvaluacion = 'bloqueado';
+        else if (tieneEvaluacion) estadoEvaluacion = 'disponible';
 
-                        return `
+        return `
                         <div class="accordion-item">
                             <h2 class="accordion-header">
                                 <button class="accordion-button ${idx === 0 ? '' : 'collapsed'}" type="button" data-bs-toggle="collapse" data-bs-target="#mod${idx}">
@@ -1906,10 +1906,10 @@ function renderizarCursoTeachlr(curso) {
                             <div id="mod${idx}" class="accordion-collapse collapse ${idx === 0 ? 'show' : ''}" data-bs-parent="#accordionModulos">
                                 <div class="list-group list-group-flush">
                                     ${tieneLecciones ? mod.lecciones.map((lec, lIdx) => {
-                                        const lecID = `${idx}-${lIdx}`;
-                                        const estaCompletada = leccionesCompletadas.includes(lecID);
-                                        const estaBloqueada = !verificarAccesoLeccion(idx, lIdx);
-                                        return `
+            const lecID = `${idx}-${lIdx}`;
+            const estaCompletada = leccionesCompletadas.includes(lecID);
+            const estaBloqueada = !verificarAccesoLeccion(idx, lIdx);
+            return `
                                         <button class="list-group-item list-group-item-action btn-leccion ${estaBloqueada ? 'lesson-locked' : ''}"
                                                 ${estaBloqueada ? 'disabled' : ''} 
                                                 id="btn-l-${idx}-${lIdx}"
@@ -1931,17 +1931,15 @@ function renderizarCursoTeachlr(curso) {
                                         ${estadoEvaluacion === 'pendiente' && !tieneEvaluacion ? 'bg-warning bg-opacity-10 text-warning' : ''}"
                                         onclick="${estadoEvaluacion === 'disponible' ? `event.stopPropagation(); mostrarEvaluacionModulo('${curso.id}', ${idx})` : 'return false'}"
                                         ${estadoEvaluacion === 'bloqueado' || (estadoEvaluacion === 'pendiente' && !tieneEvaluacion) ? 'disabled' : ''}>
-                                        <i class="bi ${
-                                            estadoEvaluacion === 'aprobado' ? 'bi-check-circle-fill' : 
-                                            estadoEvaluacion === 'disponible' ? 'bi-clipboard-check' : 
-                                            estadoEvaluacion === 'bloqueado' ? 'bi-lock-fill' : 'bi-hourglass-split'
-                                        } me-2"></i> 
-                                        ${
-                                            estadoEvaluacion === 'aprobado' ? 'Evaluación Aprobada' :
-                                            estadoEvaluacion === 'disponible' ? 'Realizar Evaluación' :
-                                            estadoEvaluacion === 'bloqueado' ? (tieneLecciones ? 'Completa las lecciones primero' : 'Agrega lecciones a este módulo') :
-                                            !tieneEvaluacion ? 'Sin evaluación disponible' : 'Evaluación bloqueada'
-                                        }
+                                        <i class="bi ${estadoEvaluacion === 'aprobado' ? 'bi-check-circle-fill' :
+                estadoEvaluacion === 'disponible' ? 'bi-clipboard-check' :
+                    estadoEvaluacion === 'bloqueado' ? 'bi-lock-fill' : 'bi-hourglass-split'
+            } me-2"></i> 
+                                        ${estadoEvaluacion === 'aprobado' ? 'Evaluación Aprobada' :
+                estadoEvaluacion === 'disponible' ? 'Realizar Evaluación' :
+                    estadoEvaluacion === 'bloqueado' ? (tieneLecciones ? 'Completa las lecciones primero' : 'Agrega lecciones a este módulo') :
+                        !tieneEvaluacion ? 'Sin evaluación disponible' : 'Evaluación bloqueada'
+            }
                                     </button>
                                 </div>
                             </div>
@@ -1981,15 +1979,17 @@ window.abrirRestablecerAvance = (userId) => {
     document.getElementById('restablecer-user-id').value = u.id;
     document.getElementById('restablecer-user-nombre').value = u.nombre;
 
-    const select = document.getElementById('restablecer-carrera-select');
-    select.innerHTML = '<option value="">-- Seleccionar Carrera --</option>';
+    const select = document.getElementById('restablecer-curso-select');
+    select.innerHTML = '<option value="">-- Seleccionar Curso --</option>';
 
-    // Cargar carreras asignadas al usuario
-    const assignedCareers = u.carrerasAsignadas || [];
-    assignedCareers.forEach(ca => {
-        const car = carreras.find(c => c.id === ca.id);
-        if (car) {
-            select.innerHTML += `<option value="${car.id}">${car.nombre}</option>`;
+    // ✅ Obtener las claves (IDs de cursos) que el usuario tiene en progreso
+    const cursosIds = Object.keys(u.progreso || {});
+    
+    cursosIds.forEach(cursoId => {
+        // Buscar el curso completo en el array de cursos
+        const curso = cursos.find(c => c.id === cursoId);
+        if (curso) {
+            select.innerHTML += `<option value="${curso.id}">${curso.titulo}</option>`;
         }
     });
 
@@ -2001,54 +2001,58 @@ window.abrirRestablecerAvance = (userId) => {
 };
 
 window.cambiarCarreraRestablecer = () => {
-    const carId = document.getElementById('restablecer-carrera-select').value;
+    const cursoId = document.getElementById('restablecer-curso-select').value;
     const container = document.getElementById('restablecer-modulos-container');
     const body = document.getElementById('restablecer-modulos-body');
     const checkAll = document.getElementById('restablecer-select-all');
 
+    // ✅ Verificar que body existe
+    if (!body) {
+        console.error('Elemento restablecer-modulos-body no encontrado en el DOM');
+        return;
+    }
+
     if (checkAll) checkAll.checked = false;
 
-    if (!carId) {
-        container.style.display = 'none';
+    if (!cursoId) {
+        if (container) container.style.display = 'none';
         body.innerHTML = '';
         return;
     }
 
-    const car = carreras.find(c => c.id === carId);
-    if (!car) {
-        container.style.display = 'none';
+    const curso = cursos.find(c => c.id === cursoId);
+    if (!curso) {
+        if (container) container.style.display = 'none';
         body.innerHTML = '';
         return;
     }
 
-    container.style.display = 'block';
+    if (container) container.style.display = 'block';
     body.innerHTML = '';
 
     let tieneModulos = false;
-    car.cursos.forEach(courseId => {
-        const curso = cursos.find(c => c.id === courseId);
-        if (curso && curso.modulos) {
-            curso.modulos.forEach((mod, mIdx) => {
-                tieneModulos = true;
-                body.innerHTML += `
-                    <tr>
-                        <td style="width: 40px;" class="text-center">
-                            <input type="checkbox" class="form-check-input modulo-restablecer-checkbox" data-course-id="${curso.id}" data-module-idx="${mIdx}">
-                        </td>
-                        <td>
-                            <strong>${curso.titulo}</strong>
-                        </td>
-                        <td>
-                            ${mod.titulo}
-                        </td>
-                    </tr>
-                `;
-            });
-        }
-    });
+    
+    if (curso.modulos && curso.modulos.length > 0) {
+        curso.modulos.forEach((mod, mIdx) => {
+            tieneModulos = true;
+            body.innerHTML += `
+                <tr>
+                    <td style="width: 40px;" class="text-center">
+                        <input type="checkbox" class="form-check-input modulo-restablecer-checkbox" data-course-id="${curso.id}" data-module-idx="${mIdx}">
+                    </td>
+                    <td>
+                        <strong>${curso.titulo}</strong>
+                    </td>
+                    <td>
+                        ${mod.titulo}
+                    </td>
+                </tr>
+            `;
+        });
+    }
 
     if (!tieneModulos) {
-        body.innerHTML = '<tr><td colspan="3" class="text-center text-muted">Esta carrera no tiene módulos.</td></tr>';
+        body.innerHTML = '<tr><td colspan="3" class="text-center text-muted">Este curso no tiene módulos.</td></tr>';
     }
 };
 
@@ -2060,43 +2064,30 @@ window.seleccionarTodosModulosRestablecer = (check) => {
 
 window.confirmarRestablecerAvance = async (completa) => {
     const userId = document.getElementById('restablecer-user-id').value;
-    const carId = document.getElementById('restablecer-carrera-select').value;
+    const cursoId = document.getElementById('restablecer-curso-select').value;
     const uIdx = usuarios.findIndex(u => u.id === userId);
     if (uIdx === -1) return;
     const u = usuarios[uIdx];
 
-    if (!carId) {
-        alert("Por favor selecciona una carrera.");
+    if (!cursoId) {
+        alert("Por favor selecciona un curso.");
         return;
     }
 
     if (completa) {
-        if (!confirm(`¿Estás seguro de restablecer por completo el avance de la carrera seleccionada para el usuario ${u.nombre}?`)) return;
-        const car = carreras.find(c => c.id === carId);
-        if (!car) return;
+        if (!confirm(`¿Estás seguro de restablecer por completo el avance del curso seleccionado para el usuario ${u.nombre}?`)) return;
+        
+        const curso = cursos.find(c => c.id === cursoId);
+        if (!curso) return;
 
-        // Limpiar progreso de todos los cursos de la carrera
-        car.cursos.forEach(courseId => {
-            if (u.progreso && u.progreso[courseId]) {
-                delete u.progreso[courseId];
-            }
-            if (u.certificadosCurso) {
-                u.certificadosCurso = u.certificadosCurso.filter(id => id !== courseId);
-            }
-        });
-
-        // Limpiar certificado de la carrera
-        if (u.certificadosCarrera) {
-            u.certificadosCarrera = u.certificadosCarrera.filter(id => id !== carId);
+        if (u.progreso && u.progreso[cursoId]) {
+            delete u.progreso[cursoId];
         }
 
-        // Cambiar estado a incompleta en carrerasAsignadas
-        if (u.carrerasAsignadas) {
-            const ca = u.carrerasAsignadas.find(item => item.id === carId);
-            if (ca) ca.estado = "Incompleta";
+        if (u.certificadosCurso) {
+            u.certificadosCurso = u.certificadosCurso.filter(id => id !== cursoId);
         }
     } else {
-        // Restablecer sólo módulos seleccionados
         const checked = Array.from(document.querySelectorAll('.modulo-restablecer-checkbox:checked'));
         if (checked.length === 0) {
             alert("Selecciona al menos un módulo para restablecer.");
@@ -2106,59 +2097,54 @@ window.confirmarRestablecerAvance = async (completa) => {
 
         checked.forEach(cb => {
             const courseId = cb.getAttribute('data-course-id');
-            const mIdx = cb.getAttribute('data-module-idx');
+            const mIdx = parseInt(cb.getAttribute('data-module-idx'));
 
             if (u.progreso && u.progreso[courseId]) {
                 const prog = u.progreso[courseId];
 
-                // Quitar de módulos aprobados
+                // ✅ Quitar de módulos aprobados (convertir a número para comparar)
                 if (prog.modulosAprobados) {
-                    prog.modulosAprobados = prog.modulosAprobados.filter(idx => String(idx) !== String(mIdx));
+                    prog.modulosAprobados = prog.modulosAprobados.filter(idx => parseInt(idx) !== mIdx);
                 }
 
-                // Quitar medallas
+                // ✅ Quitar medallas
                 if (prog.medallas) {
-                    prog.medallas = prog.medallas.filter(idx => String(idx) !== String(mIdx));
+                    prog.medallas = prog.medallas.filter(idx => parseInt(idx) !== mIdx);
                 }
 
-                // Quitar calificaciones de evaluación
+                // ✅ Eliminar evaluación
                 if (prog.evaluaciones && prog.evaluaciones[mIdx]) {
                     delete prog.evaluaciones[mIdx];
                 }
 
-                // Reiniciar intentos
+                // ✅ Reiniciar intentos
                 if (prog.intentos && prog.intentos[mIdx]) {
                     delete prog.intentos[mIdx];
                 }
 
-                // Quitar lecciones completadas de este módulo
+                // ✅ Quitar lecciones completadas del módulo
                 if (prog.leccionesCompletadas) {
-                    prog.leccionesCompletadas = prog.leccionesCompletadas.filter(lecId => !lecId.startsWith(mIdx + '-'));
+                    prog.leccionesCompletadas = prog.leccionesCompletadas.filter(lecId => {
+                        return !lecId.startsWith(mIdx + '-');
+                    });
                 }
             }
 
-            // Quitar certificado del curso ya que no está completo
-            if (u.certificadosCurso) {
-                u.certificadosCurso = u.certificadosCurso.filter(id => id !== courseId);
+            // Limpiar certificado del curso si ya no tiene módulos aprobados
+            if (u.progreso && u.progreso[courseId]) {
+                const prog = u.progreso[courseId];
+                if (prog.modulosAprobados && prog.modulosAprobados.length === 0) {
+                    if (u.certificadosCurso) {
+                        u.certificadosCurso = u.certificadosCurso.filter(id => id !== courseId);
+                    }
+                }
             }
         });
-
-        // Quitar certificado de carrera ya que no está completa
-        if (u.certificadosCarrera) {
-            u.certificadosCarrera = u.certificadosCarrera.filter(id => id !== carId);
-        }
-        if (u.carrerasAsignadas) {
-            const ca = u.carrerasAsignadas.find(item => item.id === carId);
-            if (ca) ca.estado = "Incompleta";
-        }
     }
 
-    // Guardar cambios
     await guardarTodo();
-
     alert("Avance restablecido con éxito.");
 
-    // Cerrar modal
     const modalEl = document.getElementById('restablecerAvanceModal');
     const bModal = bootstrap.Modal.getOrCreateInstance(modalEl);
     bModal.hide();
