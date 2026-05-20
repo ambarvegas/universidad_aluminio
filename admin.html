@@ -422,41 +422,48 @@
     <!-- Modal de Restablecer Avance -->
     <div class="modal fade" id="restablecerAvanceModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
-            <div class="modal-content border-0 shadow">
-                <div class="modal-header bg-warning text-dark">
-                    <h5 class="modal-title fw-bold"><i class="bi bi-arrow-counterclockwise"></i> Restablecer Avance de Usuario</h5>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Restablecer Avance</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <input type="hidden" id="restablecer-user-id">
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Usuario Seleccionado:</label>
+                        <label>Usuario:</label>
                         <input type="text" id="restablecer-user-nombre" class="form-control" readonly>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Seleccionar Carrera:</label>
-                        <select id="restablecer-carrera-select" class="form-select" onchange="cambiarCarreraRestablecer()">
-                            <option value="">-- Seleccionar Carrera --</option>
+                        <label>Curso:</label>
+                        <select id="restablecer-curso-select" class="form-select" onchange="cambiarCarreraRestablecer()">
+                            <option value="">-- Seleccionar Curso --</option>
                         </select>
                     </div>
-                    <div id="restablecer-modulos-container" class="mt-4" style="display: none;">
-                        <h6 class="fw-bold text-danger mb-3">Módulos de la Carrera:</h6>
+                    <div id="restablecer-modulos-container" style="display: none;">
                         <div class="mb-3">
-                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="seleccionarTodosModulosRestablecer(true)">Seleccionar Todos</button>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="seleccionarTodosModulosRestablecer(false)">Desmarcar Todos</button>
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" id="restablecer-select-all">
+                                <label class="form-check-label" for="restablecer-select-all">Seleccionar todos los módulos</label>
+                            </div>
                         </div>
-                        <div id="lista-modulos-restablecer" class="list-group mb-3 overflow-auto" style="max-height: 300px;">
-                            <!-- Checkboxes de módulos -->
-                        </div>
-                        <div class="alert alert-warning small">
-                            <i class="bi bi-exclamation-triangle-fill"></i> Al restablecer los módulos seleccionados, se borrarán las lecciones completadas de esos módulos, sus aprobaciones, evaluaciones e intentos.
-                        </div>
+                        <table class="table table-bordered">
+                            <thead>
+                                <tr>
+                                    <th style="width: 40px;">✓</th>
+                                    <th>Curso</th>
+                                    <th>Módulo</th>
+                                </tr>
+                            </thead>
+                            <tbody id="restablecer-modulos-body">
+                                <!-- Los módulos se cargarán aquí -->
+                            </tbody>
+                        </table>
                     </div>
                 </div>
-                <div class="modal-footer bg-light">
+                <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn btn-danger" onclick="confirmarRestablecerAvance(false)">Restablecer Selección</button>
-                    <button type="button" class="btn btn-dark" onclick="confirmarRestablecerAvance(true)">Restablecer Carrera Completa</button>
+                    <button type="button" class="btn btn-danger" onclick="confirmarRestablecerAvance(false)">Restablecer Seleccionados</button>
+                    <button type="button" class="btn btn-warning" onclick="confirmarRestablecerAvance(true)">Restablecer Todo</button>
                 </div>
             </div>
         </div>
