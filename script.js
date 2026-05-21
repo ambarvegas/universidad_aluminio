@@ -968,7 +968,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <td class="text-end">
                             <button class="btn btn-sm btn-outline-primary me-1" onclick="abrirEditorUsuario('${u.id}')">Editar Perfil</button>
                             <button class="btn btn-sm btn-outline-warning me-1" onclick="abrirRestablecerAvance('${u.id}')"><i class="bi bi-arrow-counterclockwise"></i> Restablecer</button>
-                            <button class="btn btn-sm btn-outline-warning me-1" onclick="abrirRestablecerAvance('${u.id}')"><i class="bi bi-arrow-counterclockwise"></i> Restablecer</button>
+                            <button class="btn btn-sm btn-outline-success me-1" onclick="abrirMarcarCompletado('${u.id}')"><i class="bi bi-check-circle"></i> Completar</button>
                             <button class="btn btn-sm btn-outline-danger" onclick="eliminarUsuario('${u.id}')"><i class="bi bi-trash"></i></button>
                         </td>
                     </tr>`;
