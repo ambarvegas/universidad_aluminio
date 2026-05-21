@@ -2158,7 +2158,7 @@ window.confirmarRestablecerAvance = async (completa) => {
 
     location.reload();
 };
-// Función para abrir el modal de marcar módulos como completados
+// Función para abrir el modal de marcar módulos como completados (MUESTRA TODOS LOS CURSOS)
 window.abrirMarcarCompletado = (userId) => {
     const u = usuarios.find(user => user.id === userId);
     if (!u) return;
@@ -2167,20 +2167,11 @@ window.abrirMarcarCompletado = (userId) => {
     document.getElementById('marcar-user-nombre').value = u.nombre;
 
     const select = document.getElementById('marcar-curso-select');
+    // Mostrar TODOS los cursos del sistema, sin filtrar
     select.innerHTML = '<option value="">-- Seleccionar Curso --</option>';
-
-    // Obtener cursos que el usuario tiene en progreso O cursos disponibles para el usuario
-    const cursosIds = Object.keys(u.progreso || {});
     
-    // También incluir cursos asignados al usuario
-    const cursosAsignados = u.asignados || [];
-    const todosCursosIds = [...new Set([...cursosIds, ...cursosAsignados])];
-    
-    todosCursosIds.forEach(cursoId => {
-        const curso = cursos.find(c => c.id === cursoId);
-        if (curso) {
-            select.innerHTML += `<option value="${curso.id}">${curso.titulo}</option>`;
-        }
+    cursos.forEach(curso => {
+        select.innerHTML += `<option value="${curso.id}">${curso.titulo}</option>`;
     });
 
     document.getElementById('marcar-modulos-container').style.display = 'none';
@@ -2190,7 +2181,7 @@ window.abrirMarcarCompletado = (userId) => {
     bModal.show();
 };
 
-// Función para cargar los módulos del curso seleccionado
+// Función para cargar los módulos del curso seleccionado (MUESTRA TODOS LOS MÓDULOS)
 window.cargarModulosParaMarcar = () => {
     const cursoId = document.getElementById('marcar-curso-select').value;
     const userId = document.getElementById('marcar-user-id').value;
@@ -2226,19 +2217,36 @@ window.cargarModulosParaMarcar = () => {
     let tieneModulos = false;
     
     if (curso.modulos && curso.modulos.length > 0) {
-        // Inicializar progreso del usuario para este curso si no existe
+        // Asegurar que el usuario tenga estructura de progreso para este curso
+        if (!usuario.progreso) usuario.progreso = {};
         if (!usuario.progreso[cursoId]) {
-            usuario.progreso[cursoId] = { leccionesCompletadas: [], modulosAprobados: [], medallas: [], evaluaciones: {}, intentos: {} };
+            usuario.progreso[cursoId] = { 
+                leccionesCompletadas: [], 
+                modulosAprobados: [], 
+                medallas: [], 
+                evaluaciones: {}, 
+                intentos: {} 
+            };
         }
         
         const modulosAprobados = usuario.progreso[cursoId]?.modulosAprobados || [];
         
+        // Mostrar TODOS los módulos del curso
         curso.modulos.forEach((mod, mIdx) => {
             tieneModulos = true;
             const yaAprobado = modulosAprobados.includes(String(mIdx));
             const estadoActual = yaAprobado ? 
                 '<span class="badge bg-success"><i class="bi bi-check-circle"></i> Completado</span>' : 
                 '<span class="badge bg-secondary"><i class="bi bi-hourglass"></i> Pendiente</span>';
+            
+            // Mostrar información del módulo
+            const tieneEvaluacion = mod.evaluacion && mod.evaluacion.preguntas && mod.evaluacion.preguntas.length > 0;
+            const badgeEvaluacion = tieneEvaluacion ? 
+                '<span class="badge bg-info ms-2">Con Evaluación</span>' : 
+                '<span class="badge bg-secondary ms-2">Sin Evaluación</span>';
+            
+            const totalLecciones = mod.lecciones ? mod.lecciones.length : 0;
+            const leccionesInfo = totalLecciones > 0 ? `${totalLecciones} lección(es)` : 'Sin lecciones';
             
             body.innerHTML += `
                 <tr>
@@ -2250,20 +2258,45 @@ window.cargarModulosParaMarcar = () => {
                     </td>
                     <td>
                         <strong>${curso.titulo}</strong>
+                        <br>
+                        <small class="text-muted">ID: ${curso.id}</small>
                     </td>
                     <td>
-                        ${mod.titulo}
+                        <strong>${mod.titulo}</strong>
+                        ${badgeEvaluacion}
+                        <br>
+                        <small class="text-muted">${leccionesInfo}</small>
                     </td>
                     <td class="text-center">
                         ${estadoActual}
                     </td>
-                </tr>
+                </table>
             `;
         });
     }
 
     if (!tieneModulos) {
-        body.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Este curso no tiene módulos.</td></tr>';
+        body.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Este curso no tiene módulos definidos. Crea módulos primero.</td></tr>';
+    } else {
+        // Mostrar resumen del curso
+        const totalModulos = curso.modulos.length;
+        const completados = modulosAprobados.length;
+        const progressPercent = totalModulos > 0 ? Math.round((completados / totalModulos) * 100) : 0;
+        
+        // Agregar barra de progreso antes de la tabla
+        const progressRow = document.createElement('tr');
+        progressRow.innerHTML = `
+            <td colspan="4" class="bg-light">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="small fw-bold">Progreso actual del usuario:</span>
+                    <span class="small fw-bold">${completados}/${totalModulos} módulos (${progressPercent}%)</span>
+                </div>
+                <div class="progress" style="height: 8px;">
+                    <div class="progress-bar bg-success" style="width: ${progressPercent}%"></div>
+                </div>
+            </td>
+        `;
+        body.insertBefore(progressRow, body.firstChild);
     }
 };
 
@@ -2274,13 +2307,17 @@ window.seleccionarTodosModulosParaMarcar = (check) => {
     });
 };
 
-// Función principal para marcar módulos como completados
+// Función principal para marcar módulos como completados (ACTUALIZADA)
 window.confirmarMarcarCompletado = async () => {
     const userId = document.getElementById('marcar-user-id').value;
     const cursoId = document.getElementById('marcar-curso-select').value;
     const uIdx = usuarios.findIndex(u => u.id === userId);
     
-    if (uIdx === -1) return;
+    if (uIdx === -1) {
+        alert("Usuario no encontrado.");
+        return;
+    }
+    
     const usuario = usuarios[uIdx];
 
     if (!cursoId) {
@@ -2295,15 +2332,18 @@ window.confirmarMarcarCompletado = async () => {
     }
 
     const curso = cursos.find(c => c.id === cursoId);
-    if (!curso) return;
+    if (!curso) {
+        alert("Curso no encontrado.");
+        return;
+    }
 
-    // Confirmar acción
+    // Confirmar acción con detalles
     const moduloNombres = checked.map(cb => {
         const mIdx = parseInt(cb.getAttribute('data-module-idx'));
         return curso.modulos[mIdx]?.titulo || `Módulo ${mIdx + 1}`;
-    }).join(', ');
+    }).join('\n• ');
     
-    if (!confirm(`¿Estás seguro de marcar como COMPLETADOS los siguientes módulos del curso "${curso.titulo}" para el usuario ${usuario.nombre}?\n\n${moduloNombres}\n\nEsto:\n- Aprobará automáticamente sus evaluaciones\n- Otorgará las medallas correspondientes\n- Actualizará su progreso`)) {
+    if (!confirm(`⚠️ ¿Estás seguro de marcar como COMPLETADOS los siguientes módulos del curso "${curso.titulo}" para el usuario ${usuario.nombre}?\n\n• ${moduloNombres}\n\n✅ Esto:\n• Aprobará automáticamente sus evaluaciones\n• Otorgará las medallas correspondientes\n• Marcará todas las lecciones como completadas\n• Actualizará su progreso general\n\nEsta acción NO se puede deshacer fácilmente.`)) {
         return;
     }
 
@@ -2323,76 +2363,104 @@ window.confirmarMarcarCompletado = async () => {
     
     // Obtener el mínimo de aprobación de la configuración
     const minAprobacion = (db.configuracion && db.configuracion.minAprobacion) || 70;
+    
+    let marcadosExitosos = 0;
+    let errores = [];
 
     // Procesar cada módulo seleccionado
     for (const cb of checked) {
         const mIdx = parseInt(cb.getAttribute('data-module-idx'));
         const modulo = curso.modulos[mIdx];
         
-        if (!modulo) continue;
-        
-        // Marcar módulo como aprobado si no lo está
-        if (!progreso.modulosAprobados.includes(String(mIdx))) {
-            progreso.modulosAprobados.push(String(mIdx));
+        if (!modulo) {
+            errores.push(`Módulo índice ${mIdx} no encontrado`);
+            continue;
         }
         
-        // Otorgar medalla
-        if (!progreso.medallas) progreso.medallas = [];
-        if (!progreso.medallas.includes(String(mIdx))) {
-            progreso.medallas.push(String(mIdx));
-        }
-        
-        // Marcar evaluación como aprobada (si existe)
-        if (modulo.evaluacion && modulo.evaluacion.preguntas && modulo.evaluacion.preguntas.length > 0) {
-            if (!progreso.evaluaciones) progreso.evaluaciones = {};
-            if (!progreso.evaluaciones[mIdx]) {
-                progreso.evaluaciones[mIdx] = {
-                    calificacion: minAprobacion,
-                    aprobado: true,
-                    marcadoManual: true,
-                    fecha: new Date().toISOString()
-                };
-            } else if (!progreso.evaluaciones[mIdx].aprobado) {
-                progreso.evaluaciones[mIdx].calificacion = minAprobacion;
-                progreso.evaluaciones[mIdx].aprobado = true;
-                progreso.evaluaciones[mIdx].marcadoManual = true;
+        try {
+            // 1. Marcar módulo como aprobado si no lo está
+            if (!progreso.modulosAprobados.includes(String(mIdx))) {
+                progreso.modulosAprobados.push(String(mIdx));
             }
-        }
-        
-        // Marcar todas las lecciones del módulo como completadas
-        if (!progreso.leccionesCompletadas) progreso.leccionesCompletadas = [];
-        
-        if (modulo.lecciones && modulo.lecciones.length > 0) {
-            for (let lIdx = 0; lIdx < modulo.lecciones.length; lIdx++) {
-                const lecId = `${mIdx}-${lIdx}`;
-                if (!progreso.leccionesCompletadas.includes(lecId)) {
-                    progreso.leccionesCompletadas.push(lecId);
+            
+            // 2. Otorgar medalla
+            if (!progreso.medallas) progreso.medallas = [];
+            if (!progreso.medallas.includes(String(mIdx))) {
+                progreso.medallas.push(String(mIdx));
+            }
+            
+            // 3. Marcar evaluación como aprobada (si existe)
+            if (modulo.evaluacion && modulo.evaluacion.preguntas && modulo.evaluacion.preguntas.length > 0) {
+                if (!progreso.evaluaciones) progreso.evaluaciones = {};
+                if (!progreso.evaluaciones[mIdx]) {
+                    progreso.evaluaciones[mIdx] = {
+                        calificacion: minAprobacion,
+                        aprobado: true,
+                        marcadoManual: true,
+                        fecha: new Date().toISOString()
+                    };
+                } else if (!progreso.evaluaciones[mIdx].aprobado) {
+                    progreso.evaluaciones[mIdx].calificacion = minAprobacion;
+                    progreso.evaluaciones[mIdx].aprobado = true;
+                    progreso.evaluaciones[mIdx].marcadoManual = true;
+                    progreso.evaluaciones[mIdx].fecha = new Date().toISOString();
                 }
             }
+            
+            // 4. Marcar todas las lecciones del módulo como completadas
+            if (!progreso.leccionesCompletadas) progreso.leccionesCompletadas = [];
+            
+            if (modulo.lecciones && modulo.lecciones.length > 0) {
+                for (let lIdx = 0; lIdx < modulo.lecciones.length; lIdx++) {
+                    const lecId = `${mIdx}-${lIdx}`;
+                    if (!progreso.leccionesCompletadas.includes(lecId)) {
+                        progreso.leccionesCompletadas.push(lecId);
+                    }
+                }
+            }
+            
+            // 5. Registrar intento (marcado manualmente)
+            if (!progreso.intentos) progreso.intentos = {};
+            progreso.intentos[mIdx] = 1;
+            
+            marcadosExitosos++;
+            
+        } catch (err) {
+            errores.push(`Módulo "${modulo.titulo}": ${err.message}`);
         }
-        
-        // Resetear intentos (opcional, para mostrar que fue marcado manualmente)
-        if (!progreso.intentos) progreso.intentos = {};
-        progreso.intentos[mIdx] = 1; // Un intento exitoso
     }
     
-    // Verificar si el curso completo está terminado
+    // Verificar si el curso completo está terminado para otorgar certificado
     const modulosConEvaluacion = curso.modulos.filter(m => m.evaluacion && m.evaluacion.preguntas && m.evaluacion.preguntas.length > 0).length;
-    const modulosEvaluacionRequeridos = modulosConEvaluacion > 0 ? modulosConEvaluacion : curso.modulos.length;
+    const modulosRequeridosParaCertificado = modulosConEvaluacion > 0 ? modulosConEvaluacion : curso.modulos.length;
     
-    if (progreso.modulosAprobados.length >= modulosEvaluacionRequeridos) {
+    if (progreso.modulosAprobados.length >= modulosRequeridosParaCertificado) {
         if (!usuario.certificadosCurso) usuario.certificadosCurso = [];
         if (!usuario.certificadosCurso.includes(cursoId)) {
             usuario.certificadosCurso.push(cursoId);
-            console.log(`Certificado otorgado para el curso: ${curso.titulo}`);
+            console.log(`✅ Certificado otorgado para el curso: ${curso.titulo} a ${usuario.nombre}`);
         }
     }
     
     // Guardar cambios
     await guardarTodo();
-    alert(`✅ Se han marcado ${checked.length} módulo(s) como completados exitosamente para ${usuario.nombre}.`);
     
-    // Cerrar modal
+    // Mostrar mensaje de resultado
+    let mensaje = `✅ Se han marcado ${marcadosExitosos} módulo(s) como completados exitosamente para ${usuario.nombre}.`;
+    if (errores.length > 0) {
+        mensaje += `\n\n⚠️ Errores:\n• ${errores.join('\n• ')}`;
+    }
+    
+    // Verificar si el usuario ya completó todos los módulos del curso
+    const totalModulosCurso = curso.modulos.length;
+    const progresoActual = (progreso.modulosAprobados || []).length;
+    if (progresoActual >= totalModulosCurso) {
+        mensaje += `\n\n🎉 ¡FELICIDADES! El usuario ha completado TODOS los módulos del curso "${curso.titulo}". Se ha generado su certificado.`;
+    }
+    
+    alert(mensaje);
+    
+    // Cerrar modal y limpiar
     const modalEl = document.getElementById('marcarCompletadoModal');
     const bModal = bootstrap.Modal.getOrCreateInstance(modalEl);
     bModal.hide();
