@@ -968,6 +968,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <td class="text-end">
                             <button class="btn btn-sm btn-outline-primary me-1" onclick="abrirEditorUsuario('${u.id}')">Editar Perfil</button>
                             <button class="btn btn-sm btn-outline-warning me-1" onclick="abrirRestablecerAvance('${u.id}')"><i class="bi bi-arrow-counterclockwise"></i> Restablecer</button>
+                            <button class="btn btn-sm btn-outline-warning me-1" onclick="abrirRestablecerAvance('${u.id}')"><i class="bi bi-arrow-counterclockwise"></i> Restablecer</button>
                             <button class="btn btn-sm btn-outline-danger" onclick="eliminarUsuario('${u.id}')"><i class="bi bi-trash"></i></button>
                         </td>
                     </tr>`;
@@ -2155,5 +2156,254 @@ window.confirmarRestablecerAvance = async (completa) => {
     document.body.style.overflow = '';
     document.body.style.paddingRight = '';
 
+    location.reload();
+};
+// Función para abrir el modal de marcar módulos como completados
+window.abrirMarcarCompletado = (userId) => {
+    const u = usuarios.find(user => user.id === userId);
+    if (!u) return;
+
+    document.getElementById('marcar-user-id').value = u.id;
+    document.getElementById('marcar-user-nombre').value = u.nombre;
+
+    const select = document.getElementById('marcar-curso-select');
+    select.innerHTML = '<option value="">-- Seleccionar Curso --</option>';
+
+    // Obtener cursos que el usuario tiene en progreso O cursos disponibles para el usuario
+    const cursosIds = Object.keys(u.progreso || {});
+    
+    // También incluir cursos asignados al usuario
+    const cursosAsignados = u.asignados || [];
+    const todosCursosIds = [...new Set([...cursosIds, ...cursosAsignados])];
+    
+    todosCursosIds.forEach(cursoId => {
+        const curso = cursos.find(c => c.id === cursoId);
+        if (curso) {
+            select.innerHTML += `<option value="${curso.id}">${curso.titulo}</option>`;
+        }
+    });
+
+    document.getElementById('marcar-modulos-container').style.display = 'none';
+
+    const modalEl = document.getElementById('marcarCompletadoModal');
+    const bModal = new bootstrap.Modal(modalEl);
+    bModal.show();
+};
+
+// Función para cargar los módulos del curso seleccionado
+window.cargarModulosParaMarcar = () => {
+    const cursoId = document.getElementById('marcar-curso-select').value;
+    const userId = document.getElementById('marcar-user-id').value;
+    const container = document.getElementById('marcar-modulos-container');
+    const body = document.getElementById('marcar-modulos-body');
+    const checkAll = document.getElementById('marcar-select-all');
+
+    if (!body) {
+        console.error('Elemento marcar-modulos-body no encontrado en el DOM');
+        return;
+    }
+
+    if (checkAll) checkAll.checked = false;
+
+    if (!cursoId) {
+        if (container) container.style.display = 'none';
+        body.innerHTML = '';
+        return;
+    }
+
+    const curso = cursos.find(c => c.id === cursoId);
+    const usuario = usuarios.find(u => u.id === userId);
+    
+    if (!curso) {
+        if (container) container.style.display = 'none';
+        body.innerHTML = '';
+        return;
+    }
+
+    if (container) container.style.display = 'block';
+    body.innerHTML = '';
+
+    let tieneModulos = false;
+    
+    if (curso.modulos && curso.modulos.length > 0) {
+        // Inicializar progreso del usuario para este curso si no existe
+        if (!usuario.progreso[cursoId]) {
+            usuario.progreso[cursoId] = { leccionesCompletadas: [], modulosAprobados: [], medallas: [], evaluaciones: {}, intentos: {} };
+        }
+        
+        const modulosAprobados = usuario.progreso[cursoId]?.modulosAprobados || [];
+        
+        curso.modulos.forEach((mod, mIdx) => {
+            tieneModulos = true;
+            const yaAprobado = modulosAprobados.includes(String(mIdx));
+            const estadoActual = yaAprobado ? 
+                '<span class="badge bg-success"><i class="bi bi-check-circle"></i> Completado</span>' : 
+                '<span class="badge bg-secondary"><i class="bi bi-hourglass"></i> Pendiente</span>';
+            
+            body.innerHTML += `
+                <tr>
+                    <td style="width: 40px;" class="text-center">
+                        <input type="checkbox" class="form-check-input modulo-marcar-checkbox" 
+                               data-course-id="${curso.id}" 
+                               data-module-idx="${mIdx}"
+                               ${yaAprobado ? 'disabled' : ''}>
+                    </td>
+                    <td>
+                        <strong>${curso.titulo}</strong>
+                    </td>
+                    <td>
+                        ${mod.titulo}
+                    </td>
+                    <td class="text-center">
+                        ${estadoActual}
+                    </td>
+                </tr>
+            `;
+        });
+    }
+
+    if (!tieneModulos) {
+        body.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Este curso no tiene módulos.</td></tr>';
+    }
+};
+
+// Función para seleccionar/deseleccionar todos los módulos disponibles (no completados)
+window.seleccionarTodosModulosParaMarcar = (check) => {
+    document.querySelectorAll('.modulo-marcar-checkbox:not(:disabled)').forEach(cb => {
+        cb.checked = check;
+    });
+};
+
+// Función principal para marcar módulos como completados
+window.confirmarMarcarCompletado = async () => {
+    const userId = document.getElementById('marcar-user-id').value;
+    const cursoId = document.getElementById('marcar-curso-select').value;
+    const uIdx = usuarios.findIndex(u => u.id === userId);
+    
+    if (uIdx === -1) return;
+    const usuario = usuarios[uIdx];
+
+    if (!cursoId) {
+        alert("Por favor selecciona un curso.");
+        return;
+    }
+
+    const checked = Array.from(document.querySelectorAll('.modulo-marcar-checkbox:checked'));
+    if (checked.length === 0) {
+        alert("Selecciona al menos un módulo para marcar como completado.");
+        return;
+    }
+
+    const curso = cursos.find(c => c.id === cursoId);
+    if (!curso) return;
+
+    // Confirmar acción
+    const moduloNombres = checked.map(cb => {
+        const mIdx = parseInt(cb.getAttribute('data-module-idx'));
+        return curso.modulos[mIdx]?.titulo || `Módulo ${mIdx + 1}`;
+    }).join(', ');
+    
+    if (!confirm(`¿Estás seguro de marcar como COMPLETADOS los siguientes módulos del curso "${curso.titulo}" para el usuario ${usuario.nombre}?\n\n${moduloNombres}\n\nEsto:\n- Aprobará automáticamente sus evaluaciones\n- Otorgará las medallas correspondientes\n- Actualizará su progreso`)) {
+        return;
+    }
+
+    // Inicializar progreso si no existe
+    if (!usuario.progreso) usuario.progreso = {};
+    if (!usuario.progreso[cursoId]) {
+        usuario.progreso[cursoId] = { 
+            leccionesCompletadas: [], 
+            modulosAprobados: [], 
+            medallas: [], 
+            evaluaciones: {}, 
+            intentos: {} 
+        };
+    }
+
+    const progreso = usuario.progreso[cursoId];
+    
+    // Obtener el mínimo de aprobación de la configuración
+    const minAprobacion = (db.configuracion && db.configuracion.minAprobacion) || 70;
+
+    // Procesar cada módulo seleccionado
+    for (const cb of checked) {
+        const mIdx = parseInt(cb.getAttribute('data-module-idx'));
+        const modulo = curso.modulos[mIdx];
+        
+        if (!modulo) continue;
+        
+        // Marcar módulo como aprobado si no lo está
+        if (!progreso.modulosAprobados.includes(String(mIdx))) {
+            progreso.modulosAprobados.push(String(mIdx));
+        }
+        
+        // Otorgar medalla
+        if (!progreso.medallas) progreso.medallas = [];
+        if (!progreso.medallas.includes(String(mIdx))) {
+            progreso.medallas.push(String(mIdx));
+        }
+        
+        // Marcar evaluación como aprobada (si existe)
+        if (modulo.evaluacion && modulo.evaluacion.preguntas && modulo.evaluacion.preguntas.length > 0) {
+            if (!progreso.evaluaciones) progreso.evaluaciones = {};
+            if (!progreso.evaluaciones[mIdx]) {
+                progreso.evaluaciones[mIdx] = {
+                    calificacion: minAprobacion,
+                    aprobado: true,
+                    marcadoManual: true,
+                    fecha: new Date().toISOString()
+                };
+            } else if (!progreso.evaluaciones[mIdx].aprobado) {
+                progreso.evaluaciones[mIdx].calificacion = minAprobacion;
+                progreso.evaluaciones[mIdx].aprobado = true;
+                progreso.evaluaciones[mIdx].marcadoManual = true;
+            }
+        }
+        
+        // Marcar todas las lecciones del módulo como completadas
+        if (!progreso.leccionesCompletadas) progreso.leccionesCompletadas = [];
+        
+        if (modulo.lecciones && modulo.lecciones.length > 0) {
+            for (let lIdx = 0; lIdx < modulo.lecciones.length; lIdx++) {
+                const lecId = `${mIdx}-${lIdx}`;
+                if (!progreso.leccionesCompletadas.includes(lecId)) {
+                    progreso.leccionesCompletadas.push(lecId);
+                }
+            }
+        }
+        
+        // Resetear intentos (opcional, para mostrar que fue marcado manualmente)
+        if (!progreso.intentos) progreso.intentos = {};
+        progreso.intentos[mIdx] = 1; // Un intento exitoso
+    }
+    
+    // Verificar si el curso completo está terminado
+    const modulosConEvaluacion = curso.modulos.filter(m => m.evaluacion && m.evaluacion.preguntas && m.evaluacion.preguntas.length > 0).length;
+    const modulosEvaluacionRequeridos = modulosConEvaluacion > 0 ? modulosConEvaluacion : curso.modulos.length;
+    
+    if (progreso.modulosAprobados.length >= modulosEvaluacionRequeridos) {
+        if (!usuario.certificadosCurso) usuario.certificadosCurso = [];
+        if (!usuario.certificadosCurso.includes(cursoId)) {
+            usuario.certificadosCurso.push(cursoId);
+            console.log(`Certificado otorgado para el curso: ${curso.titulo}`);
+        }
+    }
+    
+    // Guardar cambios
+    await guardarTodo();
+    alert(`✅ Se han marcado ${checked.length} módulo(s) como completados exitosamente para ${usuario.nombre}.`);
+    
+    // Cerrar modal
+    const modalEl = document.getElementById('marcarCompletadoModal');
+    const bModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    bModal.hide();
+    
+    // Limpiar backdrop
+    const backdrop = document.querySelector('.modal-backdrop');
+    if (backdrop) backdrop.remove();
+    document.body.classList.remove('modal-open');
+    document.body.style.overflow = '';
+    document.body.style.paddingRight = '';
+    
+    // Recargar la página para reflejar cambios
     location.reload();
 };

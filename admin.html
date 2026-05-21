@@ -468,7 +468,58 @@
             </div>
         </div>
     </div>
-
+    <!-- Modal de Marcar Módulos como Completados -->
+    <div class="modal fade" id="marcarCompletadoModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title">Marcar Módulos como Completados</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="marcar-user-id">
+                    <div class="mb-3">
+                        <label>Usuario:</label>
+                        <input type="text" id="marcar-user-nombre" class="form-control" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label>Curso:</label>
+                        <select id="marcar-curso-select" class="form-select" onchange="cargarModulosParaMarcar()">
+                            <option value="">-- Seleccionar Curso --</option>
+                        </select>
+                    </div>
+                    <div id="marcar-modulos-container" style="display: none;">
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" id="marcar-select-all" onchange="seleccionarTodosModulosParaMarcar(this.checked)">
+                                <label class="form-check-label" for="marcar-select-all">Seleccionar todos los módulos</label>
+                            </div>
+                        </div>
+                        <div class="alert alert-info small">
+                            <i class="bi bi-info-circle"></i> Marcar un módulo como completado también aprobará automáticamente su evaluación (si tiene) y otorgará la medalla correspondiente.
+                        </div>
+                        <table class="table table-bordered">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 40px;">✓</th>
+                                    <th>Curso</th>
+                                    <th>Módulo</th>
+                                    <th>Estado Actual</th>
+                                </tr>
+                            </thead>
+                            <tbody id="marcar-modulos-body">
+                                <!-- Los módulos se cargarán aquí -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-success" onclick="confirmarMarcarCompletado()">Marcar como Completados</button>
+                </div>
+            </div>
+        </div>
+    </div>
     <!-- Añadido en la pestaña de Configuración -->
     <script>
         document.addEventListener('DOMContentLoaded', () => {
