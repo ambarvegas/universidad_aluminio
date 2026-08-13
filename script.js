@@ -61,41 +61,11 @@ async function cargarDatosDelServidor() {
 
         if (typeof actualizarTablas === 'function') actualizarTablas();
         if (document.getElementById('cfg-min-aprobacion')) {
-            document.getElementById('cfg-min-aprobacion').value = db.configuracion.minAprobacion || 70;
+            document.getElementById('cfg-min-aprobacion').value = db.configuracion ? (db.configuracion.minAprobacion || 70) : 70;
         }
         renderizarGaleria();
     } catch (err) {
-        console.error("No se pudo conectar con el backend:", err);
-        const stored = localStorage.getItem(DB_KEY);
-        if (stored) {
-            try {
-                db = JSON.parse(stored);
-                usuarios = db.usuarios || [];
-                cursos = db.cursos || [];
-                carreras = db.carreras || [];
-                usuarios.forEach(u => {
-                    u.carrerasAsignadas = u.carrerasAsignadas || [];
-                    u.progreso = u.progreso || {};
-                    u.certificadosCurso = u.certificadosCurso || [];
-                    u.certificadosCarrera = u.certificadosCarrera || [];
-                    // Normalizar progreso: convertir arrays a objetos
-                    if (u.progreso) {
-                        for (let cursoId in u.progreso) {
-                            if (Array.isArray(u.progreso[cursoId])) {
-                                u.progreso[cursoId] = { leccionesCompletadas: u.progreso[cursoId], modulosAprobados: [] };
-                            }
-                        }
-                    }
-                });
-                rolesConfig = db.rolesConfig || [];
-                solicitudesRegistro = db.solicitudesRegistro || [];
-                solicitudesCursos = db.solicitudesCursos || [];
-                console.log("Datos cargados desde localStorage");
-                renderizarGaleria();
-            } catch (parseErr) {
-                console.error("Error al parsear datos de localStorage:", parseErr);
-            }
-        }
+        console.error("Error al conectar con la base de datos del servidor:", err);
     }
 }
 
@@ -108,16 +78,6 @@ const guardarTodo = async () => {
     db.solicitudesCursos = solicitudesCursos;
 
     try {
-        localStorage.setItem(DB_KEY, JSON.stringify(db));
-    } catch (err) {
-        if (err.name === 'QuotaExceededError' || err.code === 22 || err.code === 1014) {
-            console.warn("localStorage superó el límite de memoria (5MB) debido a las imágenes/adjuntos Base64. La información se persiste directamente en el servidor.");
-        } else {
-            console.error("Error al guardar en localStorage:", err);
-        }
-    }
-
-    try {
         const response = await fetch('api.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -125,13 +85,13 @@ const guardarTodo = async () => {
         });
         if (!response.ok) {
             const errData = await response.json().catch(() => ({ error: 'Error desconocido en servidor' }));
-            console.error("Error al persistir en el servidor:", response.status, errData);
+            console.error("Error al guardar en el servidor:", response.status, errData);
             alert(`Atención: No se pudo guardar la información en el servidor (${errData.error || response.statusText}).`);
         } else {
-            console.log("Sincronizado con db.json de forma segura");
+            console.log("Sincronizado correctamente con la base de datos del servidor (api.php)");
         }
     } catch (err) {
-        console.error("Error al persistir en el servidor:", err);
+        console.error("Error de conexión al guardar en el servidor:", err);
         alert("Atención: Hubo un problema de conexión al guardar los datos en el servidor.");
     }
 };
