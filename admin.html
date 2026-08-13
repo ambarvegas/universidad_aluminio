@@ -269,15 +269,18 @@
                             </div>
                             <div class="col-12">
                                 <!-- mostrar vista previa de la portada previamente cargada -->
-                                <div id="vista-previa-portada" class="mb-3">
-                                    <label class="form-label">Vista Previa de Portada:</label>
-                                    <div class="border rounded p-2 bg-light">
-                                        <img id="img-vista-previa" src="" alt="Vista Previa" class="img-fluid">
+                                <div id="vista-previa-portada" class="mb-3" style="display: none;">
+                                    <label class="form-label fw-bold">Vista Previa de Portada:</label>
+                                    <div class="border rounded p-2 bg-light d-flex align-items-center justify-content-between">
+                                        <img id="img-vista-previa" src="" alt="Vista Previa" class="img-fluid rounded" style="max-height: 140px; object-fit: cover;">
+                                        <button type="button" class="btn btn-outline-danger btn-sm ms-3" onclick="eliminarImagenPortada()">
+                                            <i class="bi bi-trash me-1"></i>Eliminar Portada
+                                        </button>
                                     </div>
                                 </div>
                                 
                                 <label class="form-label">Imagen de Portada (Seleccione un archivo para actualizar la imagen de portada)</label>
-                                <input type="file" class="form-control" onchange="cargarImagenPortada(event)" accept="image/*">
+                                <input type="file" id="input-portada" class="form-control" onchange="cargarImagenPortada(event)" accept="image/*">
                             </div>
                             <!-- <div class="col-md-6">_
                                 <label class="form-label">Porcentaje de Aprobación (%)</label>

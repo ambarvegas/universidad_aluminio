@@ -319,6 +319,8 @@ window.prepararFormulario = (modo) => {
     document.getElementById('titulo').value = '';
     document.getElementById('descripcion').value = '';
     document.getElementById('curso-prelacion').value = '';
+    const fileInput = document.getElementById('input-portada');
+    if (fileInput) fileInput.value = '';
     tempModulos = [];
     tempImagenPortada = "";
     mostrarVistaPreviaPortada();
@@ -336,12 +338,22 @@ window.prepararFormulario = (modo) => {
 window.mostrarVistaPreviaPortada = () => {
     const vistaPrev = document.getElementById('vista-previa-portada');
     const imgPrev = document.getElementById('img-vista-previa');
-    if (tempImagenPortada) {
-        imgPrev.src = tempImagenPortada;
-        vistaPrev.style.display = 'block';
-    } else {
-        vistaPrev.style.display = 'none';
+    if (vistaPrev && imgPrev) {
+        if (tempImagenPortada) {
+            imgPrev.src = tempImagenPortada;
+            vistaPrev.style.display = 'block';
+        } else {
+            vistaPrev.style.display = 'none';
+            imgPrev.src = '';
+        }
     }
+};
+
+window.eliminarImagenPortada = () => {
+    tempImagenPortada = "";
+    mostrarVistaPreviaPortada();
+    const fileInput = document.getElementById('input-portada');
+    if (fileInput) fileInput.value = "";
 };
 
 window.abrirEditor = (id) => {
@@ -1312,15 +1324,34 @@ const formCurso = document.getElementById('form-curso');
 
 window.guardarCurso = async (e) => {
     if (e) e.preventDefault();
+
+    const btnSubmit = document.querySelector('#form-curso button[type="submit"]');
+    let originalText = "Guardar Todo";
+    if (btnSubmit) {
+        if (btnSubmit.disabled) return; // Evitar doble clic si ya está guardando
+        originalText = btnSubmit.innerHTML;
+        btnSubmit.disabled = true;
+        btnSubmit.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Guardando...`;
+    }
+
+    const resetSubmitBtn = () => {
+        if (btnSubmit) {
+            btnSubmit.disabled = false;
+            btnSubmit.innerHTML = originalText;
+        }
+    };
+
     const idEdit = document.getElementById('edit-id').value;
 
     if (tempModulos.length === 0) {
         alert("Error: El curso debe tener al menos un módulo.");
+        resetSubmitBtn();
         return;
     }
     const todasTienenLecciones = tempModulos.every(m => m.lecciones && m.lecciones.length > 0);
     if (!todasTienenLecciones) {
         alert("Error: Cada módulo debe contener al menos una lección.");
+        resetSubmitBtn();
         return;
     }
 
@@ -1345,7 +1376,8 @@ window.guardarCurso = async (e) => {
         location.reload();
     } catch (err) {
         console.error("Error de almacenamiento:", err);
-        alert("No se pudo guardar el curso. Es muy probable que la imagen de portada sea demasiado pesada para la memoria del navegador. Intenta con una imagen más pequeña o sin imagen.");
+        alert("No se pudo guardar el curso. Revisa los datos ingresados o la conexión al servidor.");
+        resetSubmitBtn();
     }
 };
 
