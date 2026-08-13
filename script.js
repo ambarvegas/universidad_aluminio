@@ -180,10 +180,10 @@ const guardarCarreras = guardarTodo;
 const guardarUsuarios = guardarTodo;
 const guardarRoles = guardarTodo;
 const guardarSolicitudes = guardarTodo;
-const guardarLogo = (logo) => {
+const guardarLogo = async (logo) => {
     if (!db.configuracion) db.configuracion = {};
     db.configuracion.logo = logo;
-    guardarTodo();
+    await guardarTodo();
 };
 
 window.login = (id, clave) => {
@@ -685,10 +685,11 @@ function renderModulosEditor() {
     `).join('') + `<button type="button" class="btn btn-primary w-100 mt-2" onclick="agregarModulo()">+ Añadir Nuevo Módulo</button>`;
 }
 
-window.eliminarCurso = (id) => {
+window.eliminarCurso = async (id) => {
     if (confirm('¿Estás seguro de eliminar este curso y todo su contenido?')) {
         cursos = cursos.filter(c => String(c.id) !== String(id));
-        guardar();
+        await guardar();
+        alert("Curso eliminado con éxito.");
         location.reload();
     }
 };
