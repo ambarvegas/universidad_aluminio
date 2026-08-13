@@ -512,15 +512,56 @@ function extraerID(input) {
     return (match && match[2].length === 11) ? match[2] : input;
 }
 
-window.cargarLogoInstitucion = (event) => {
+function comprimirImagenBase64(file, maxWidth = 1000, maxQuality = 0.82) {
+    return new Promise((resolve, reject) => {
+        if (!file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = (err) => reject(err);
+            reader.readAsDataURL(file);
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+
+                if (width > maxWidth) {
+                    height = Math.round((height * maxWidth) / width);
+                    width = maxWidth;
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                const dataUrl = canvas.toDataURL('image/jpeg', maxQuality);
+                resolve(dataUrl);
+            };
+            img.onerror = (err) => reject(err);
+            img.src = e.target.result;
+        };
+        reader.onerror = (err) => reject(err);
+        reader.readAsDataURL(file);
+    });
+}
+
+window.cargarLogoInstitucion = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        guardarLogo(e.target.result);
+    try {
+        const compressed = await comprimirImagenBase64(file, 600, 0.85);
+        guardarLogo(compressed);
         alert("Logo de la Universidad actualizado correctamente.");
-    };
-    reader.readAsDataURL(file);
+    } catch (e) {
+        console.error("Error al cargar logo:", e);
+    }
 };
 
 window.exportarBaseDeDatos = () => {
@@ -564,20 +605,17 @@ window.importarBaseDeDatos = (event) => {
     reader.readAsText(file);
 };
 
-window.cargarImagenPortada = (event) => {
+window.cargarImagenPortada = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-        alert("La imagen es muy pesada. Máximo 5MB.");
-        return;
-    }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        tempImagenPortada = e.target.result;
-        alert("Imagen de portada cargada con éxito.");
+    try {
+        const compressed = await comprimirImagenBase64(file, 1000, 0.82);
+        tempImagenPortada = compressed;
         mostrarVistaPreviaPortada();
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+        console.error("Error al procesar la imagen de portada:", err);
+        alert("No se pudo cargar la imagen de portada.");
+    }
 };
 
 window.cargarArchivoLeccion = (event, mIdx, lIdx) => {
