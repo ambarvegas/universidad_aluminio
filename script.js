@@ -110,7 +110,11 @@ const guardarTodo = async () => {
     try {
         localStorage.setItem(DB_KEY, JSON.stringify(db));
     } catch (err) {
-        console.error("Error al guardar en localStorage:", err);
+        if (err.name === 'QuotaExceededError' || err.code === 22 || err.code === 1014) {
+            console.warn("localStorage superó el límite de memoria (5MB) debido a las imágenes/adjuntos Base64. La información se persiste directamente en el servidor.");
+        } else {
+            console.error("Error al guardar en localStorage:", err);
+        }
     }
 
     try {
