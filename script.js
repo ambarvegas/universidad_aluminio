@@ -114,14 +114,21 @@ const guardarTodo = async () => {
     }
 
     try {
-        await fetch('api.php', {
+        const response = await fetch('api.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(db)
         });
-        console.log("Sincronizado con db.json");
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({ error: 'Error desconocido en servidor' }));
+            console.error("Error al persistir en el servidor:", response.status, errData);
+            alert(`Atención: No se pudo guardar la información en el servidor (${errData.error || response.statusText}).`);
+        } else {
+            console.log("Sincronizado con db.json de forma segura");
+        }
     } catch (err) {
         console.error("Error al persistir en el servidor:", err);
+        alert("Atención: Hubo un problema de conexión al guardar los datos en el servidor.");
     }
 };
 

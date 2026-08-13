@@ -1,1 +1,5 @@
 db.json
+db.json.bak
+db.json.tmp
+db.lock
+backups/
