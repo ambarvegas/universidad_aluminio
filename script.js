@@ -561,14 +561,27 @@ window.importarBaseDeDatos = (event) => {
     const file = event.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
         try {
             const importedData = JSON.parse(e.target.result);
-            if (confirm("¿Estás seguro? Esto reemplazará toda la información actual.")) {
-                localStorage.setItem(DB_KEY, JSON.stringify(importedData));
+            if (!importedData || typeof importedData !== 'object' || !Array.isArray(importedData.usuarios) || !Array.isArray(importedData.cursos)) {
+                return alert("Error: El archivo JSON no tiene la estructura requerida para la base de datos.");
+            }
+            if (confirm("¿Estás seguro? Esto reemplazará toda la información actual por la información del archivo importado.")) {
+                db = importedData;
+                usuarios = db.usuarios || [];
+                cursos = db.cursos || [];
+                carreras = db.carreras || [];
+                rolesConfig = db.rolesConfig || [];
+                solicitudesRegistro = db.solicitudesRegistro || [];
+                solicitudesCursos = db.solicitudesCursos || [];
+
+                await guardarTodo();
+                alert("Base de datos importada y sincronizada exitosamente con el servidor.");
                 location.reload();
             }
         } catch (err) {
+            console.error("Error al importar la base de datos:", err);
             alert("Error: El archivo JSON no es válido.");
         }
     };
