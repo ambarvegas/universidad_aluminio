@@ -21,16 +21,9 @@
                         "0",
                         "1"
                     ],
-                    "evaluaciones": [
-                        {
-                            "calificacion": 85,
-                            "aprobado": true
-                        },
-                        {
-                            "calificacion": 90,
-                            "aprobado": true
-                        }
-                    ]
+                    "evaluaciones": [],
+                    "medallas": [],
+                    "intentos": []
                 },
                 "CUR-1777477390966": {
                     "leccionesCompletadas": [
@@ -41,12 +34,9 @@
                     "modulosAprobados": [
                         "0"
                     ],
-                    "evaluaciones": [
-                        {
-                            "calificacion": 75,
-                            "aprobado": true
-                        }
-                    ]
+                    "evaluaciones": [],
+                    "medallas": [],
+                    "intentos": []
                 }
             },
             "carrerasAsignadas": [],
@@ -67,15 +57,78 @@
                         "0-0",
                         "0-1",
                         "1-0",
-                        "1-1"
+                        "1-1",
+                        "2-0",
+                        "2-1",
+                        "3-0",
+                        "3-1",
+                        "4-0",
+                        "4-1",
+                        "5-0",
+                        "5-1",
+                        "6-0",
+                        "6-1"
                     ],
                     "modulosAprobados": [
                         "0",
-                        "1"
-                    ]
+                        "1",
+                        "2",
+                        "3",
+                        "4",
+                        "5",
+                        "6"
+                    ],
+                    "medallas": [
+                        "2",
+                        "3",
+                        "4",
+                        "5",
+                        "6"
+                    ],
+                    "evaluaciones": {
+                        "2": {
+                            "calificacion": 70,
+                            "aprobado": true,
+                            "marcadoManual": true,
+                            "fecha": "2026-08-17T17:43:36.862Z"
+                        },
+                        "3": {
+                            "calificacion": 70,
+                            "aprobado": true,
+                            "marcadoManual": true,
+                            "fecha": "2026-08-17T17:43:36.862Z"
+                        },
+                        "4": {
+                            "calificacion": 70,
+                            "aprobado": true,
+                            "marcadoManual": true,
+                            "fecha": "2026-08-17T17:43:36.862Z"
+                        },
+                        "5": {
+                            "calificacion": 70,
+                            "aprobado": true,
+                            "marcadoManual": true,
+                            "fecha": "2026-08-17T17:43:36.862Z"
+                        },
+                        "6": {
+                            "calificacion": 70,
+                            "aprobado": true,
+                            "marcadoManual": true,
+                            "fecha": "2026-08-17T17:43:36.862Z"
+                        }
+                    },
+                    "intentos": {
+                        "2": 1,
+                        "3": 1,
+                        "4": 1,
+                        "5": 1,
+                        "6": 1
+                    }
                 }
             },
-            "certificadosCurso": [],
+            "certificadosCurso": [
+                "CUR-1777056942569"
+            ],
             "certificadosCarrera": []
         },
         {
@@ -99,7 +152,113 @@
             "asignados": [],
             "carrerasAsignadas": [],
             "progreso": [],
-            "certificadosCurso": [],
+            "certificadosCurso": [
+                "CUR-1777056942569"
+            ],
+            "certificadosCarrera": []
+        },
+        {
+            "id": "11223344",
+            "nombre": "Test",
+            "clave": "1234",
+            "rol": "asesor_ventas",
+            "estado": "activo",
+            "asignados": [],
+            "carrerasAsignadas": [],
+            "progreso": {
+                "CUR-1777056942569": {
+                    "leccionesCompletadas": [
+                        "0-0",
+                        "0-1",
+                        "1-0",
+                        "1-1",
+                        "2-0",
+                        "2-1",
+                        "3-0",
+                        "3-1",
+                        "4-0",
+                        "4-1",
+                        "5-0",
+                        "5-1",
+                        "6-0",
+                        "6-1"
+                    ],
+                    "modulosAprobados": [
+                        "0",
+                        "1",
+                        "2",
+                        "3",
+                        "4",
+                        "5",
+                        "6"
+                    ],
+                    "medallas": [
+                        "0",
+                        "1",
+                        "2",
+                        "3",
+                        "4",
+                        "5",
+                        "6"
+                    ],
+                    "evaluaciones": [
+                        {
+                            "calificacion": 70,
+                            "aprobado": true,
+                            "marcadoManual": true,
+                            "fecha": "2026-08-18T14:29:10.140Z"
+                        },
+                        {
+                            "calificacion": 70,
+                            "aprobado": true,
+                            "marcadoManual": true,
+                            "fecha": "2026-08-18T14:29:10.141Z"
+                        },
+                        {
+                            "calificacion": 70,
+                            "aprobado": true,
+                            "marcadoManual": true,
+                            "fecha": "2026-08-18T14:29:10.141Z"
+                        },
+                        {
+                            "calificacion": 70,
+                            "aprobado": true,
+                            "marcadoManual": true,
+                            "fecha": "2026-08-18T14:29:10.141Z"
+                        },
+                        {
+                            "calificacion": 70,
+                            "aprobado": true,
+                            "marcadoManual": true,
+                            "fecha": "2026-08-18T14:29:10.141Z"
+                        },
+                        {
+                            "calificacion": 70,
+                            "aprobado": true,
+                            "marcadoManual": true,
+                            "fecha": "2026-08-18T14:29:10.141Z"
+                        },
+                        {
+                            "calificacion": 70,
+                            "aprobado": true,
+                            "marcadoManual": true,
+                            "fecha": "2026-08-18T14:29:10.141Z"
+                        }
+                    ],
+                    "intentos": [
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1
+                    ]
+                }
+            },
+            "certificadosCurso": [
+                "CUR-1777056942569"
+            ],
             "certificadosCarrera": []
         }
     ],

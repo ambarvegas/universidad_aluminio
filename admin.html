@@ -257,9 +257,16 @@
                     <div class="modal-body">
                         <input type="hidden" id="edit-id">
                         <div class="row g-3">
-                            <div class="col-md-9">
+                            <div class="col-md-6">
                                 <label class="form-label">Título del Curso</label>
                                 <input type="text" id="titulo" class="form-control" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Tipo de Acceso</label>
+                                <select id="curso-tipo" class="form-select">
+                                    <option value="especializado">Especializado (Por Carrera)</option>
+                                    <option value="publico">Acceso Libre (Público)</option>
+                                </select>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label">Prelación</label>

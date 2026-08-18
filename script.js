@@ -4,7 +4,7 @@ const DB_KEY = 'uniDatabase';
 // Estructura inicial por defecto (Tu JSON base)
 const initialDB = {
     usuarios: [
-        { id: "25482938", clave: "12345", nombre: "Ambar Vegas", rol: "admin", estado: "activo", asignados: [], carreras: [], examenesAprobados: {}, progreso: {} }
+        { id: "25482938", clave: "12345", nombre: "Ambar Vegas", rol: "admin", estado: "activo", asignados: [], carreras: [], carrerasAsignadas: [], examenesAprobados: {}, progreso: {}, certificadosCurso: [], certificadosCarrera: [] }
     ],
     cursos: [],
     carreras: [],
@@ -29,35 +29,139 @@ let tempModuloEvaluacion = { preguntas: [] };
 let solicitudesRegistro = db.solicitudesRegistro || [];
 let solicitudesCursos = db.solicitudesCursos || [];
 
+const getCareerIdFromRole = (roleId) => {
+    const careerMap = {
+        "asesor_ventas": "CAR-ASESOR-VENTAS",
+        "retail": "CAR-RETAIL",
+        "almacenista_retail": "CAR-ALMACENISTA",
+        "coordinador_retail": "CAR-COORD-RETAIL",
+        "cristalero": "CAR-CRISTALERO"
+    };
+    return careerMap[roleId] || null;
+};
+
+function crearEstructuraUsuario(u) {
+    if (!u) return null;
+    return {
+        id: String(u.id || "").trim(),
+        nombre: String(u.nombre || "").trim(),
+        clave: String(u.clave || "12345"),
+        rol: String(u.rol || "participante"),
+        estado: String(u.estado || "activo"),
+        asignados: Array.isArray(u.asignados) ? u.asignados : [],
+        carrerasAsignadas: Array.isArray(u.carrerasAsignadas) ? u.carrerasAsignadas : [],
+        progreso: (u.progreso && typeof u.progreso === 'object' && !Array.isArray(u.progreso)) ? u.progreso : {},
+        certificadosCurso: Array.isArray(u.certificadosCurso) ? u.certificadosCurso : [],
+        certificadosCarrera: Array.isArray(u.certificadosCarrera) ? u.certificadosCarrera : []
+    };
+}
+
+function actualizarEstadoCarrerasUsuario(usuario) {
+    if (!usuario) return;
+    usuario.carrerasAsignadas = Array.isArray(usuario.carrerasAsignadas) ? usuario.carrerasAsignadas : [];
+    usuario.certificadosCarrera = Array.isArray(usuario.certificadosCarrera) ? usuario.certificadosCarrera : [];
+    usuario.certificadosCurso = Array.isArray(usuario.certificadosCurso) ? usuario.certificadosCurso : [];
+    if (!usuario.progreso || Array.isArray(usuario.progreso) || typeof usuario.progreso !== 'object') {
+        usuario.progreso = {};
+    }
+
+    const userRoleConfig = rolesConfig.find(r => r.id === usuario.rol);
+    const roleCareerIds = (userRoleConfig && Array.isArray(userRoleConfig.carreras)) ? userRoleConfig.carreras : [];
+    
+    const autoCareerId = getCareerIdFromRole(usuario.rol);
+    const todasCarrerasIds = new Set([...roleCareerIds]);
+    if (autoCareerId) todasCarrerasIds.add(autoCareerId);
+
+    todasCarrerasIds.forEach(carId => {
+        if (carreras.some(c => c.id === carId)) {
+            if (!usuario.carrerasAsignadas.some(ca => ca.id === carId)) {
+                usuario.carrerasAsignadas.push({ id: carId, estado: "Incompleta" });
+            }
+        }
+    });
+
+    usuario.carrerasAsignadas.forEach(ca => {
+        const carrera = carreras.find(c => c.id === ca.id);
+        if (!carrera || !carrera.cursos || carrera.cursos.length === 0) return;
+
+        const todosCursosCompletados = carrera.cursos.every(cId => {
+            if (usuario.certificadosCurso && usuario.certificadosCurso.includes(cId)) return true;
+            const cursoObj = cursos.find(c => c.id === cId);
+            if (!cursoObj) return false;
+            const prog = usuario.progreso[cId];
+            if (!prog || !prog.modulosAprobados) return false;
+            const totalModulos = (cursoObj.modulos || []).length;
+            return totalModulos > 0 && prog.modulosAprobados.length >= totalModulos;
+        });
+
+        if (todosCursosCompletados) {
+            ca.estado = "Completada";
+            if (!usuario.certificadosCarrera.includes(ca.id)) {
+                usuario.certificadosCarrera.push(ca.id);
+            }
+        } else {
+            ca.estado = "Incompleta";
+            usuario.certificadosCarrera = usuario.certificadosCarrera.filter(id => id !== ca.id);
+        }
+    });
+}
+
 async function cargarDatosDelServidor() {
     try {
         const response = await fetch('api.php');
         const data = await response.json();
 
-        if (data && Object.keys(data).length > 0) {
+        if (data && typeof data === 'object' && !Array.isArray(data)) {
             db = data;
         }
 
         usuarios = db.usuarios || [];
         cursos = db.cursos || [];
-        usuarios.forEach(u => {
-            u.carrerasAsignadas = u.carrerasAsignadas || [];
-            u.progreso = u.progreso || {};
-            u.certificadosCurso = u.certificadosCurso || [];
-            u.certificadosCarrera = u.certificadosCarrera || [];
-            // Normalizar progreso: convertir arrays a objetos
-            if (u.progreso) {
-                for (let cursoId in u.progreso) {
-                    if (Array.isArray(u.progreso[cursoId])) {
-                        u.progreso[cursoId] = { leccionesCompletadas: u.progreso[cursoId], modulosAprobados: [] };
-                    }
-                }
-            }
-        });
         carreras = db.carreras || [];
         rolesConfig = db.rolesConfig || [];
         solicitudesRegistro = db.solicitudesRegistro || [];
         solicitudesCursos = db.solicitudesCursos || [];
+
+        usuarios.forEach(u => {
+            u.asignados = Array.isArray(u.asignados) ? u.asignados : [];
+            u.carrerasAsignadas = Array.isArray(u.carrerasAsignadas) ? u.carrerasAsignadas : [];
+            u.certificadosCurso = Array.isArray(u.certificadosCurso) ? u.certificadosCurso : [];
+            u.certificadosCarrera = Array.isArray(u.certificadosCarrera) ? u.certificadosCarrera : [];
+
+            // CRÍTICO: Asegurar que progreso sea SIEMPRE un objeto {} y NUNCA un array []
+            if (!u.progreso || Array.isArray(u.progreso) || typeof u.progreso !== 'object') {
+                u.progreso = {};
+            }
+
+            for (let cursoId in u.progreso) {
+                if (Array.isArray(u.progreso[cursoId])) {
+                    u.progreso[cursoId] = {
+                        leccionesCompletadas: u.progreso[cursoId],
+                        modulosAprobados: [],
+                        medallas: [],
+                        evaluaciones: {},
+                        intentos: {}
+                    };
+                } else if (u.progreso[cursoId] && typeof u.progreso[cursoId] === 'object') {
+                    u.progreso[cursoId].leccionesCompletadas = Array.isArray(u.progreso[cursoId].leccionesCompletadas) ? u.progreso[cursoId].leccionesCompletadas : [];
+                    u.progreso[cursoId].modulosAprobados = Array.isArray(u.progreso[cursoId].modulosAprobados) ? u.progreso[cursoId].modulosAprobados : [];
+                    u.progreso[cursoId].medallas = Array.isArray(u.progreso[cursoId].medallas) ? u.progreso[cursoId].medallas : [];
+                    u.progreso[cursoId].evaluaciones = (u.progreso[cursoId].evaluaciones && typeof u.progreso[cursoId].evaluaciones === 'object' && !Array.isArray(u.progreso[cursoId].evaluaciones)) ? u.progreso[cursoId].evaluaciones : {};
+                    u.progreso[cursoId].intentos = (u.progreso[cursoId].intentos && typeof u.progreso[cursoId].intentos === 'object' && !Array.isArray(u.progreso[cursoId].intentos)) ? u.progreso[cursoId].intentos : {};
+                }
+            }
+
+            actualizarEstadoCarrerasUsuario(u);
+        });
+
+        // Sincronizar sesión activa si existe
+        if (sesion) {
+            const usuarioFresco = usuarios.find(u => u.id === sesion.id);
+            if (usuarioFresco) {
+                sesion = usuarioFresco;
+                sessionStorage.setItem('aluSesion', JSON.stringify(sesion));
+            }
+        }
 
         if (typeof actualizarTablas === 'function') actualizarTablas();
         if (document.getElementById('cfg-min-aprobacion')) {
@@ -70,6 +174,27 @@ async function cargarDatosDelServidor() {
 }
 
 const guardarTodo = async () => {
+    // Asegurar que todos los usuarios en memoria tengan progreso como objeto {}
+    usuarios.forEach(u => {
+        if (!u.progreso || Array.isArray(u.progreso) || typeof u.progreso !== 'object') {
+            u.progreso = {};
+        }
+    });
+
+    // Sincronizar la variable 'sesion' con el array 'usuarios' antes de guardar.
+    if (sesion) {
+        if (!sesion.progreso || Array.isArray(sesion.progreso) || typeof sesion.progreso !== 'object') {
+            sesion.progreso = {};
+        }
+        const uIdx = usuarios.findIndex(u => u.id === sesion.id);
+        if (uIdx !== -1) {
+            usuarios[uIdx] = JSON.parse(JSON.stringify(sesion));
+            actualizarEstadoCarrerasUsuario(usuarios[uIdx]);
+            sesion = JSON.parse(JSON.stringify(usuarios[uIdx]));
+            sessionStorage.setItem('aluSesion', JSON.stringify(sesion));
+        }
+    }
+
     db.usuarios = usuarios;
     db.cursos = cursos;
     db.carreras = carreras;
@@ -87,16 +212,35 @@ const guardarTodo = async () => {
             const errData = await response.json().catch(() => ({ error: 'Error desconocido en servidor' }));
             console.error("Error al guardar en el servidor:", response.status, errData);
             alert(`Atención: No se pudo guardar la información en el servidor (${errData.error || response.statusText}).`);
+            return false;
         } else {
             console.log("Sincronizado correctamente con la base de datos del servidor (api.php)");
+            return true;
         }
     } catch (err) {
         console.error("Error de conexión al guardar en el servidor:", err);
         alert("Atención: Hubo un problema de conexión al guardar los datos en el servidor.");
+        return false;
     }
 };
 
 let sesion = JSON.parse(sessionStorage.getItem('aluSesion')) || null;
+
+// ========== FUNCIÓN AUXILIAR PARA GUARDAR PROGRESO ==========
+async function guardarProgresoUsuario() {
+    if (!sesion) return false;
+
+    actualizarEstadoCarrerasUsuario(sesion);
+    sessionStorage.setItem('aluSesion', JSON.stringify(sesion));
+
+    const exito = await guardarTodo();
+    if (exito) {
+        return true;
+    } else {
+        alert("No se pudo guardar tu progreso en el servidor. Intenta de nuevo.");
+        return false;
+    }
+}
 
 function renderizarGaleria() {
     const galeria = document.querySelector('#galeria-cursos .row');
@@ -104,22 +248,29 @@ function renderizarGaleria() {
         galeria.innerHTML = '';
 
         let cursosVisibles = [];
-        if (sesion.rol === 'admin') {
-            cursosVisibles = cursos;
+        if (sesion && sesion.rol === 'admin') {
+            cursosVisibles = cursos.map(c => ({ ...c, bloqueado: false }));
         } else {
-            const configRol = rolesConfig.find(r => r.id === sesion.rol);
+            const configRol = sesion ? rolesConfig.find(r => r.id === sesion.rol) : null;
             const directosDelRol = configRol ? configRol.cursos || [] : [];
             const deCarreras = [];
             if (configRol && configRol.carreras) {
                 configRol.carreras.forEach(carId => {
                     const carrera = carreras.find(c => c.id === carId);
-                    if (carrera) deCarreras.push(...carrera.cursos);
+                    if (carrera && Array.isArray(carrera.cursos)) deCarreras.push(...carrera.cursos);
                 });
             }
-            const porSolicitud = sesion.asignados || [];
+            if (sesion && Array.isArray(sesion.carrerasAsignadas)) {
+                sesion.carrerasAsignadas.forEach(ca => {
+                    const carrera = carreras.find(c => c.id === ca.id);
+                    if (carrera && Array.isArray(carrera.cursos)) deCarreras.push(...carrera.cursos);
+                });
+            }
+            const porSolicitud = (sesion && sesion.asignados) || [];
             const idsAccesoTotal = [...new Set([...directosDelRol, ...deCarreras, ...porSolicitud])];
             cursosVisibles = cursos.map(c => {
-                const tieneAcceso = idsAccesoTotal.includes(c.id) || c.tipo === 'publico';
+                const esAccesoLibre = c.tipo === 'publico' || c.tipo === 'libre';
+                const tieneAcceso = esAccesoLibre || idsAccesoTotal.includes(c.id);
                 return { ...c, bloqueado: !tieneAcceso };
             });
         }
@@ -137,18 +288,20 @@ function renderizarGaleria() {
             if (c.prelacion) {
                 const cursoPrevio = cursos.find(cp => cp.id === c.prelacion);
                 if (cursoPrevio) {
-                    const progresoPrevio = sesion.progreso[c.prelacion];
-                    const modulosConEval = cursoPrevio.modulos.filter(m => m.evaluacion && m.evaluacion.preguntas && m.evaluacion.preguntas.length > 0).length;
+                    const progresoPrevio = sesion && sesion.progreso ? sesion.progreso[c.prelacion] : null;
+                    const modulosConEval = (cursoPrevio.modulos || []).filter(m => m.evaluacion && m.evaluacion.preguntas && m.evaluacion.preguntas.length > 0).length;
+                    const totalModulosPrevio = modulosConEval > 0 ? modulosConEval : (cursoPrevio.modulos || []).length;
                     const modulosAprobados = (progresoPrevio && progresoPrevio.modulosAprobados) ? progresoPrevio.modulosAprobados.length : 0;
 
-                    if (modulosAprobados < modulosConEval) {
+                    if (modulosAprobados < totalModulosPrevio) {
                         bloqueadoPorPrelacion = true;
                         mensajePrelacion = `Requiere: ${cursoPrevio.titulo}`;
                     }
                 }
             }
 
-            const badgeTipo = c.tipo === 'especializado' ? '<span class="badge bg-warning text-dark">Especializado</span>' : '<span class="badge bg-success">Público</span>';
+            const esAccesoLibre = c.tipo === 'publico' || c.tipo === 'libre';
+            const badgeTipo = esAccesoLibre ? '<span class="badge bg-success"><i class="bi bi-unlock-fill me-1"></i>Acceso Libre</span>' : '<span class="badge bg-warning text-dark"><i class="bi bi-mortarboard-fill me-1"></i>Especializado</span>';
             const btnAccion = (c.bloqueado || bloqueadoPorPrelacion)
                 ? `<button class="btn btn-outline-secondary w-100" onclick="${bloqueadoPorPrelacion ? "alert('Debes completar primero: " + mensajePrelacion + "')" : "solicitarAccesoCurso('" + c.id + "')"}">${bloqueadoPorPrelacion ? mensajePrelacion : 'Solicitar Acceso'}</button>`
                 : `<a href="detalle.html?id=${c.id}" class="btn btn-primary w-100">Ver curso</a>`;
@@ -217,21 +370,10 @@ window.solicitarRegistro = async (id, nombre, clave, perfilDeseado) => {
     location.reload();
 };
 
-const getCareerIdFromRole = (roleId) => {
-    const careerMap = {
-        "asesor_ventas": "CAR-ASESOR-VENTAS",
-        "retail": "CAR-RETAIL",
-        "almacenista_retail": "CAR-ALMACENISTA",
-        "coordinador_retail": "CAR-COORD-RETAIL",
-        "cristalero": "CAR-CRISTALERO"
-    };
-    return careerMap[roleId] || null;
-};
-
 window.gestionarSolicitudRegistro = async (id, aprobado) => {
     const idx = solicitudesRegistro.findIndex(s => s.id === id);
     const sol = solicitudesRegistro[idx];
-    if (aprobado) {
+    if (aprobado && sol) {
         const userCareers = [];
         const autoAssignCareerId = getCareerIdFromRole(sol.perfilDeseado);
         if (autoAssignCareerId) {
@@ -242,7 +384,7 @@ window.gestionarSolicitudRegistro = async (id, aprobado) => {
             }
         }
 
-        usuarios.push({
+        const nuevoUsuario = crearEstructuraUsuario({
             id: sol.id,
             nombre: sol.nombre,
             clave: sol.clave,
@@ -254,6 +396,8 @@ window.gestionarSolicitudRegistro = async (id, aprobado) => {
             certificadosCurso: [],
             certificadosCarrera: []
         });
+
+        usuarios.push(nuevoUsuario);
         await guardarUsuarios();
         console.log(`Enviando correo a ${sol.id}... Credenciales aprobadas para perfil ${sol.perfilDeseado}`);
     }
@@ -277,7 +421,10 @@ window.gestionarSolicitudCurso = async (userId, cursoId, aprobado) => {
     if (aprobado) {
         const uIdx = usuarios.findIndex(u => u.id === userId);
         if (uIdx !== -1) {
-            usuarios[uIdx].asignados.push(cursoId);
+            usuarios[uIdx].asignados = Array.isArray(usuarios[uIdx].asignados) ? usuarios[uIdx].asignados : [];
+            if (!usuarios[uIdx].asignados.includes(cursoId)) {
+                usuarios[uIdx].asignados.push(cursoId);
+            }
             await guardarUsuarios();
         }
     }
@@ -319,6 +466,9 @@ window.prepararFormulario = (modo) => {
     document.getElementById('titulo').value = '';
     document.getElementById('descripcion').value = '';
     document.getElementById('curso-prelacion').value = '';
+    if (document.getElementById('curso-tipo')) {
+        document.getElementById('curso-tipo').value = 'especializado';
+    }
     const fileInput = document.getElementById('input-portada');
     if (fileInput) fileInput.value = '';
     tempModulos = [];
@@ -334,7 +484,6 @@ window.prepararFormulario = (modo) => {
     renderModulosEditor();
 };
 
-// funcion para mostrar la portada ya cargada en la base de datos de un curso como vista previa dentro del modal de edicion
 window.mostrarVistaPreviaPortada = () => {
     const vistaPrev = document.getElementById('vista-previa-portada');
     const imgPrev = document.getElementById('img-vista-previa');
@@ -365,6 +514,9 @@ window.abrirEditor = (id) => {
     document.getElementById('descripcion').value = c.descripcion;
     if (document.getElementById('curso-prelacion')) {
         document.getElementById('curso-prelacion').value = c.prelacion || '';
+    }
+    if (document.getElementById('curso-tipo')) {
+        document.getElementById('curso-tipo').value = (c.tipo === 'publico' || c.tipo === 'libre') ? 'publico' : 'especializado';
     }
     tempImagenPortada = c.imagen || "";
     mostrarVistaPreviaPortada();
@@ -447,7 +599,6 @@ window.guardarEvaluacionModulo = () => {
     const bModal = bootstrap.Modal.getOrCreateInstance(modalElement);
     bModal.hide();
 
-    // Forzar remoción de backdrop si se queda pegado
     const backdrop = document.querySelector('.modal-backdrop');
     if (backdrop) backdrop.remove();
     document.body.classList.remove('modal-open');
@@ -455,13 +606,6 @@ window.guardarEvaluacionModulo = () => {
     document.body.style.paddingRight = '';
 };
 
-window.guardarmodulocurso = () => {
-    const mIdx = document.getElementById('edit-modulo-idx').value;
-    tempModulos[mIdx].evaluacion = JSON.parse(JSON.stringify(tempModuloEvaluacion));
-    renderModulosEditor();
-};
-
-// funcion para eliminar opciones de las preguntas del modulo de evaluacion
 function eliminarPreguntaOpcionesModulo(idx) {
     tempModuloEvaluacion.preguntas[idx].opciones.pop();
     renderPreguntasModuloEditor();
@@ -490,11 +634,6 @@ function renderPreguntasModuloEditor() {
         </div>
     `).join('') + `<button type="button" class="btn btn-outline-dark w-100" onclick="agregarPreguntaModulo()">+ Añadir Pregunta al Examen</button>`;
 }
-
-window.eliminarModulo = (idx) => {
-    tempModulos.splice(idx, 1);
-    renderModulosEditor();
-};
 
 window.agregarLeccion = (mIdx) => {
     tempModulos[mIdx].lecciones.push({ titulo: "Nueva Lección", videoID: "", contenido: "", adjunto: "" });
@@ -728,7 +867,7 @@ function renderSelectRoles() {
 }
 
 window.guardarUsuario = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     const id = document.getElementById('u-id').value;
     const nombre = document.getElementById('u-nombre').value;
     const rol = document.getElementById('u-rol').value;
@@ -750,13 +889,26 @@ window.guardarUsuario = async (e) => {
         usuarios[idx].nombre = nombre;
         usuarios[idx].rol = rol;
         usuarios[idx].estado = estado;
+        if (claveNueva) usuarios[idx].clave = claveNueva;
         if (autoAssignCareerId && !usuarios[idx].carrerasAsignadas.some(ca => ca.id === autoAssignCareerId)) {
             usuarios[idx].carrerasAsignadas.push({ id: autoAssignCareerId, estado: "Incompleta" });
         }
-        if (claveNueva) usuarios[idx].clave = claveNueva;
+        usuarios[idx] = crearEstructuraUsuario(usuarios[idx]);
     } else {
         if (usuarios.find(u => u.id === id)) return alert("ID ya registrado");
-        usuarios.push({ id, nombre, clave: claveNueva || "12345", rol, estado, asignados: [], carrerasAsignadas: userCareers, progreso: {}, certificadosCurso: [], certificadosCarrera: [] });
+        const nuevoUsuario = crearEstructuraUsuario({
+            id,
+            nombre,
+            clave: claveNueva || "12345",
+            rol,
+            estado,
+            asignados: [],
+            carrerasAsignadas: userCareers,
+            progreso: {},
+            certificadosCurso: [],
+            certificadosCarrera: []
+        });
+        usuarios.push(nuevoUsuario);
     }
 
     await guardarUsuarios();
@@ -906,7 +1058,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     verificarProteccion();
 
-    // Inicializar detalle de curso si estamos en detalle.html
     const urlParams = new URLSearchParams(window.location.search);
     const cursoId = urlParams.get('id');
     if (document.getElementById('contenido-curso') && cursoId) {
@@ -920,13 +1071,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (tablaBody) {
         tablaBody.innerHTML = '';
         cursos.forEach(c => {
+            const esLibre = c.tipo === 'publico' || c.tipo === 'libre';
+            const badgeTipo = esLibre 
+                ? '<span class="badge bg-success ms-2"><i class="bi bi-unlock-fill me-1"></i>Acceso Libre</span>' 
+                : '<span class="badge bg-warning text-dark ms-2"><i class="bi bi-mortarboard-fill me-1"></i>Especializado</span>';
             tablaBody.innerHTML += `
                 <tr>
-                    <td><small>${c.id}</small></td>
-                    <td><strong>${c.titulo}</strong> ${c.tipo === 'especializado' ? '<span class="badge bg-warning text-dark">Especializado</span>' : ''}</td>
+                    <td><small class="text-muted">${c.id}</small></td>
+                    <td><strong>${c.titulo}</strong> ${badgeTipo}</td>
                     <td class="text-center">
-                        <button class="btn btn-sm btn-outline-primary me-2" onclick="abrirEditor('${c.id}')">Editar</button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="eliminarCurso('${c.id}')">Borrar</button>
+                        <button class="btn btn-sm btn-outline-primary me-2" onclick="abrirEditor('${c.id}')"><i class="bi bi-pencil me-1"></i>Editar</button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="eliminarCurso('${c.id}')"><i class="bi bi-trash me-1"></i>Borrar</button>
                     </td>
                 </tr>`;
         });
@@ -992,13 +1147,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             usuarios.forEach(u => {
                 const assignedCareersNames = (u.carrerasAsignadas || []).map(ca => {
                     const car = carreras.find(c => c.id === ca.id);
-                    return car ? `${car.nombre} (${ca.estado})` : `Desconocida (${ca.estado})`;
-                }).join(', ');
+                    const carNombre = car ? car.nombre : (ca.id || 'Desconocida');
+                    const badgeClass = ca.estado === 'Completada' ? 'bg-success' : 'bg-secondary';
+                    return `<span class="me-1">${carNombre} <span class="badge ${badgeClass}">${ca.estado || 'Incompleta'}</span></span>`;
+                }).join('<br>');
                 userTable.innerHTML += `
                     <tr>
                         <td><code class="fw-bold">${u.id}</code></td>
                         <td>${u.nombre}</td>
-                        <td><span class="badge border text-dark bg-light">${u.rol.replace('_', ' ')}</span><br><small class="text-muted">${assignedCareersNames}</small></td>
+                        <td><span class="badge border text-dark bg-light mb-1">${(u.rol || '').replace('_', ' ')}</span><br><small class="text-muted">${assignedCareersNames || 'Sin carrera'}</small></td>
                         <td><span class="badge ${u.estado === 'suspendido' ? 'bg-danger' : 'bg-success'}">${u.estado || 'activo'}</span></td>
                         <td class="text-end">
                             <button class="btn btn-sm btn-outline-primary me-1" onclick="abrirEditorUsuario('${u.id}')">Editar Perfil</button>
@@ -1027,7 +1184,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
-        // Optimización: Solo renderizar reportes si estamos en la pestaña de reportes
         const tabReportes = document.querySelector('button[data-bs-target="#tab-reportes"]');
         if (tabReportes) {
             tabReportes.addEventListener('shown.bs.tab', () => {
@@ -1038,19 +1194,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 function renderRobustReports() {
-    // Elementos del DOM
     const topLearnersTable = document.getElementById('tabla-top-learners');
-    const performanceByRole = document.getElementById('chart-cumplimiento'); // Reutilizamos para rendimiento por rol
+    const performanceByRole = document.getElementById('chart-cumplimiento');
     const chartCumplimiento = document.getElementById('chart-cumplimiento');
 
     if (!topLearnersTable) return;
 
-    // Filtrar usuarios no administradores
     const activeUsers = usuarios.filter(u => u.rol !== 'admin' && u.estado === 'activo');
 
-    // ==================== 1. RENDIMIENTO INDIVIDUAL POR USUARIO ====================
     const userPerformanceData = activeUsers.map(user => {
-        // Calcular progreso en cursos
         const userProgress = user.progreso || {};
         const cursosIds = Object.keys(userProgress);
 
@@ -1063,36 +1215,29 @@ function renderRobustReports() {
         let sumaCalificaciones = 0;
         let totalIntentos = 0;
 
-        // Procesar cada curso del usuario
         cursosIds.forEach(cursoId => {
             const progresoCurso = userProgress[cursoId];
             const cursoInfo = cursos.find(c => c.id === cursoId);
 
             if (cursoInfo && cursoInfo.modulos) {
-                // Módulos del curso
                 const totalModulosCursoActual = cursoInfo.modulos.length;
                 totalModulosCurso += totalModulosCursoActual;
 
-                // Módulos aprobados por el usuario
                 const modulosAprobadosActual = progresoCurso?.modulosAprobados?.length || 0;
                 modulosAprobados += modulosAprobadosActual;
 
-                // Lecciones del curso
                 const totalLeccionesCurso = cursoInfo.modulos.reduce((sum, modulo) =>
                     sum + (modulo.lecciones?.length || 0), 0);
                 totalLecciones += totalLeccionesCurso;
 
-                // Lecciones completadas
                 const leccionesCompletadasActual = progresoCurso?.leccionesCompletadas?.length || 0;
                 leccionesCompletadas += leccionesCompletadasActual;
 
-                // Evaluaciones
                 const evaluaciones = progresoCurso?.evaluaciones || {};
                 const evaluacionesCurso = Object.values(evaluaciones);
                 evaluacionesTotales += evaluacionesCurso.length;
                 sumaCalificaciones += evaluacionesCurso.reduce((sum, ev) => sum + (ev.calificacion || 0), 0);
 
-                // Intentos
                 const intentos = progresoCurso?.intentos || {};
                 Object.values(intentos).forEach(val => {
                     totalIntentos += parseInt(val) || 0;
@@ -1100,12 +1245,10 @@ function renderRobustReports() {
             }
         });
 
-        // Calcular promedios y porcentajes
         const porcentajeModulos = totalModulosCurso > 0 ? (modulosAprobados / totalModulosCurso) * 100 : 0;
         const porcentajeLecciones = totalLecciones > 0 ? (leccionesCompletadas / totalLecciones) * 100 : 0;
         promedioEvaluaciones = evaluacionesTotales > 0 ? sumaCalificaciones / evaluacionesTotales : 0;
 
-        // Calcular tasa de completitud general
         const tasaCompletitud = (porcentajeModulos + porcentajeLecciones) / 2;
 
         return {
@@ -1123,9 +1266,8 @@ function renderRobustReports() {
             totalIntentos: totalIntentos,
             estado: user.estado
         };
-    }).sort((a, b) => b.tasaCompletitud - a.tasaCompletitud); // Ordenar por mejor rendimiento
+    }).sort((a, b) => b.tasaCompletitud - a.tasaCompletitud);
 
-    // Renderizar tabla de rendimiento individual
     topLearnersTable.innerHTML = `
         <thead>
             <tr class="table-dark">
@@ -1188,7 +1330,6 @@ function renderRobustReports() {
         </tbody>
     `;
 
-    // ==================== 2. RENDIMIENTO POR ROLES ====================
     const rolePerformance = rolesConfig
         .filter(role => role.id !== 'admin')
         .map(role => {
@@ -1209,14 +1350,12 @@ function renderRobustReports() {
                 };
             }
 
-            // Datos agregados del rol
             const totalUsuarios = usersInRole.length;
             const sumModulos = usersInRole.reduce((sum, u) => sum + parseFloat(u.porcentajeModulos), 0);
             const sumLecciones = usersInRole.reduce((sum, u) => sum + parseFloat(u.porcentajeLecciones), 0);
             const sumEvaluaciones = usersInRole.reduce((sum, u) => sum + parseFloat(u.promedioEvaluaciones), 0);
             const sumCompletitud = usersInRole.reduce((sum, u) => sum + parseFloat(u.tasaCompletitud), 0);
 
-            // Calcular distribución de rendimiento
             const rendimientoBajo = usersInRole.filter(u => u.tasaCompletitud < 40).length;
             const rendimientoMedio = usersInRole.filter(u => u.tasaCompletitud >= 40 && u.tasaCompletitud < 70).length;
             const rendimientoAlto = usersInRole.filter(u => u.tasaCompletitud >= 70).length;
@@ -1242,7 +1381,6 @@ function renderRobustReports() {
         })
         .sort((a, b) => b.promedioCompletitud - a.promedioCompletitud);
 
-    // Renderizar tabla de rendimiento por roles
     if (performanceByRole) {
         performanceByRole.innerHTML = `
             <thead>
@@ -1301,7 +1439,6 @@ function renderRobustReports() {
         `;
     }
 
-    // ==================== 3. GRÁFICO DE CUMPLIMIENTO POR ROL ====================
     if (chartCumplimiento) {
         chartCumplimiento.innerHTML = rolePerformance.map(role => `
             <div class="mb-4">
@@ -1357,17 +1494,13 @@ function renderRobustReports() {
     }
 }
 
-// REPORTES
-const formCurso = document.getElementById('form-curso');
-// No agregamos listener, usamos el onsubmit="guardarCurso(event)" definido en admin.html
-
 window.guardarCurso = async (e) => {
     if (e) e.preventDefault();
 
     const btnSubmit = document.querySelector('#form-curso button[type="submit"]');
     let originalText = "Guardar Todo";
     if (btnSubmit) {
-        if (btnSubmit.disabled) return; // Evitar doble clic si ya está guardando
+        if (btnSubmit.disabled) return;
         originalText = btnSubmit.innerHTML;
         btnSubmit.disabled = true;
         btnSubmit.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Guardando...`;
@@ -1394,9 +1527,12 @@ window.guardarCurso = async (e) => {
         return;
     }
 
+    const tipo = document.getElementById('curso-tipo') ? document.getElementById('curso-tipo').value : 'especializado';
+
     const nuevoCurso = {
         id: idEdit ? idEdit : "CUR-" + Date.now(),
         titulo: document.getElementById('titulo').value,
+        tipo: tipo || 'especializado',
         imagen: tempImagenPortada,
         descripcion: document.getElementById('descripcion').value,
         prelacion: document.getElementById('curso-prelacion').value,
@@ -1420,48 +1556,85 @@ window.guardarCurso = async (e) => {
     }
 };
 
-// La inicialización del detalle del curso se hace dentro del DOMContentLoaded
-// para asegurar que los datos del servidor ya estén cargados.
+// ============================================================
+// FUNCIONES DE PROGRESO - CORREGIDAS CON GUARDADO EN BD
+// ============================================================
 
 window.marcarLeccionCompletada = async (mIdx, lIdx) => {
     const cursoID = cursoActualData.id;
     const lecID = `${mIdx}-${lIdx}`;
 
-    if (!sesion.progreso[cursoID]) sesion.progreso[cursoID] = { leccionesCompletadas: [], modulosAprobados: [] };
+    // Inicializar progreso del curso
+    if (!sesion.progreso[cursoID]) {
+        sesion.progreso[cursoID] = {
+            leccionesCompletadas: [],
+            modulosAprobados: [],
+            medallas: [],
+            evaluaciones: {},
+            intentos: {}
+        };
+    }
     if (Array.isArray(sesion.progreso[cursoID])) {
-        sesion.progreso[cursoID] = { leccionesCompletadas: sesion.progreso[cursoID], modulosAprobados: [] };
+        sesion.progreso[cursoID] = {
+            leccionesCompletadas: sesion.progreso[cursoID],
+            modulosAprobados: [],
+            medallas: [],
+            evaluaciones: {},
+            intentos: {}
+        };
     }
 
+    // Agregar lección completada si no existe
     if (!sesion.progreso[cursoID].leccionesCompletadas.includes(lecID)) {
         sesion.progreso[cursoID].leccionesCompletadas.push(lecID);
     }
 
-    const uIdx = usuarios.findIndex(u => u.id === sesion.id);
-    if (uIdx !== -1) {
-        usuarios[uIdx].progreso = sesion.progreso;
-        await guardarTodo();
-    }
-    sessionStorage.setItem('aluSesion', JSON.stringify(sesion));
-
-    if (sesion) {
-        sesion.progreso = sesion.progreso || {};
-        sesion.certificadosCurso = sesion.certificadosCurso || [];
-        sesion.certificadosCarrera = sesion.certificadosCarrera || [];
-    }
-
-    document.getElementById('contenido-curso').innerHTML = renderizarCursoTeachlr(cursoActualData);
-
     const currentModule = cursoActualData.modulos[mIdx];
-    const allLessonsInModuleCompleted = currentModule.lecciones.every((_, index) =>
+    const tieneLecciones = currentModule && currentModule.lecciones && currentModule.lecciones.length > 0;
+    const allLessonsInModuleCompleted = tieneLecciones && currentModule.lecciones.every((_, index) =>
         sesion.progreso[cursoID].leccionesCompletadas.includes(`${mIdx}-${index}`)
     );
 
-    if (allLessonsInModuleCompleted && !sesion.progreso[cursoID].modulosAprobados.includes(String(mIdx))) {
-        if (currentModule.evaluacion && currentModule.evaluacion.preguntas && currentModule.evaluacion.preguntas.length > 0) {
-            alert(`¡Módulo "${currentModule.titulo}" finalizado! Procede a la evaluación.`);
-            mostrarEvaluacionModulo(cursoID, mIdx);
-            return;
+    const tieneEvaluacion = currentModule.evaluacion && currentModule.evaluacion.preguntas && currentModule.evaluacion.preguntas.length > 0;
+
+    // Si el módulo no tiene evaluación y se completaron todas sus lecciones, aprobar automáticamente el módulo
+    if (allLessonsInModuleCompleted && !tieneEvaluacion) {
+        if (!sesion.progreso[cursoID].modulosAprobados) sesion.progreso[cursoID].modulosAprobados = [];
+        if (!sesion.progreso[cursoID].modulosAprobados.includes(String(mIdx))) {
+            sesion.progreso[cursoID].modulosAprobados.push(String(mIdx));
         }
+
+        if (!sesion.progreso[cursoID].medallas) sesion.progreso[cursoID].medallas = [];
+        if (!sesion.progreso[cursoID].medallas.includes(String(mIdx))) {
+            sesion.progreso[cursoID].medallas.push(String(mIdx));
+        }
+
+        // Comprobar si completó todos los módulos del curso
+        const totalModulosCurso = (cursoActualData.modulos || []).length;
+        if (sesion.progreso[cursoID].modulosAprobados.length >= totalModulosCurso) {
+            sesion.certificadosCurso = sesion.certificadosCurso || [];
+            if (!sesion.certificadosCurso.includes(cursoID)) {
+                sesion.certificadosCurso.push(cursoID);
+            }
+        }
+    }
+
+    // Actualizar carreras
+    actualizarEstadoCarrerasUsuario(sesion);
+
+    // GUARDAR EN EL USUARIO Y EN EL SERVIDOR
+    await guardarProgresoUsuario();
+
+    // Renderizar de nuevo
+    document.getElementById('contenido-curso').innerHTML = renderizarCursoTeachlr(cursoActualData);
+
+    // Si todas las lecciones completadas y hay evaluación, mostrar evaluación
+    if (allLessonsInModuleCompleted &&
+        !sesion.progreso[cursoID].modulosAprobados.includes(String(mIdx)) &&
+        tieneEvaluacion) {
+        alert(`¡Módulo "${currentModule.titulo}" finalizado! Procede a la evaluación.`);
+        mostrarEvaluacionModulo(cursoID, mIdx);
+        return;
     }
 
     seleccionarLeccion(mIdx, lIdx);
@@ -1622,9 +1795,17 @@ window.validarEvaluacionModulo = async (mIdx) => {
     const min = (db.configuracion && db.configuracion.minAprobacion) || 70;
 
     // Inicializar progreso del curso
-    if (!sesion.progreso[cursoActualData.id]) sesion.progreso[cursoActualData.id] = { leccionesCompletadas: [], modulosAprobados: [] };
+    if (!sesion.progreso[cursoActualData.id]) {
+        sesion.progreso[cursoActualData.id] = {
+            leccionesCompletadas: [],
+            modulosAprobados: []
+        };
+    }
     if (Array.isArray(sesion.progreso[cursoActualData.id])) {
-        sesion.progreso[cursoActualData.id] = { leccionesCompletadas: sesion.progreso[cursoActualData.id], modulosAprobados: [] };
+        sesion.progreso[cursoActualData.id] = {
+            leccionesCompletadas: sesion.progreso[cursoActualData.id],
+            modulosAprobados: []
+        };
     }
     const progreso = sesion.progreso[cursoActualData.id];
 
@@ -1636,14 +1817,14 @@ window.validarEvaluacionModulo = async (mIdx) => {
     const numIntentos = progreso.intentos[mIdx];
     const maxIntentos = modulo.maxIntentos || 0;
 
-    // Guardar detalles de la última evaluación
+    // Guardar evaluación
     if (!progreso.evaluaciones) progreso.evaluaciones = {};
     progreso.evaluaciones[mIdx] = {
         calificacion: porcentaje,
         aprobado: porcentaje >= min
     };
 
-    // Renderizar feedback de cada respuesta
+    // Renderizar feedback
     const quizArea = document.querySelector('.quiz-area');
     if (quizArea) {
         document.querySelectorAll('.quiz-area input').forEach(input => input.disabled = true);
@@ -1677,7 +1858,7 @@ window.validarEvaluacionModulo = async (mIdx) => {
         }).join('');
     }
 
-    // Ocultar botón enviar
+    // Ocultar botón
     const submitBtn = document.getElementById('btn-enviar-evaluacion');
     if (submitBtn) submitBtn.style.display = 'none';
 
@@ -1689,26 +1870,23 @@ window.validarEvaluacionModulo = async (mIdx) => {
             progreso.modulosAprobados.push(String(mIdx));
         }
 
-        const modulosConEvaluacion = cursoActualData.modulos.filter(m => m.evaluacion && m.evaluacion.preguntas && m.evaluacion.preguntas.length > 0).length;
+        const modulosConEvaluacion = cursoActualData.modulos.filter(m =>
+            m.evaluacion && m.evaluacion.preguntas && m.evaluacion.preguntas.length > 0
+        ).length;
         if (progreso.modulosAprobados.length === modulosConEvaluacion) {
             if (!sesion.certificadosCurso.includes(cursoActualData.id)) {
                 sesion.certificadosCurso.push(cursoActualData.id);
             }
         }
 
-        // Asignar Medalla
+        // Medalla
         if (!progreso.medallas) progreso.medallas = [];
         if (!progreso.medallas.includes(String(mIdx))) {
             progreso.medallas.push(String(mIdx));
         }
 
-        sessionStorage.setItem('aluSesion', JSON.stringify(sesion));
-
-        const uIdx = usuarios.findIndex(u => u.id === sesion.id);
-        if (uIdx !== -1) {
-            usuarios[uIdx].progreso = sesion.progreso;
-            await guardarTodo();
-        }
+        // GUARDAR EN EL USUARIO Y EN EL SERVIDOR
+        await guardarProgresoUsuario();
 
         feedback.innerHTML = `
             <div class="alert alert-success text-center p-4">
@@ -1728,12 +1906,8 @@ window.validarEvaluacionModulo = async (mIdx) => {
         }
 
         if (puedeReintentar) {
-            sessionStorage.setItem('aluSesion', JSON.stringify(sesion));
-            const uIdx = usuarios.findIndex(u => u.id === sesion.id);
-            if (uIdx !== -1) {
-                usuarios[uIdx].progreso = sesion.progreso;
-                await guardarTodo();
-            }
+            // GUARDAR PROGRESO (intentos incrementados)
+            await guardarProgresoUsuario();
 
             let intentosMsg = `Intento realizado: <strong>${numIntentos}</strong>`;
             if (maxIntentos > 0) {
@@ -1752,18 +1926,16 @@ window.validarEvaluacionModulo = async (mIdx) => {
                     </div>
                 </div>`;
         } else {
-            // Superó los intentos: reiniciar intentos y lecciones completadas para este módulo
+            // Superó intentos - reiniciar lecciones
             progreso.intentos[mIdx] = 0;
             if (progreso.leccionesCompletadas) {
-                progreso.leccionesCompletadas = progreso.leccionesCompletadas.filter(lecId => !lecId.startsWith(mIdx + '-'));
+                progreso.leccionesCompletadas = progreso.leccionesCompletadas.filter(
+                    lecId => !lecId.startsWith(mIdx + '-')
+                );
             }
 
-            sessionStorage.setItem('aluSesion', JSON.stringify(sesion));
-            const uIdx = usuarios.findIndex(u => u.id === sesion.id);
-            if (uIdx !== -1) {
-                usuarios[uIdx].progreso = sesion.progreso;
-                await guardarTodo();
-            }
+            // GUARDAR REINICIO
+            await guardarProgresoUsuario();
 
             feedback.innerHTML = `
                 <div class="alert alert-danger text-center p-4">
@@ -1855,19 +2027,16 @@ function verificarAccesoLeccion(mIdx, lIdx) {
     const progreso = sesion.progreso[cursoActualData.id];
     if (!progreso) return false;
 
-    // Normalizar si es array
     if (Array.isArray(progreso)) {
         sesion.progreso[cursoActualData.id] = { leccionesCompletadas: progreso, modulosAprobados: [] };
     }
 
     const prog = sesion.progreso[cursoActualData.id];
 
-    // Si es la primera lección de un módulo posterior al primero, verificar módulo anterior aprobado
     if (lIdx === 0 && mIdx > 0) {
         return prog.modulosAprobados && prog.modulosAprobados.includes(String(mIdx - 1));
     }
 
-    // Verificar lección anterior
     let prevM = mIdx, prevL = lIdx - 1;
     if (prevL < 0) {
         prevM = mIdx - 1;
@@ -1916,7 +2085,6 @@ function renderizarCursoTeachlr(curso) {
                         ${yaTieneCertificado ? '<span class="badge bg-success">Certificado</span>' : ''}
                     </div>
                     
-                    <!-- Sección de Medallas -->
                     <div class="mt-3">
                         <h6 class="small fw-bold text-muted text-uppercase mb-2">Medallas Obtenidas</h6>
                         <div class="d-flex flex-wrap gap-2">
@@ -2028,6 +2196,10 @@ function mostrarDetalleCurso(cursoId) {
     }
 }
 
+// ============================================================
+// FUNCIONES DE ADMINISTRACIÓN - RESTABLECER Y MARCAR COMPLETADO
+// ============================================================
+
 window.abrirRestablecerAvance = (userId) => {
     const u = usuarios.find(user => user.id === userId);
     if (!u) return;
@@ -2038,11 +2210,9 @@ window.abrirRestablecerAvance = (userId) => {
     const select = document.getElementById('restablecer-curso-select');
     select.innerHTML = '<option value="">-- Seleccionar Curso --</option>';
 
-    // ✅ Obtener las claves (IDs de cursos) que el usuario tiene en progreso
     const cursosIds = Object.keys(u.progreso || {});
-    
+
     cursosIds.forEach(cursoId => {
-        // Buscar el curso completo en el array de cursos
         const curso = cursos.find(c => c.id === cursoId);
         if (curso) {
             select.innerHTML += `<option value="${curso.id}">${curso.titulo}</option>`;
@@ -2062,7 +2232,6 @@ window.cambiarCarreraRestablecer = () => {
     const body = document.getElementById('restablecer-modulos-body');
     const checkAll = document.getElementById('restablecer-select-all');
 
-    // ✅ Verificar que body existe
     if (!body) {
         console.error('Elemento restablecer-modulos-body no encontrado en el DOM');
         return;
@@ -2087,7 +2256,7 @@ window.cambiarCarreraRestablecer = () => {
     body.innerHTML = '';
 
     let tieneModulos = false;
-    
+
     if (curso.modulos && curso.modulos.length > 0) {
         curso.modulos.forEach((mod, mIdx) => {
             tieneModulos = true;
@@ -2132,7 +2301,7 @@ window.confirmarRestablecerAvance = async (completa) => {
 
     if (completa) {
         if (!confirm(`¿Estás seguro de restablecer por completo el avance del curso seleccionado para el usuario ${u.nombre}?`)) return;
-        
+
         const curso = cursos.find(c => c.id === cursoId);
         if (!curso) return;
 
@@ -2158,27 +2327,22 @@ window.confirmarRestablecerAvance = async (completa) => {
             if (u.progreso && u.progreso[courseId]) {
                 const prog = u.progreso[courseId];
 
-                // ✅ Quitar de módulos aprobados (convertir a número para comparar)
                 if (prog.modulosAprobados) {
                     prog.modulosAprobados = prog.modulosAprobados.filter(idx => parseInt(idx) !== mIdx);
                 }
 
-                // ✅ Quitar medallas
                 if (prog.medallas) {
                     prog.medallas = prog.medallas.filter(idx => parseInt(idx) !== mIdx);
                 }
 
-                // ✅ Eliminar evaluación
                 if (prog.evaluaciones && prog.evaluaciones[mIdx]) {
                     delete prog.evaluaciones[mIdx];
                 }
 
-                // ✅ Reiniciar intentos
                 if (prog.intentos && prog.intentos[mIdx]) {
                     delete prog.intentos[mIdx];
                 }
 
-                // ✅ Quitar lecciones completadas del módulo
                 if (prog.leccionesCompletadas) {
                     prog.leccionesCompletadas = prog.leccionesCompletadas.filter(lecId => {
                         return !lecId.startsWith(mIdx + '-');
@@ -2186,7 +2350,6 @@ window.confirmarRestablecerAvance = async (completa) => {
                 }
             }
 
-            // Limpiar certificado del curso si ya no tiene módulos aprobados
             if (u.progreso && u.progreso[courseId]) {
                 const prog = u.progreso[courseId];
                 if (prog.modulosAprobados && prog.modulosAprobados.length === 0) {
@@ -2198,6 +2361,7 @@ window.confirmarRestablecerAvance = async (completa) => {
         });
     }
 
+    actualizarEstadoCarrerasUsuario(u);
     await guardarTodo();
     alert("Avance restablecido con éxito.");
 
@@ -2213,7 +2377,7 @@ window.confirmarRestablecerAvance = async (completa) => {
 
     location.reload();
 };
-// Función para abrir el modal de marcar módulos como completados (MUESTRA TODOS LOS CURSOS)
+
 window.abrirMarcarCompletado = (userId) => {
     const u = usuarios.find(user => user.id === userId);
     if (!u) return;
@@ -2222,9 +2386,8 @@ window.abrirMarcarCompletado = (userId) => {
     document.getElementById('marcar-user-nombre').value = u.nombre;
 
     const select = document.getElementById('marcar-curso-select');
-    // Mostrar TODOS los cursos del sistema, sin filtrar
     select.innerHTML = '<option value="">-- Seleccionar Curso --</option>';
-    
+
     cursos.forEach(curso => {
         select.innerHTML += `<option value="${curso.id}">${curso.titulo}</option>`;
     });
@@ -2236,7 +2399,6 @@ window.abrirMarcarCompletado = (userId) => {
     bModal.show();
 };
 
-// Función para cargar los módulos del curso seleccionado (MUESTRA TODOS LOS MÓDULOS)
 window.cargarModulosParaMarcar = () => {
     const cursoId = document.getElementById('marcar-curso-select').value;
     const userId = document.getElementById('marcar-user-id').value;
@@ -2259,8 +2421,8 @@ window.cargarModulosParaMarcar = () => {
 
     const curso = cursos.find(c => c.id === cursoId);
     const usuario = usuarios.find(u => u.id === userId);
-    
-    if (!curso) {
+
+    if (!curso || !usuario) {
         if (container) container.style.display = 'none';
         body.innerHTML = '';
         return;
@@ -2270,39 +2432,36 @@ window.cargarModulosParaMarcar = () => {
     body.innerHTML = '';
 
     let tieneModulos = false;
-    
+
     if (curso.modulos && curso.modulos.length > 0) {
-        // Asegurar que el usuario tenga estructura de progreso para este curso
         if (!usuario.progreso) usuario.progreso = {};
         if (!usuario.progreso[cursoId]) {
-            usuario.progreso[cursoId] = { 
-                leccionesCompletadas: [], 
-                modulosAprobados: [], 
-                medallas: [], 
-                evaluaciones: {}, 
-                intentos: {} 
+            usuario.progreso[cursoId] = {
+                leccionesCompletadas: [],
+                modulosAprobados: [],
+                medallas: [],
+                evaluaciones: {},
+                intentos: {}
             };
         }
-        
+
         const modulosAprobados = usuario.progreso[cursoId]?.modulosAprobados || [];
-        
-        // Mostrar TODOS los módulos del curso
+
         curso.modulos.forEach((mod, mIdx) => {
             tieneModulos = true;
             const yaAprobado = modulosAprobados.includes(String(mIdx));
-            const estadoActual = yaAprobado ? 
-                '<span class="badge bg-success"><i class="bi bi-check-circle"></i> Completado</span>' : 
+            const estadoActual = yaAprobado ?
+                '<span class="badge bg-success"><i class="bi bi-check-circle"></i> Completado</span>' :
                 '<span class="badge bg-secondary"><i class="bi bi-hourglass"></i> Pendiente</span>';
-            
-            // Mostrar información del módulo
+
             const tieneEvaluacion = mod.evaluacion && mod.evaluacion.preguntas && mod.evaluacion.preguntas.length > 0;
-            const badgeEvaluacion = tieneEvaluacion ? 
-                '<span class="badge bg-info ms-2">Con Evaluación</span>' : 
+            const badgeEvaluacion = tieneEvaluacion ?
+                '<span class="badge bg-info ms-2">Con Evaluación</span>' :
                 '<span class="badge bg-secondary ms-2">Sin Evaluación</span>';
-            
+
             const totalLecciones = mod.lecciones ? mod.lecciones.length : 0;
             const leccionesInfo = totalLecciones > 0 ? `${totalLecciones} lección(es)` : 'Sin lecciones';
-            
+
             body.innerHTML += `
                 <tr>
                     <td style="width: 40px;" class="text-center">
@@ -2325,7 +2484,7 @@ window.cargarModulosParaMarcar = () => {
                     <td class="text-center">
                         ${estadoActual}
                     </td>
-                </table>
+                </tr>
             `;
         });
     }
@@ -2333,12 +2492,11 @@ window.cargarModulosParaMarcar = () => {
     if (!tieneModulos) {
         body.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Este curso no tiene módulos definidos. Crea módulos primero.</td></tr>';
     } else {
-        // Mostrar resumen del curso
         const totalModulos = curso.modulos.length;
+        const modulosAprobados = usuario.progreso[cursoId]?.modulosAprobados || [];
         const completados = modulosAprobados.length;
         const progressPercent = totalModulos > 0 ? Math.round((completados / totalModulos) * 100) : 0;
-        
-        // Agregar barra de progreso antes de la tabla
+
         const progressRow = document.createElement('tr');
         progressRow.innerHTML = `
             <td colspan="4" class="bg-light">
@@ -2355,24 +2513,22 @@ window.cargarModulosParaMarcar = () => {
     }
 };
 
-// Función para seleccionar/deseleccionar todos los módulos disponibles (no completados)
 window.seleccionarTodosModulosParaMarcar = (check) => {
     document.querySelectorAll('.modulo-marcar-checkbox:not(:disabled)').forEach(cb => {
         cb.checked = check;
     });
 };
 
-// Función principal para marcar módulos como completados (ACTUALIZADA)
 window.confirmarMarcarCompletado = async () => {
     const userId = document.getElementById('marcar-user-id').value;
     const cursoId = document.getElementById('marcar-curso-select').value;
     const uIdx = usuarios.findIndex(u => u.id === userId);
-    
+
     if (uIdx === -1) {
         alert("Usuario no encontrado.");
         return;
     }
-    
+
     const usuario = usuarios[uIdx];
 
     if (!cursoId) {
@@ -2392,59 +2548,53 @@ window.confirmarMarcarCompletado = async () => {
         return;
     }
 
-    // Confirmar acción con detalles
     const moduloNombres = checked.map(cb => {
         const mIdx = parseInt(cb.getAttribute('data-module-idx'));
         return curso.modulos[mIdx]?.titulo || `Módulo ${mIdx + 1}`;
     }).join('\n• ');
-    
+
     if (!confirm(`⚠️ ¿Estás seguro de marcar como COMPLETADOS los siguientes módulos del curso "${curso.titulo}" para el usuario ${usuario.nombre}?\n\n• ${moduloNombres}\n\n✅ Esto:\n• Aprobará automáticamente sus evaluaciones\n• Otorgará las medallas correspondientes\n• Marcará todas las lecciones como completadas\n• Actualizará su progreso general\n\nEsta acción NO se puede deshacer fácilmente.`)) {
         return;
     }
 
-    // Inicializar progreso si no existe
-    if (!usuario.progreso) usuario.progreso = {};
-    if (!usuario.progreso[cursoId]) {
-        usuario.progreso[cursoId] = { 
-            leccionesCompletadas: [], 
-            modulosAprobados: [], 
-            medallas: [], 
-            evaluaciones: {}, 
-            intentos: {} 
+    if (!usuario.progreso || Array.isArray(usuario.progreso) || typeof usuario.progreso !== 'object') {
+        usuario.progreso = {};
+    }
+    if (!usuario.progreso[cursoId] || Array.isArray(usuario.progreso[cursoId]) || typeof usuario.progreso[cursoId] !== 'object') {
+        usuario.progreso[cursoId] = {
+            leccionesCompletadas: [],
+            modulosAprobados: [],
+            medallas: [],
+            evaluaciones: {},
+            intentos: {}
         };
     }
 
     const progreso = usuario.progreso[cursoId];
-    
-    // Obtener el mínimo de aprobación de la configuración
     const minAprobacion = (db.configuracion && db.configuracion.minAprobacion) || 70;
-    
+
     let marcadosExitosos = 0;
     let errores = [];
 
-    // Procesar cada módulo seleccionado
     for (const cb of checked) {
         const mIdx = parseInt(cb.getAttribute('data-module-idx'));
         const modulo = curso.modulos[mIdx];
-        
+
         if (!modulo) {
             errores.push(`Módulo índice ${mIdx} no encontrado`);
             continue;
         }
-        
+
         try {
-            // 1. Marcar módulo como aprobado si no lo está
             if (!progreso.modulosAprobados.includes(String(mIdx))) {
                 progreso.modulosAprobados.push(String(mIdx));
             }
-            
-            // 2. Otorgar medalla
+
             if (!progreso.medallas) progreso.medallas = [];
             if (!progreso.medallas.includes(String(mIdx))) {
                 progreso.medallas.push(String(mIdx));
             }
-            
-            // 3. Marcar evaluación como aprobada (si existe)
+
             if (modulo.evaluacion && modulo.evaluacion.preguntas && modulo.evaluacion.preguntas.length > 0) {
                 if (!progreso.evaluaciones) progreso.evaluaciones = {};
                 if (!progreso.evaluaciones[mIdx]) {
@@ -2461,10 +2611,9 @@ window.confirmarMarcarCompletado = async () => {
                     progreso.evaluaciones[mIdx].fecha = new Date().toISOString();
                 }
             }
-            
-            // 4. Marcar todas las lecciones del módulo como completadas
+
             if (!progreso.leccionesCompletadas) progreso.leccionesCompletadas = [];
-            
+
             if (modulo.lecciones && modulo.lecciones.length > 0) {
                 for (let lIdx = 0; lIdx < modulo.lecciones.length; lIdx++) {
                     const lecId = `${mIdx}-${lIdx}`;
@@ -2473,22 +2622,20 @@ window.confirmarMarcarCompletado = async () => {
                     }
                 }
             }
-            
-            // 5. Registrar intento (marcado manualmente)
+
             if (!progreso.intentos) progreso.intentos = {};
             progreso.intentos[mIdx] = 1;
-            
+
             marcadosExitosos++;
-            
+
         } catch (err) {
             errores.push(`Módulo "${modulo.titulo}": ${err.message}`);
         }
     }
-    
-    // Verificar si el curso completo está terminado para otorgar certificado
+
     const modulosConEvaluacion = curso.modulos.filter(m => m.evaluacion && m.evaluacion.preguntas && m.evaluacion.preguntas.length > 0).length;
     const modulosRequeridosParaCertificado = modulosConEvaluacion > 0 ? modulosConEvaluacion : curso.modulos.length;
-    
+
     if (progreso.modulosAprobados.length >= modulosRequeridosParaCertificado) {
         if (!usuario.certificadosCurso) usuario.certificadosCurso = [];
         if (!usuario.certificadosCurso.includes(cursoId)) {
@@ -2496,37 +2643,43 @@ window.confirmarMarcarCompletado = async () => {
             console.log(`✅ Certificado otorgado para el curso: ${curso.titulo} a ${usuario.nombre}`);
         }
     }
-    
-    // Guardar cambios
+
+    // Actualizar carreras del usuario
+    actualizarEstadoCarrerasUsuario(usuario);
+
     await guardarTodo();
-    
-    // Mostrar mensaje de resultado
+
     let mensaje = `✅ Se han marcado ${marcadosExitosos} módulo(s) como completados exitosamente para ${usuario.nombre}.`;
     if (errores.length > 0) {
         mensaje += `\n\n⚠️ Errores:\n• ${errores.join('\n• ')}`;
     }
-    
-    // Verificar si el usuario ya completó todos los módulos del curso
+
     const totalModulosCurso = curso.modulos.length;
     const progresoActual = (progreso.modulosAprobados || []).length;
     if (progresoActual >= totalModulosCurso) {
         mensaje += `\n\n🎉 ¡FELICIDADES! El usuario ha completado TODOS los módulos del curso "${curso.titulo}". Se ha generado su certificado.`;
     }
-    
+
+    // Verificar si alguna carrera se completó
+    const carrerasCompletas = (usuario.carrerasAsignadas || []).filter(ca => ca.estado === 'Completada').map(ca => {
+        const cObj = carreras.find(c => c.id === ca.id);
+        return cObj ? cObj.nombre : ca.id;
+    });
+    if (carrerasCompletas.length > 0) {
+        mensaje += `\n\n🎓 ¡CARRERA COMPLETADA! ${usuario.nombre} ha completado la carrera: ${carrerasCompletas.join(', ')}.`;
+    }
+
     alert(mensaje);
-    
-    // Cerrar modal y limpiar
+
     const modalEl = document.getElementById('marcarCompletadoModal');
     const bModal = bootstrap.Modal.getOrCreateInstance(modalEl);
     bModal.hide();
-    
-    // Limpiar backdrop
+
     const backdrop = document.querySelector('.modal-backdrop');
     if (backdrop) backdrop.remove();
     document.body.classList.remove('modal-open');
     document.body.style.overflow = '';
     document.body.style.paddingRight = '';
-    
-    // Recargar la página para reflejar cambios
+
     location.reload();
 };
