@@ -3,57 +3,143 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Galería de Cursos</title>
+    <title>Campus Virtual — Universidad del Aluminio</title>
+    <!-- Google Fonts & Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet" />
     <link rel="stylesheet" href="style.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
 
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <!-- Navbar Principal -->
+    <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
         <div class="container">
-            <a class="navbar-brand" href="index.html">Universidad del Aluminio</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
+            <a class="navbar-brand" href="index.html">
+                <i class="bi bi-mortarboard-fill"></i>
+                <span>Universidad del Aluminio</span>
+            </a>
+            
+            <div class="d-flex align-items-center gap-2 order-lg-last">
+                <div id="save-indicator" class="save-indicator"></div>
+                <div id="nav-user-info" class="d-none d-sm-flex align-items-center gap-2"></div>
+                <button class="btn btn-outline-light btn-sm" onclick="logout()">
+                    <i class="bi bi-box-arrow-right"></i>
+                    <span class="d-none d-md-inline">Cerrar Sesión</span>
+                </button>
+                <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+            </div>
+
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                     <li class="nav-item">
-                        <a class="nav-link" href="index.html">Mis Cursos</a>
+                        <a class="nav-link active" href="index.html"><i class="bi bi-grid-fill me-1"></i>Mis Cursos</a>
                     </li>
-                    <script>
-                        const user = JSON.parse(sessionStorage.getItem('aluSesion'));
-                        if (user && user.rol === 'admin') {
-                            document.write('<li class="nav-item"><a class="nav-link" href="admin.html">Panel Admin</a></li>');
-                        }
-                    </script>
-                    <li class="nav-item"><button class="btn btn-link nav-link" onclick="logout()">Salir</button></li>
+                    <li class="nav-item" id="nav-admin-link" style="display: none;">
+                        <a class="nav-link" href="admin.html"><i class="bi bi-speedometer2 me-1"></i>Panel de Control</a>
+                    </li>
                 </ul>
             </div>
         </div>
     </nav>
 
-    <header class="bg-light py-5">
-        <div class="container text-center">
-            <h1 class="display-5">Descubre tus próximos cursos</h1>
-            <p class="lead">Encuentra formación práctica y actualizada para avanzar en tu carrera.</p>
-            <a href="#galeria-cursos" class="btn btn-primary btn-lg">Ver cursos</a>
+    <!-- Hero Banner con Saludo y Estadísticas -->
+    <header class="hero-banner">
+        <div class="container position-relative">
+            <div class="row align-items-center g-4">
+                <div class="col-lg-6">
+                    <div id="user-greeting-badge" class="badge-soft-primary d-inline-flex mb-2 bg-white bg-opacity-10 text-white border border-white border-opacity-25 px-3 py-1">
+                        <i class="bi bi-person-check-fill me-1"></i> <span id="user-role-label">Estudiante</span>
+                    </div>
+                    <h1 class="mb-2" id="user-greeting-title">¡Bienvenido a tu Formación!</h1>
+                    <p class="mb-0 text-white-50">Explora tus programas académicos, realiza lecciones interactivas y certifica tus competencias técnicas.</p>
+                </div>
+                <div class="col-lg-6">
+                    <div class="row g-3" id="student-kpis">
+                        <div class="col-4">
+                            <div class="kpi-card p-3">
+                                <div class="kpi-icon blue"><i class="bi bi-journal-bookmark-fill"></i></div>
+                                <div>
+                                    <div class="kpi-value" id="kpi-cursos-total">0</div>
+                                    <div class="kpi-label">Disponibles</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="kpi-card p-3">
+                                <div class="kpi-icon amber"><i class="bi bi-hourglass-split"></i></div>
+                                <div>
+                                    <div class="kpi-value" id="kpi-cursos-progreso">0</div>
+                                    <div class="kpi-label">En Curso</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="kpi-card p-3">
+                                <div class="kpi-icon green"><i class="bi bi-award-fill"></i></div>
+                                <div>
+                                    <div class="kpi-value" id="kpi-cursos-completados">0</div>
+                                    <div class="kpi-label">Completados</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </header>
 
-    <main class="container my-5" id="galeria-cursos">
-        <div class="row g-4">
+    <!-- Contenido Principal: Filtros y Galería -->
+    <main class="container my-4">
+        
+        <!-- Barra de Búsqueda y Filtros de Categoría -->
+        <div class="filter-toolbar">
+            <div class="row align-items-center g-3">
+                <div class="col-md-5">
+                    <div class="search-input-group">
+                        <i class="bi bi-search"></i>
+                        <input type="text" id="input-buscar-cursos" class="form-control" placeholder="Buscar cursos por título o tema..." oninput="filtrarGaleriaCursos()">
+                    </div>
+                </div>
+                <div class="col-md-7">
+                    <div class="d-flex flex-wrap gap-2 justify-content-md-end" id="filtros-categoria">
+                        <button type="button" class="filter-pill-btn active" data-filter="todos" onclick="setFiltroGaleria('todos')">Todos</button>
+                        <button type="button" class="filter-pill-btn" data-filter="progreso" onclick="setFiltroGaleria('progreso')">En Progreso</button>
+                        <button type="button" class="filter-pill-btn" data-filter="completados" onclick="setFiltroGaleria('completados')">Completados</button>
+                        <button type="button" class="filter-pill-btn" data-filter="libre" onclick="setFiltroGaleria('libre')">Acceso Libre</button>
+                        <button type="button" class="filter-pill-btn" data-filter="especializado" onclick="setFiltroGaleria('especializado')">Especializados</button>
+                    </div>
+                </div>
             </div>
+        </div>
+
+        <!-- Grid de Cursos -->
+        <section id="galeria-cursos">
+            <div class="row g-4" id="galeria-cursos-row">
+                <div class="col-12 text-center py-5">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <p class="text-muted mt-2">Cargando catálogo de cursos...</p>
+                </div>
+            </div>
+        </section>
+
     </main>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="script.js"></script>
+    <footer class="py-4 text-center mt-5">
+        <div class="container">
+            <p class="mb-0 text-white-50">© 2026 Universidad del Aluminio • Desarrollado por Ambar Vegas</p>
+        </div>
+    </footer>
 
-<footer class="py-3 text-center">
-    <div class="container">
-        <p class="mb-0">Desarrollado por Ambar Vegas</p>
-    </div>
-</footer>
+    <!-- Scripts Esenciales -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="js/ui/modal.js"></script>
+    <script src="js/api.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>

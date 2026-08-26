@@ -1,185 +1,292 @@
 <?php
+/**
+ * api.php - Universidad del Aluminio
+ * API REST completa con:
+ *  - Autenticacion server-side (bcrypt) con rate limiting
+ *  - Endpoints granulares por entidad
+ *  - Log de actividad
+ *  - Headers de seguridad HTTP
+ *  - Compatibilidad total con frontend existente (GET/POST sin ?action)
+ */
+
+// ============================================================
+// HEADERS DE SEGURIDAD + CORS
+// ============================================================
 if (!headers_sent()) {
     header("Access-Control-Allow-Origin: *");
     header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
     header("Access-Control-Allow-Headers: Content-Type");
-    header("Content-Type: application/json");
+    header("Content-Type: application/json; charset=utf-8");
+    header("X-Content-Type-Options: nosniff");
+    header("X-Frame-Options: SAMEORIGIN");
+    header("Referrer-Policy: strict-origin-when-cross-origin");
 }
 
-$db_file = __DIR__ . '/db.json';
-$bak_file = __DIR__ . '/db.json.bak';
-$tmp_file = __DIR__ . '/db.json.tmp';
-$lock_file = __DIR__ . '/db.lock';
-$backups_dir = __DIR__ . '/backups';
-
-$initial_structure = [
-    "usuarios" => [],
-    "cursos" => [],
-    "carreras" => [],
-    "rolesConfig" => [],
-    "solicitudesRegistro" => [],
-    "solicitudesCursos" => [],
-    "configuracion" => ["nombreInstitucion" => "Universidad del Aluminio", "logo" => "", "minAprobacion" => 70]
-];
-
-/**
- * Valida si el payload de datos JSON posee la estructura requerida.
- */
-if (!function_exists('validate_db_structure')) {
-    function validate_db_structure($data) {
-        if (!is_array($data)) return false;
-        $required_keys = ['usuarios', 'cursos', 'carreras', 'rolesConfig', 'solicitudesRegistro', 'solicitudesCursos'];
-        foreach ($required_keys as $key) {
-            if (!array_key_exists($key, $data) || !is_array($data[$key])) {
-                return false;
-            }
-        }
-        return true;
-    }
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
 }
 
-/**
- * Lee la base de datos de manera segura con auto-recuperación desde backup.
- */
-if (!function_exists('read_db_safe')) {
-    function read_db_safe($db_file, $bak_file, $lock_file, $initial_structure) {
-        $lock_fp = fopen($lock_file, 'c+');
-        if ($lock_fp) flock($lock_fp, LOCK_SH);
+require_once __DIR__ . '/db_mysql.php';
 
-        $content = null;
-        if (file_exists($db_file)) {
-            $raw = @file_get_contents($db_file);
-            $decoded = json_decode($raw, true);
-            if (json_last_error() === JSON_ERROR_NONE && validate_db_structure($decoded)) {
-                $content = $raw;
-            }
-        }
-
-        // Auto-recuperación si db.json falta o está corrupto
-        if ($content === null && file_exists($bak_file)) {
-            $raw = @file_get_contents($bak_file);
-            $decoded = json_decode($raw, true);
-            if (json_last_error() === JSON_ERROR_NONE && validate_db_structure($decoded)) {
-                $content = $raw;
-                // Restaurar db.json desde la copia de respaldo válida
-                @file_put_contents($db_file, $content);
-            }
-        }
-
-        if ($lock_fp) {
-            flock($lock_fp, LOCK_UN);
-            fclose($lock_fp);
-        }
-
-        if ($content !== null) {
-            return $content;
-        }
-
-        return json_encode($initial_structure, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-    }
+try {
+    $conn = db_connect();
+} catch (Throwable $e) {
+    http_response_code(503);
+    echo json_encode(['error' => 'No se pudo conectar a la base de datos: ' . $e->getMessage()]);
+    exit;
 }
 
-/**
- * Escribe en la base de datos de forma atómica, con bloqueos y backups.
- */
-if (!function_exists('write_db_safe')) {
-    function write_db_safe($db_file, $bak_file, $tmp_file, $lock_file, $backups_dir, $json_raw, $decoded_data) {
-        // 1. Obtener bloqueo exclusivo
-        $lock_fp = fopen($lock_file, 'c+');
-        if (!$lock_fp || !flock($lock_fp, LOCK_EX)) {
-            if ($lock_fp) fclose($lock_fp);
-            return false;
+function jsonBody(): array {
+    $json = file_get_contents('php://input');
+    if (empty($json)) return [];
+    $decoded = json_decode($json, true);
+    return (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) ? $decoded : [];
+}
+
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+$action = $_GET['action'] ?? 'db';
+
+switch ($action) {
+
+    // ------ COMPATIBILIDAD TOTAL: GET/POST sin ?action ----------
+    case 'db':
+        if ($method === 'GET') {
+            try { echo json_encode(db_read_safe($conn), JSON_UNESCAPED_UNICODE); }
+            catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+            break;
         }
-
-        try {
-            // 2. Crear respaldo db.json.bak si db.json existe y es válido
-            if (file_exists($db_file)) {
-                $current_raw = @file_get_contents($db_file);
-                $current_decoded = json_decode($current_raw, true);
-                if (json_last_error() === JSON_ERROR_NONE && validate_db_structure($current_decoded)) {
-                    @copy($db_file, $bak_file);
-
-                    // Crear respaldo rotatorio opcional en la carpeta backups/
-                    if (!is_dir($backups_dir)) {
-                        @mkdir($backups_dir, 0755, true);
-                    }
-                    if (is_dir($backups_dir)) {
-                        $timestamp = date('Ymd_His');
-                        @copy($db_file, $backups_dir . "/db_{$timestamp}.json");
-                        // Mantener únicamente los últimos 20 backups
-                        $backups = glob($backups_dir . '/db_*.json');
-                        if (is_array($backups) && count($backups) > 20) {
-                            usort($backups, function($a, $b) { return filemtime($a) - filemtime($b); });
-                            while (count($backups) > 20) {
-                                $old_file = array_shift($backups);
-                                @unlink($old_file);
-                            }
-                        }
-                    }
+        if ($method === 'POST') {
+            $body = jsonBody();
+            if (empty($body)) { http_response_code(400); echo json_encode(['error' => 'Datos invalidos o vacios']); break; }
+            foreach (['usuarios','cursos','carreras','rolesConfig','solicitudesRegistro','solicitudesCursos'] as $k) {
+                if (!isset($body[$k]) || !is_array($body[$k])) {
+                    http_response_code(400); echo json_encode(['error' => "Propiedad faltante: '$k'"]); $conn->close(); exit;
                 }
             }
-
-            // 3. Escribir al archivo temporal .tmp
-            $formatted_json = json_encode($decoded_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-            $written = file_put_contents($tmp_file, $formatted_json);
-            if ($written === false) {
-                flock($lock_fp, LOCK_UN);
-                fclose($lock_fp);
-                return false;
-            }
-
-            // 4. Renombrado atómico
-            $renamed = rename($tmp_file, $db_file);
-
-            flock($lock_fp, LOCK_UN);
-            fclose($lock_fp);
-
-            return $renamed;
-        } catch (\Throwable $e) {
-            if (file_exists($tmp_file)) @unlink($tmp_file);
-            if ($lock_fp) {
-                flock($lock_fp, LOCK_UN);
-                fclose($lock_fp);
-            }
-            return false;
+            try { db_write_all($conn, $body); echo json_encode(['message' => 'Guardado en MySQL']); }
+            catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+            break;
         }
-    }
+        http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break;
+
+    // ------ LOGIN SERVER-SIDE ------------------------------------
+    case 'login':
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body  = jsonBody();
+        $id    = trim((string)($body['id']    ?? ''));
+        $clave = trim((string)($body['clave'] ?? ''));
+        if (!$id || !$clave) { http_response_code(400); echo json_encode(['error' => 'Se requieren id y clave']); break; }
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+        if (db_is_rate_limited($conn, $ip)) {
+            http_response_code(429);
+            echo json_encode(['error' => 'Demasiados intentos fallidos. Espera 15 minutos.']);
+            break;
+        }
+        $usuario = db_verify_login($conn, $id, $clave);
+        if (!$usuario) {
+            db_record_failed_login($conn, $ip);
+            db_log_activity($conn, $id, 'LOGIN_FALLIDO', "IP: $ip", $ip);
+            http_response_code(401);
+            echo json_encode(['error' => 'Cedula o clave incorrecta']);
+            break;
+        }
+        db_clear_login_attempts($conn, $ip);
+        db_log_activity($conn, $id, 'LOGIN_EXITOSO', '', $ip);
+        echo json_encode(['usuario' => $usuario], JSON_UNESCAPED_UNICODE);
+        break;
+
+    // ------ MIGRACION CONTRASENAS --------------------------------
+    case 'hash_passwords':
+        if (($_GET['key'] ?? '') !== 'HASH2026') { http_response_code(403); echo json_encode(['error' => 'Acceso denegado']); break; }
+        try { $n = db_hash_all_passwords($conn); echo json_encode(['message' => "Hasheadas: $n contrasenas"]); }
+        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        break;
+
+    // ------ SOLICITUD DE REGISTRO --------------------------------
+    case 'solicitar_registro':
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body = jsonBody();
+        $sol = [
+            'id'               => trim($body['id']    ?? ''),
+            'nombre'           => trim($body['nombre'] ?? ''),
+            'clave'            => trim($body['clave']  ?? ''),
+            'perfilDeseado'    => trim($body['perfilDeseado'] ?? 'participante'),
+            'fecha'            => date('d/m/Y'),
+            'autoAssignCareerId' => $body['autoAssignCareerId'] ?? null,
+        ];
+        if (!$sol['id'] || !$sol['nombre'] || !$sol['clave']) {
+            http_response_code(400); echo json_encode(['error' => 'Campos requeridos: id, nombre, clave']); break;
+        }
+        try { db_add_solicitud_registro($conn, $sol); echo json_encode(['message' => 'Solicitud enviada']); }
+        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        break;
+
+    // ------ USUARIOS ---------------------------------------------
+    case 'guardar_usuario':
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body = jsonBody();
+        if (empty($body['id'])) { http_response_code(400); echo json_encode(['error' => 'Campo requerido: id']); break; }
+        try { db_upsert_usuario($conn, $body); echo json_encode(['message' => 'Usuario guardado']); }
+        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        break;
+
+    case 'eliminar_usuario':
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body = jsonBody(); $id = trim($body['id'] ?? '');
+        if (!$id) { http_response_code(400); echo json_encode(['error' => 'Campo requerido: id']); break; }
+        if ($id === '25482938') { http_response_code(403); echo json_encode(['error' => 'No se puede eliminar al admin principal']); break; }
+        try { db_delete_usuario($conn, $id); echo json_encode(['message' => 'Usuario eliminado']); }
+        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        break;
+
+    // ------ CURSOS -----------------------------------------------
+    case 'guardar_curso':
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body = jsonBody();
+        if (empty($body['id'])) { http_response_code(400); echo json_encode(['error' => 'Campo requerido: id']); break; }
+        try { db_upsert_curso($conn, $body); echo json_encode(['message' => 'Curso guardado']); }
+        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        break;
+
+    case 'eliminar_curso':
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body = jsonBody(); $id = trim($body['id'] ?? '');
+        if (!$id) { http_response_code(400); echo json_encode(['error' => 'Campo requerido: id']); break; }
+        try { db_delete_curso($conn, $id); echo json_encode(['message' => 'Curso eliminado']); }
+        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        break;
+
+    // ------ CARRERAS ---------------------------------------------
+    case 'guardar_carrera':
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body = jsonBody();
+        if (empty($body['id'])) { http_response_code(400); echo json_encode(['error' => 'Campo requerido: id']); break; }
+        try { db_upsert_carrera($conn, $body); echo json_encode(['message' => 'Carrera guardada']); }
+        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        break;
+
+    case 'eliminar_carrera':
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body = jsonBody(); $id = trim($body['id'] ?? '');
+        if (!$id) { http_response_code(400); echo json_encode(['error' => 'Campo requerido: id']); break; }
+        try { db_delete_carrera($conn, $id); echo json_encode(['message' => 'Carrera eliminada']); }
+        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        break;
+
+    // ------ ROLES ------------------------------------------------
+    case 'guardar_rol':
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body = jsonBody();
+        if (empty($body['id'])) { http_response_code(400); echo json_encode(['error' => 'Campo requerido: id']); break; }
+        try { db_upsert_rol($conn, $body); echo json_encode(['message' => 'Rol guardado']); }
+        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        break;
+
+    case 'eliminar_rol':
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body = jsonBody(); $id = trim($body['id'] ?? '');
+        if (!$id) { http_response_code(400); echo json_encode(['error' => 'Campo requerido: id']); break; }
+        try { db_delete_rol($conn, $id); echo json_encode(['message' => 'Rol eliminado']); }
+        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        break;
+
+    // ------ PROGRESO (el endpoint mas llamado) -------------------
+    case 'guardar_progreso':
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body = jsonBody();
+        $uid = trim($body['usuario_id'] ?? '');
+        $cid = trim($body['curso_id']   ?? '');
+        if (!$uid || !$cid) { http_response_code(400); echo json_encode(['error' => 'Se requieren usuario_id y curso_id']); break; }
+        $prog = [
+            'leccionesCompletadas' => $body['leccionesCompletadas'] ?? [],
+            'modulosAprobados'     => $body['modulosAprobados']     ?? [],
+            'medallas'             => $body['medallas']             ?? [],
+            'evaluaciones'         => $body['evaluaciones']         ?? (object)[],
+            'intentos'             => $body['intentos']             ?? (object)[],
+        ];
+        try {
+            db_upsert_progreso($conn, $uid, $cid, $prog);
+            if (!empty($body['certificadosCurso']) && is_array($body['certificadosCurso'])) {
+                foreach ($body['certificadosCurso'] as $certId) {
+                    $s = $conn->prepare("INSERT IGNORE INTO `usuario_certificados_curso` (usuario_id, curso_id) VALUES (?,?)");
+                    $s->bind_param('ss', $uid, $certId); $s->execute();
+                }
+            }
+            echo json_encode(['message' => 'Progreso guardado']);
+        } catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        break;
+
+    // ------ SOLICITUDES ------------------------------------------
+    case 'solicitar_acceso_curso':
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body = jsonBody();
+        try { db_add_solicitud_curso($conn, $body); echo json_encode(['message' => 'Solicitud enviada']); }
+        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        break;
+
+    case 'eliminar_solicitud_registro':
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body = jsonBody(); $id = trim($body['id'] ?? '');
+        if (!$id) { http_response_code(400); echo json_encode(['error' => 'Campo requerido: id']); break; }
+        try { db_delete_solicitud_registro($conn, $id); echo json_encode(['message' => 'Solicitud eliminada']); }
+        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        break;
+
+    case 'eliminar_solicitud_curso':
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body = jsonBody();
+        $uid = trim($body['usuario_id'] ?? ''); $cid = trim($body['curso_id'] ?? '');
+        if (!$uid || !$cid) { http_response_code(400); echo json_encode(['error' => 'Se requieren usuario_id y curso_id']); break; }
+        try { db_delete_solicitud_curso($conn, $uid, $cid); echo json_encode(['message' => 'Solicitud de curso eliminada']); }
+        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        break;
+
+    // ------ CONFIGURACION ----------------------------------------
+    case 'guardar_config':
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body = jsonBody(); $clave = trim($body['clave'] ?? '');
+        if (!$clave || !array_key_exists('valor', $body)) {
+            http_response_code(400); echo json_encode(['error' => 'Se requieren clave y valor']); break;
+        }
+        try { db_upsert_config($conn, $clave, $body['valor']); echo json_encode(['message' => 'Configuracion guardada']); }
+        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        break;
+
+    // ------ LECTURA INDIVIDUAL -----------------------------------
+    case 'usuarios':
+        if ($method !== 'GET') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        try { $d = db_read_safe($conn); echo json_encode(['usuarios' => $d['usuarios']], JSON_UNESCAPED_UNICODE); }
+        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        break;
+
+    case 'cursos':
+        if ($method !== 'GET') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        try { $d = db_read_safe($conn); echo json_encode(['cursos' => $d['cursos']], JSON_UNESCAPED_UNICODE); }
+        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        break;
+
+    case 'carreras':
+        if ($method !== 'GET') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        try { $d = db_read_safe($conn); echo json_encode(['carreras' => $d['carreras']], JSON_UNESCAPED_UNICODE); }
+        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        break;
+
+    case 'config':
+        if ($method !== 'GET') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        try { $d = db_read_safe($conn); echo json_encode(['configuracion' => $d['configuracion']], JSON_UNESCAPED_UNICODE); }
+        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        break;
+
+    // ------ HEALTH CHECK -----------------------------------------
+    case 'ping':
+        echo json_encode(['status' => 'ok', 'db' => MYSQL_DB, 'host' => MYSQL_HOST, 'time' => date('c')]);
+        break;
+
+    default:
+        http_response_code(404);
+        echo json_encode(['error' => "Accion desconocida: '$action'"]);
+        break;
 }
 
-$method = isset($_SERVER['REQUEST_METHOD']) ? $_SERVER['REQUEST_METHOD'] : 'GET';
-
-if ($method === 'GET') {
-    echo read_db_safe($db_file, $bak_file, $lock_file, $initial_structure);
-} elseif ($method === 'POST') {
-    $json = file_get_contents('php://input');
-
-    if (!empty($json)) {
-        $decoded = json_decode($json, true);
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            http_response_code(400);
-            echo json_encode(["error" => "El JSON enviado no es valido: " . json_last_error_msg()]);
-            exit;
-        }
-
-        if (!validate_db_structure($decoded)) {
-            http_response_code(400);
-            echo json_encode(["error" => "El objeto JSON no contiene las propiedades requeridas (usuarios, cursos, carreras, etc.)"]);
-            exit;
-        }
-
-        if (write_db_safe($db_file, $bak_file, $tmp_file, $lock_file, $backups_dir, $json, $decoded)) {
-            echo json_encode(["message" => "Base de datos guardada correctamente"]);
-        } else {
-            http_response_code(500);
-            echo json_encode(["error" => "Error al escribir de forma segura en la base de datos"]);
-        }
-    } else {
-        http_response_code(400);
-        echo json_encode(["error" => "No se recibieron datos"]);
-    }
-} elseif ($method === 'OPTIONS') {
-    http_response_code(200);
-} else {
-    http_response_code(405);
-    echo json_encode(["error" => "Metodo no permitido"]);
-}
+$conn->close();

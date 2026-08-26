@@ -1,5 +1,13 @@
+# Archivos de datos locales y respaldos
 db.json
 db.json.bak
 db.json.tmp
+db.json.migrated
 db.lock
 backups/
+scratch/
+
+# Archivos de logs y temporales
+*.log
+.DS_Store
+Thumbs.db

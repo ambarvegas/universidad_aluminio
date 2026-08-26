@@ -3,34 +3,61 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ver Curso - Universidad del Aluminio</title>
+    <title>Aula Virtual — Universidad del Aluminio</title>
+    <!-- Google Fonts & Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
-<body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-        <div class="container">
-            <a class="navbar-brand" href="index.html">Universidad del Aluminio</a>
-            <a href="index.html" class="btn btn-outline-light btn-sm">Volver al inicio</a>
+<body class="bg-body">
+
+    <!-- Navbar del Reproductor -->
+    <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
+        <div class="container-fluid px-lg-4 d-flex justify-content-between align-items-center">
+            <div class="d-flex align-items-center gap-3">
+                <a class="navbar-brand mb-0" href="index.html">
+                    <i class="bi bi-mortarboard-fill"></i>
+                    <span class="d-none d-sm-inline">Universidad del Aluminio</span>
+                </a>
+                <span class="badge bg-white bg-opacity-10 text-white border border-white border-opacity-25 px-2 py-1 small">
+                    <i class="bi bi-laptop me-1"></i>Aula Virtual
+                </span>
+            </div>
+
+            <div class="d-flex align-items-center gap-3">
+                <div id="save-indicator" class="save-indicator"></div>
+                <a href="index.html" class="btn btn-outline-light btn-sm">
+                    <i class="bi bi-arrow-left me-1"></i>Volver a Mis Cursos
+                </a>
+            </div>
         </div>
     </nav>
 
-    <main class="container my-5">
+    <!-- Contenedor Principal del LMS -->
+    <main class="container-fluid px-lg-4 my-4">
         <div id="contenido-curso">
-            <div class="text-center">
-                <div class="spinner-border text-primary" role="status"></div>
-                <p>Cargando curso...</p>
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;"></div>
+                <h5 class="fw-bold text-secondary">Cargando contenido del curso...</h5>
+                <p class="text-muted small">Preparando módulos, lecciones y materiales.</p>
             </div>
         </div>
     </main>
 
-<footer class="py-3 text-center">
-    <div class="container">
-        <p class="mb-0">Desarrollado por Ambar Vegas</p>
-    </div>
-</footer>
+    <footer class="py-4 text-center mt-5">
+        <div class="container">
+            <p class="mb-0 text-white-50">© 2026 Universidad del Aluminio • Plataforma de Aprendizaje Técnico</p>
+        </div>
+    </footer>
+
+    <!-- Scripts Esenciales -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="js/ui/modal.js"></script>
+    <script src="js/api.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
