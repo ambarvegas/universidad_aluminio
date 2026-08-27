@@ -330,6 +330,47 @@ function renderTopLearners() {
         </tbody>`;
 }
 
+function _calcularTasaUsuario(u) {
+    const cursosRolIds = _obtenerCursosDelRol(u);
+    const totalCursos = cursosRolIds.length;
+    if (totalCursos === 0) return 0;
+
+    const completadosCursos = cursosRolIds.filter(cid => _esCursoCompletado(u, cid)).length;
+    const pctCursos = Math.round((completadosCursos / totalCursos) * 100);
+
+    let totalModulos = 0;
+    let modulosAprobadosCount = 0;
+    let totalLecciones = 0;
+    let leccionesCompletadasCount = 0;
+
+    const uProg = u.progreso || {};
+    cursosRolIds.forEach(cursoId => {
+        const cursoObj = (cursos || []).find(c => c.id === cursoId);
+        const progCurso = uProg[cursoId] || {};
+
+        if (cursoObj && Array.isArray(cursoObj.modulos)) {
+            totalModulos += cursoObj.modulos.length;
+            const modsAprob = Array.isArray(progCurso.modulosAprobados) ? progCurso.modulosAprobados.length : 0;
+            modulosAprobadosCount += Math.min(modsAprob, cursoObj.modulos.length);
+
+            let cursoLecs = 0;
+            cursoObj.modulos.forEach(mod => {
+                const lecs = Array.isArray(mod.lecciones) ? mod.lecciones : [];
+                cursoLecs += lecs.length;
+            });
+            totalLecciones += cursoLecs;
+
+            const lecsComp = Array.isArray(progCurso.leccionesCompletadas) ? progCurso.leccionesCompletadas.length : 0;
+            leccionesCompletadasCount += Math.min(lecsComp, cursoLecs);
+        }
+    });
+
+    const pctModulos = totalModulos > 0 ? Math.round((modulosAprobadosCount / totalModulos) * 100) : 0;
+    const pctLecciones = totalLecciones > 0 ? Math.round((leccionesCompletadasCount / totalLecciones) * 100) : 0;
+
+    return Math.round((pctCursos + pctModulos + pctLecciones) / 3);
+}
+
 // ============================================================
 // VISTA 2: CUMPLIMIENTO POR CARGO (chart mejorado)
 // ============================================================
@@ -342,24 +383,24 @@ function renderCumplimientoCargo() {
     if (rolesValidos.length === 0) { container.innerHTML = '<p class="text-muted small text-center py-3">Sin roles configurados.</p>'; return; }
 
     const stats = rolesValidos.map(rol => {
-        const miembros = (usuarios || []).filter(u => u.rol === rol.id && u.estado !== 'suspendido');
-        if (miembros.length === 0) return { nombre: rol.nombre, promedio: 0, count: 0 };
-        const promedios = miembros.map(u => {
-            const cursosRol = _obtenerCursosDelRol(u);
-            if (cursosRol.length === 0) return 0;
-            const sumPct = cursosRol.reduce((sum, cid) => {
-                const c = (cursos || []).find(x => x.id === cid);
-                return sum + (c ? _porcentajeCurso(u, c) : 0);
-            }, 0);
-            return sumPct / cursosRol.length;
+        const miembros = (usuarios || []).filter(u => {
+            if (u.estado === 'suspendido' || u.rol === 'admin') return false;
+            const uRolStr = String(u.rol || '').toLowerCase().trim();
+            const rIdStr  = String(rol.id || '').toLowerCase().trim();
+            const rNomStr = String(rol.nombre || '').toLowerCase().trim();
+            return uRolStr === rIdStr || uRolStr === rNomStr;
         });
-        const sumaPromedios = promedios.reduce((a, b) => a + b, 0);
-        return { nombre: rol.nombre, promedio: Math.round(sumaPromedios / miembros.length), count: miembros.length };
+
+        if (miembros.length === 0) return { nombre: rol.nombre, promedio: 0, count: 0 };
+
+        const sumaTasas = miembros.reduce((sum, u) => sum + _calcularTasaUsuario(u), 0);
+        const promedio = Math.round(sumaTasas / miembros.length);
+
+        return { nombre: rol.nombre, promedio, count: miembros.length };
     }).filter(s => s.count > 0);
 
     if (stats.length === 0) { container.innerHTML = '<p class="text-muted small text-center py-3">Sin datos de cumplimiento.</p>'; return; }
 
-    const maxPct = Math.max(...stats.map(s => s.promedio), 1);
     const colores = ['#0284c7', '#9333ea', '#10b981', '#f59e0b', '#ef4444', '#06b6d4'];
 
     container.innerHTML = `
@@ -367,11 +408,11 @@ function renderCumplimientoCargo() {
         ${stats.map((s, i) => `
             <div>
                 <div class="d-flex justify-content-between align-items-center mb-1">
-                    <span class="small fw-semibold">${s.nombre}</span>
-                    <span class="small text-muted">${s.promedio}% <span class="text-light-emphasis">(${s.count})</span></span>
+                    <span class="small fw-semibold text-dark">${s.nombre}</span>
+                    <span class="small fw-bold text-primary">${s.promedio}% <span class="text-muted fw-normal">(${s.count})</span></span>
                 </div>
-                <div class="progress-modern">
-                    <div class="progress-bar" style="width:${s.promedio}%; background:${colores[i % colores.length]};"></div>
+                <div class="progress" style="height: 8px; background: #e2e8f0; border-radius: 4px;">
+                    <div class="progress-bar" style="width:${s.promedio}%; background:${colores[i % colores.length]}; border-radius: 4px; transition: width 0.6s ease;"></div>
                 </div>
             </div>`).join('')}
         </div>`;
