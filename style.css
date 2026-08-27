@@ -1415,9 +1415,23 @@ details[open] .brecha-summary-icon { transform: rotate(90deg); }
     animation: fadeInScale 0.3s ease;
 }
 
-@keyframes fadeInScale {
-    from { opacity: 0; transform: scale(0.95); }
-    to { opacity: 1; transform: scale(1); }
+/* Badges suaves de alto contraste para reportes */
+.badge-soft-success {
+    background-color: #d1e7dd !important;
+    color: #0f5132 !important;
+    border: 1px solid #badbcc !important;
+}
+
+.badge-soft-warning {
+    background-color: #fff3cd !important;
+    color: #664d03 !important;
+    border: 1px solid #ffecb5 !important;
+}
+
+.badge-soft-danger {
+    background-color: #f8d7da !important;
+    color: #842029 !important;
+    border: 1px solid #f5c2c7 !important;
 }
 
 

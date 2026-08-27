@@ -254,8 +254,8 @@ function renderTopLearners() {
                 <th>Usuario</th>
                 <th>Rol / Cargo</th>
                 <th class="text-center">Cursos (Rol)</th>
-                <th style="min-width:130px;">Módulos <small class="text-muted fw-normal">(aprob/total)</small></th>
-                <th style="min-width:130px;">Lecciones <small class="text-muted fw-normal">(complet/total)</small></th>
+                <th style="min-width:130px;">Módulos <small class="text-light opacity-75 fw-normal">(aprob/total)</small></th>
+                <th style="min-width:130px;">Lecciones <small class="text-light opacity-75 fw-normal">(complet/total)</small></th>
                 <th class="text-center">Prom. Evals</th>
                 <th class="text-center">Intentos</th>
                 <th class="text-center">Tasa Completitud</th>
@@ -286,8 +286,8 @@ function renderTopLearners() {
                 <td class="text-center" style="min-width:120px;">
                     <div class="d-inline-block text-start w-100">
                         <div class="d-flex justify-content-between align-items-center small mb-1">
-                            <span class="fw-semibold">${d.completadosCursos}/${d.totalCursos}</span>
-                            <span class="text-${getColorPct(d.pctCursos)} fw-bold">${d.pctCursos}%</span>
+                            <span class="fw-bold text-dark">${d.completadosCursos}/${d.totalCursos}</span>
+                            <span class="text-${getColorPct(d.pctCursos)} fw-bold" style="font-size:0.85rem;">${d.pctCursos}%</span>
                         </div>
                         <div class="progress" style="height: 5px; background: #e2e8f0;">
                             <div class="progress-bar bg-${getColorPct(d.pctCursos)}" style="width: ${d.pctCursos}%"></div>
@@ -296,8 +296,8 @@ function renderTopLearners() {
                 </td>
                 <td style="min-width:130px;">
                     <div class="d-flex justify-content-between align-items-center small mb-1">
-                        <span>${d.modulosAprobadosCount}/${d.totalModulos}</span>
-                        <span class="text-${colorMod} fw-bold">${d.pctModulos}%</span>
+                        <span class="fw-bold text-dark">${d.modulosAprobadosCount}/${d.totalModulos}</span>
+                        <span class="text-${colorMod} fw-bold" style="font-size:0.85rem;">${d.pctModulos}%</span>
                     </div>
                     <div class="progress" style="height: 5px; background: #e2e8f0;">
                         <div class="progress-bar bg-${colorMod}" style="width: ${d.pctModulos}%"></div>
@@ -305,15 +305,15 @@ function renderTopLearners() {
                 </td>
                 <td style="min-width:130px;">
                     <div class="d-flex justify-content-between align-items-center small mb-1">
-                        <span>${d.leccionesCompletadasCount}/${d.totalLecciones}</span>
-                        <span class="text-${colorLec} fw-bold">${d.pctLecciones}%</span>
+                        <span class="fw-bold text-dark">${d.leccionesCompletadasCount}/${d.totalLecciones}</span>
+                        <span class="text-${colorLec} fw-bold" style="font-size:0.85rem;">${d.pctLecciones}%</span>
                     </div>
                     <div class="progress" style="height: 5px; background: #e2e8f0;">
                         <div class="progress-bar bg-${colorLec}" style="width: ${d.pctLecciones}%"></div>
                     </div>
                 </td>
                 <td class="text-center">
-                    <span class="fw-bold ${parseFloat(d.promedioEvals) >= 70 ? 'text-success' : parseFloat(d.promedioEvals) >= 60 ? 'text-warning' : 'text-danger'}">
+                    <span class="fw-bold fs-6 ${parseFloat(d.promedioEvals) >= 70 ? 'text-success' : parseFloat(d.promedioEvals) >= 60 ? 'text-warning' : 'text-danger'}">
                         ${d.promedioEvals}
                     </span>
                 </td>
@@ -321,7 +321,7 @@ function renderTopLearners() {
                     <span class="badge bg-secondary opacity-75">${d.totalIntentos}</span>
                 </td>
                 <td class="text-center">
-                    <span class="badge bg-${colorTasa} bg-opacity-15 text-${colorTasa} border border-${colorTasa} fs-6 fw-bold px-2 py-1">
+                    <span class="badge badge-soft-${colorTasa} fs-6 fw-bold px-3 py-1">
                         ${d.tasaCompletitud}%
                     </span>
                 </td>
