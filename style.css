@@ -1380,4 +1380,45 @@ details[open] .brecha-summary-icon { transform: rotate(90deg); }
     box-shadow: 0 4px 10px rgba(0,0,0,0.08);
 }
 
+/* ============================================================
+   SPINNER DE CARGA DEL SERVIDOR
+   ============================================================ */
+.admin-loading-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.35s ease, visibility 0.35s ease;
+}
+
+.admin-loading-screen.hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.admin-loading-content {
+    text-align: center;
+    padding: 2rem 2.5rem;
+    background: #ffffff;
+    border-radius: var(--radius-lg);
+    box-shadow: 0 20px 40px -15px rgba(15, 43, 72, 0.15), 0 0 1px rgba(15, 43, 72, 0.12);
+    border: 1px solid var(--aluminum-border);
+    animation: fadeInScale 0.3s ease;
+}
+
+@keyframes fadeInScale {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+
 

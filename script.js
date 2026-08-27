@@ -3030,6 +3030,11 @@ window.descargarCertificado = (nombre, cedula, curso) => {
 // ============================================================
 
 async function cargarDatosDelServidor() {
+    const loadingScreen = document.getElementById('admin-loading-screen');
+    if (loadingScreen) {
+        loadingScreen.classList.remove('hidden');
+    }
+
     try {
         const response = await fetch('api.php');
         const data = await response.json();
@@ -3091,6 +3096,12 @@ async function cargarDatosDelServidor() {
         renderizarGaleria();
     } catch (err) {
         console.error("Error al conectar con la base de datos del servidor:", err);
+    } finally {
+        if (loadingScreen) {
+            setTimeout(() => {
+                loadingScreen.classList.add('hidden');
+            }, 200);
+        }
     }
 }
 

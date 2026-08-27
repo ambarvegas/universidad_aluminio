@@ -13,6 +13,9 @@
 // HEADERS DE SEGURIDAD + CORS
 // ============================================================
 if (!headers_sent()) {
+    if (extension_loaded('zlib') && !in_array('ob_gzhandler', ob_list_handlers())) {
+        ob_start('ob_gzhandler');
+    }
     header("Access-Control-Allow-Origin: *");
     header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
     header("Access-Control-Allow-Headers: Content-Type");
