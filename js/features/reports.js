@@ -339,23 +339,25 @@ function renderCumplimientoCargo() {
     if (!container) return;
 
     const rolesValidos = (rolesConfig || []).filter(r => r.id !== 'admin');
-    if (rolesValidos.length === 0) { container.innerHTML = '<p class="text-muted small text-center">Sin roles configurados.</p>'; return; }
+    if (rolesValidos.length === 0) { container.innerHTML = '<p class="text-muted small text-center py-3">Sin roles configurados.</p>'; return; }
 
     const stats = rolesValidos.map(rol => {
         const miembros = (usuarios || []).filter(u => u.rol === rol.id && u.estado !== 'suspendido');
         if (miembros.length === 0) return { nombre: rol.nombre, promedio: 0, count: 0 };
         const promedios = miembros.map(u => {
-            const asig = Array.isArray(u.asignados) ? u.asignados : [];
-            if (asig.length === 0) return 0;
-            return asig.reduce((sum, cid) => {
+            const cursosRol = _obtenerCursosDelRol(u);
+            if (cursosRol.length === 0) return 0;
+            const sumPct = cursosRol.reduce((sum, cid) => {
                 const c = (cursos || []).find(x => x.id === cid);
                 return sum + (c ? _porcentajeCurso(u, c) : 0);
-            }, 0) / asig.length;
+            }, 0);
+            return sumPct / cursosRol.length;
         });
-        return { nombre: rol.nombre, promedio: Math.round(promedios.reduce((a, b) => a + b, 0) / promedios.length), count: miembros.length };
+        const sumaPromedios = promedios.reduce((a, b) => a + b, 0);
+        return { nombre: rol.nombre, promedio: Math.round(sumaPromedios / miembros.length), count: miembros.length };
     }).filter(s => s.count > 0);
 
-    if (stats.length === 0) { container.innerHTML = '<p class="text-muted small text-center">Sin datos de cumplimiento.</p>'; return; }
+    if (stats.length === 0) { container.innerHTML = '<p class="text-muted small text-center py-3">Sin datos de cumplimiento.</p>'; return; }
 
     const maxPct = Math.max(...stats.map(s => s.promedio), 1);
     const colores = ['#0284c7', '#9333ea', '#10b981', '#f59e0b', '#ef4444', '#06b6d4'];

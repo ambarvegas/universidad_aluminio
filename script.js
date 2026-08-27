@@ -3104,6 +3104,21 @@ const verificarProteccion = () => {
 // 19. ACTUALIZACIÓN DE TABLAS Y CONTROL ADMIN
 // ============================================================
 
+window.refrescarDatosAdmin = async (btn) => {
+    const icon = btn?.querySelector('i');
+    if (icon) icon.classList.add('spin-animation');
+
+    try {
+        await cargarDatosDelServidor();
+        showToast('Datos re-sincronizados con éxito desde el servidor.', 'success');
+    } catch (err) {
+        console.error('Error al refrescar datos:', err);
+        showToast('Error al refrescar datos: ' + err.message, 'danger');
+    } finally {
+        if (icon) setTimeout(() => icon.classList.remove('spin-animation'), 600);
+    }
+};
+
 window.filtrarTablaCursosAdmin = () => {
     actualizarTablas();
 };

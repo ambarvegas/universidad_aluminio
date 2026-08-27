@@ -86,6 +86,11 @@
                     <h2 class="fw-bold text-primary mb-1">Panel de Control Académico</h2>
                     <p class="text-muted small mb-0">Gestión de cursos, colaboradores, estructura curricular y métricas institucionales.</p>
                 </div>
+                <div>
+                    <button class="btn btn-outline-primary btn-sm shadow-sm" onclick="refrescarDatosAdmin(this)" title="Sincronizar todo con el servidor">
+                        <i class="bi bi-arrow-clockwise me-1"></i>Sincronizar Servidor
+                    </button>
+                </div>
             </div>
 
             <!-- 4 KPI Cards Resumen -->
@@ -179,12 +184,15 @@
                         <h4 class="fw-bold text-primary mb-0">Gestión de Catálogo de Cursos</h4>
                         <p class="text-muted small mb-0">Crea, edita módulos, asigna prelaciones y configura evaluaciones.</p>
                     </div>
-                    <div class="d-flex gap-2">
-                        <div class="search-input-group" style="width: 250px;">
+                    <div class="d-flex flex-wrap gap-2">
+                        <button class="btn btn-outline-secondary btn-sm shadow-sm" onclick="refrescarDatosAdmin(this)" title="Refrescar catálogo">
+                            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+                        </button>
+                        <div class="search-input-group" style="width: 230px;">
                             <i class="bi bi-search"></i>
                             <input type="text" id="search-admin-cursos" class="form-control form-control-sm" placeholder="Buscar curso..." oninput="filtrarTablaCursosAdmin()">
                         </div>
-                        <button class="btn btn-primary" onclick="prepararFormulario()" data-bs-toggle="modal" data-bs-target="#cursoModal">
+                        <button class="btn btn-primary btn-sm" onclick="prepararFormulario()" data-bs-toggle="modal" data-bs-target="#cursoModal">
                             <i class="bi bi-plus-circle me-1"></i>Nuevo Curso
                         </button>
                     </div>
@@ -214,7 +222,10 @@
                         <p class="text-muted small mb-0">Administra cuentas, asigna roles académicos y supervisa avances.</p>
                     </div>
                     <div class="d-flex flex-wrap gap-2">
-                        <div class="search-input-group" style="width: 250px;">
+                        <button class="btn btn-outline-secondary btn-sm shadow-sm" onclick="refrescarDatosAdmin(this)" title="Refrescar colaboradores">
+                            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+                        </button>
+                        <div class="search-input-group" style="width: 230px;">
                             <i class="bi bi-search"></i>
                             <input type="text" id="search-admin-usuarios" class="form-control form-control-sm" placeholder="Buscar por nombre o cédula..." oninput="filtrarTablaUsuariosAdmin()">
                         </div>
@@ -268,7 +279,12 @@
                         </div>
                     </div>
                     <div class="col-lg-7">
-                        <h5 class="fw-bold text-primary mb-3"><i class="bi bi-diagram-3 me-2"></i>Carreras y Programas Actuales</h5>
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="fw-bold text-primary mb-0"><i class="bi bi-diagram-3 me-2"></i>Carreras y Programas Actuales</h5>
+                            <button class="btn btn-outline-secondary btn-sm shadow-sm" onclick="refrescarDatosAdmin(this)" title="Refrescar carreras">
+                                <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+                            </button>
+                        </div>
                         <div class="table-responsive">
                             <table class="table table-hover align-middle">
                                 <thead class="table-custom-header">
@@ -295,6 +311,9 @@
                         <p class="text-muted small mb-0">Análisis de avance, brechas de aprendizaje y cumplimiento por cargo.</p>
                     </div>
                     <div class="d-flex flex-wrap gap-2">
+                        <button class="btn btn-sm btn-outline-secondary shadow-sm" onclick="refrescarDatosAdmin(this)" title="Refrescar reportes">
+                            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+                        </button>
                         <button class="btn btn-sm btn-success shadow-sm" onclick="exportarReporteXLSX()">
                             <i class="bi bi-file-earmark-excel-fill me-1"></i>Exportar XLSX
                         </button>
@@ -356,6 +375,15 @@
 
             <!-- Pestaña 5: Solicitudes -->
             <div class="tab-pane fade" id="tab-solicitudes">
+                <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom">
+                    <div>
+                        <h4 class="fw-bold text-primary mb-0">Gestión de Solicitudes Pendientes</h4>
+                        <p class="text-muted small mb-0">Revisa y aprueba accesos a nuevas cuentas o solicitudes de cursos.</p>
+                    </div>
+                    <button class="btn btn-outline-secondary btn-sm shadow-sm" onclick="refrescarDatosAdmin(this)" title="Refrescar solicitudes">
+                        <i class="bi bi-arrow-clockwise me-1"></i>Actualizar Solicitudes
+                    </button>
+                </div>
                 <div class="mb-5">
                     <h5 class="fw-bold text-primary mb-3">
                         <i class="bi bi-person-badge me-2"></i>Solicitudes de Nuevas Cuentas de Acceso
@@ -399,14 +427,19 @@
 
             <!-- Pestaña 6: Gestión de Roles -->
             <div class="tab-pane fade" id="tab-roles">
-                <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4 pb-3 border-bottom">
                     <div>
                         <h4 class="fw-bold text-primary mb-0">Gestión de Roles y Permisos</h4>
                         <p class="text-muted small mb-0">Define la carga académica obligatoria o sugerida según el cargo del colaborador.</p>
                     </div>
-                    <button class="btn btn-primary" onclick="prepararFormularioRol()" data-bs-toggle="modal" data-bs-target="#roleModal">
-                        <i class="bi bi-shield-plus me-1"></i>Nuevo Rol
-                    </button>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-outline-secondary btn-sm shadow-sm" onclick="refrescarDatosAdmin(this)" title="Refrescar roles">
+                            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+                        </button>
+                        <button class="btn btn-primary btn-sm" onclick="prepararFormularioRol()" data-bs-toggle="modal" data-bs-target="#roleModal">
+                            <i class="bi bi-shield-plus me-1"></i>Nuevo Rol
+                        </button>
+                    </div>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-hover align-middle">
@@ -430,9 +463,14 @@
                         <h4 class="fw-bold text-primary mb-0">Configuración de la Plataforma</h4>
                         <p class="text-muted small mb-0">Personaliza la identidad visual, los colores y los parámetros operativos del sistema.</p>
                     </div>
-                    <button class="btn btn-success" onclick="guardarTodasLasConfiguraciones()" id="btn-guardar-config">
-                        <i class="bi bi-floppy-fill me-1"></i>Guardar Todo
-                    </button>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-outline-secondary btn-sm shadow-sm" onclick="refrescarDatosAdmin(this)" title="Refrescar configuración">
+                            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+                        </button>
+                        <button class="btn btn-success btn-sm" onclick="guardarTodasLasConfiguraciones()" id="btn-guardar-config">
+                            <i class="bi bi-floppy-fill me-1"></i>Guardar Todo
+                        </button>
+                    </div>
                 </div>
 
                 <div class="row g-4">
