@@ -382,6 +382,23 @@ function db_write_all(mysqli $conn, array $data): void {
         // Desactivar FK checks temporalmente para truncar sin orden
         $conn->query("SET FOREIGN_KEY_CHECKS = 0");
 
+        // --- Recopilar hashes y progreso existente para no sobrescribir claves ni borrar evaluaciones ---
+        $existingHashes = [];
+        $resH = $conn->query("SELECT id, clave FROM `usuarios`");
+        if ($resH) {
+            while ($r = $resH->fetch_assoc()) {
+                $existingHashes[$r['id']] = $r['clave'];
+            }
+        }
+
+        $existingDbProgreso = [];
+        $resP = $conn->query("SELECT usuario_id, curso_id, lecciones_completadas, modulos_aprobados, medallas, evaluaciones, intentos FROM `usuario_progreso`");
+        if ($resP) {
+            while ($r = $resP->fetch_assoc()) {
+                $existingDbProgreso[$r['usuario_id']][$r['curso_id']] = $r;
+            }
+        }
+
         // Limpiar tablas dependientes
         $conn->query("TRUNCATE TABLE `usuario_asignados`");
         $conn->query("TRUNCATE TABLE `usuario_carreras_asignadas`");
@@ -390,15 +407,6 @@ function db_write_all(mysqli $conn, array $data): void {
         $conn->query("TRUNCATE TABLE `usuario_certificados_carrera`");
         $conn->query("TRUNCATE TABLE `solicitudes_registro`");
         $conn->query("TRUNCATE TABLE `solicitudes_cursos`");
-
-        // --- Recopilar arrays de filas para Bulk Insert ---
-        $existingHashes = [];
-        $resH = $conn->query("SELECT id, clave FROM `usuarios`");
-        if ($resH) {
-            while ($r = $resH->fetch_assoc()) {
-                $existingHashes[$r['id']] = $r['clave'];
-            }
-        }
 
         $usuariosRows          = [];
         $asignadosRows         = [];
@@ -444,21 +452,46 @@ function db_write_all(mysqli $conn, array $data): void {
                 }
             }
 
-            // Progreso
-            $progreso = $u['progreso'] ?? [];
-            if (is_object($progreso)) $progreso = (array)$progreso;
-            foreach ($progreso as $cId => $prog) {
-                if (is_array($prog)) {
-                    $lec  = json_encode($prog['leccionesCompletadas'] ?? []);
-                    $mod  = json_encode($prog['modulosAprobados']     ?? []);
-                    $med  = json_encode($prog['medallas']             ?? []);
-                    $eval = json_encode($prog['evaluaciones']         ?? (object)[]);
-                    $int  = json_encode($prog['intentos']             ?? (object)[]);
-                } else {
-                    $lec = $mod = $med = '[]';
-                    $eval = $int = '{}';
-                }
-                $cIdStr = (string)$cId;
+            // Progreso inteligente: fusionar payload con BD existente
+            $progresoPayload = $u['progreso'] ?? [];
+            if (is_object($progresoPayload)) $progresoPayload = (array)$progresoPayload;
+
+            $allCourseIdsForUser = array_unique(array_merge(
+                array_keys($progresoPayload),
+                array_keys($existingDbProgreso[$id] ?? [])
+            ));
+
+            foreach ($allCourseIdsForUser as $cIdStr) {
+                $cIdStr = (string)$cIdStr;
+                $progPayload = $progresoPayload[$cIdStr] ?? [];
+                if (is_object($progPayload)) $progPayload = (array)$progPayload;
+
+                $dbProg = $existingDbProgreso[$id][$cIdStr] ?? null;
+
+                $dbLec  = $dbProg ? (json_decode($dbProg['lecciones_completadas'] ?? '[]', true) ?? []) : [];
+                $dbMod  = $dbProg ? (json_decode($dbProg['modulos_aprobados']     ?? '[]', true) ?? []) : [];
+                $dbMed  = $dbProg ? (json_decode($dbProg['medallas']              ?? '[]', true) ?? []) : [];
+                $dbEval = $dbProg ? (json_decode($dbProg['evaluaciones']          ?? '{}', true) ?? []) : [];
+                $dbInt  = $dbProg ? (json_decode($dbProg['intentos']              ?? '{}', true) ?? []) : [];
+
+                $payLec  = is_array($progPayload) ? ($progPayload['leccionesCompletadas'] ?? []) : [];
+                $payMod  = is_array($progPayload) ? ($progPayload['modulosAprobados']     ?? []) : [];
+                $payMed  = is_array($progPayload) ? ($progPayload['medallas']             ?? []) : [];
+                $payEval = is_array($progPayload) ? (is_array($progPayload['evaluaciones'] ?? null) ? $progPayload['evaluaciones'] : (array)($progPayload['evaluaciones'] ?? [])) : [];
+                $payInt  = is_array($progPayload) ? (is_array($progPayload['intentos'] ?? null)     ? $progPayload['intentos']     : (array)($progPayload['intentos'] ?? [])) : [];
+
+                $mergedLec  = array_values(array_unique(array_merge($dbLec, $payLec)));
+                $mergedMod  = array_values(array_unique(array_merge($dbMod, $payMod)));
+                $mergedMed  = array_values(array_unique(array_merge($dbMed, $payMed)));
+                $mergedEval = array_replace($dbEval, $payEval);
+                $mergedInt  = array_replace($dbInt, $payInt);
+
+                $lec  = json_encode($mergedLec);
+                $mod  = json_encode($mergedMod);
+                $med  = json_encode($mergedMed);
+                $eval = empty($mergedEval) ? '{}' : json_encode((object)$mergedEval, JSON_FORCE_OBJECT);
+                $int  = empty($mergedInt)  ? '{}' : json_encode((object)$mergedInt,  JSON_FORCE_OBJECT);
+
                 $progresoRows[] = [$id, $cIdStr, $lec, $mod, $med, $eval, $int];
             }
 
@@ -852,11 +885,43 @@ function db_delete_usuario(mysqli $conn, string $id): void {
  * El endpoint más llamado — payload mínimo.
  */
 function db_upsert_progreso(mysqli $conn, string $userId, string $cursoId, array $prog): void {
-    $lec  = json_encode($prog['leccionesCompletadas'] ?? []);
-    $mod  = json_encode($prog['modulosAprobados']     ?? []);
-    $med  = json_encode($prog['medallas']             ?? []);
-    $eval = json_encode($prog['evaluaciones']         ?? (object)[]);
-    $int  = json_encode($prog['intentos']             ?? (object)[]);
+    // 1. Obtener datos existentes en la BD para este usuario y curso
+    $stmtSel = $conn->prepare("SELECT lecciones_completadas, modulos_aprobados, medallas, evaluaciones, intentos FROM `usuario_progreso` WHERE usuario_id = ? AND curso_id = ?");
+    $stmtSel->bind_param('ss', $userId, $cursoId);
+    $stmtSel->execute();
+    $resSel = $stmtSel->get_result();
+
+    $existingLec  = [];
+    $existingMod  = [];
+    $existingMed  = [];
+    $existingEval = [];
+    $existingInt  = [];
+
+    if ($resSel && $rowSel = $resSel->fetch_assoc()) {
+        $existingLec  = json_decode($rowSel['lecciones_completadas'] ?? '[]', true) ?? [];
+        $existingMod  = json_decode($rowSel['modulos_aprobados']     ?? '[]', true) ?? [];
+        $existingMed  = json_decode($rowSel['medallas']              ?? '[]', true) ?? [];
+        $existingEval = json_decode($rowSel['evaluaciones']         ?? '{}', true) ?? [];
+        $existingInt  = json_decode($rowSel['intentos']             ?? '{}', true) ?? [];
+    }
+
+    // 2. Fusionar lecciones, módulos y medallas (sin duplicados)
+    $newLec = array_values(array_unique(array_merge($existingLec, (array)($prog['leccionesCompletadas'] ?? []))));
+    $newMod = array_values(array_unique(array_merge($existingMod, (array)($prog['modulosAprobados']     ?? []))));
+    $newMed = array_values(array_unique(array_merge($existingMed, (array)($prog['medallas']             ?? []))));
+
+    // 3. Fusionar evaluaciones e intentos de forma segura
+    $incomingEval = is_array($prog['evaluaciones'] ?? null) ? $prog['evaluaciones'] : (is_object($prog['evaluaciones'] ?? null) ? (array)$prog['evaluaciones'] : []);
+    $incomingInt  = is_array($prog['intentos'] ?? null)     ? $prog['intentos']     : (is_object($prog['intentos'] ?? null)     ? (array)$prog['intentos']     : []);
+
+    $newEval = array_replace($existingEval, $incomingEval);
+    $newInt  = array_replace($existingInt, $incomingInt);
+
+    $lec  = json_encode($newLec);
+    $mod  = json_encode($newMod);
+    $med  = json_encode($newMed);
+    $eval = empty($newEval) ? '{}' : json_encode((object)$newEval, JSON_FORCE_OBJECT);
+    $int  = empty($newInt)  ? '{}' : json_encode((object)$newInt,  JSON_FORCE_OBJECT);
 
     $stmt = $conn->prepare(
         "INSERT INTO `usuario_progreso` (usuario_id, curso_id, lecciones_completadas, modulos_aprobados, medallas, evaluaciones, intentos)
