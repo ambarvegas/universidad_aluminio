@@ -825,9 +825,26 @@ function db_upsert_usuario(mysqli $conn, array $u): void {
  * Elimina un usuario y todos sus datos relacionados.
  */
 function db_delete_usuario(mysqli $conn, string $id): void {
-    $stmt = $conn->prepare("DELETE FROM `usuarios` WHERE id = ?");
-    $stmt->bind_param('s', $id);
-    $stmt->execute();
+    $conn->begin_transaction();
+    try {
+        $safeId = $conn->real_escape_string($id);
+        $conn->query("DELETE FROM `usuario_asignados`           WHERE usuario_id = '$safeId'");
+        $conn->query("DELETE FROM `usuario_carreras_asignadas`  WHERE usuario_id = '$safeId'");
+        $conn->query("DELETE FROM `usuario_progreso`            WHERE usuario_id = '$safeId'");
+        $conn->query("DELETE FROM `usuario_certificados_curso`  WHERE usuario_id = '$safeId'");
+        $conn->query("DELETE FROM `usuario_certificados_carrera` WHERE usuario_id = '$safeId'");
+        $conn->query("DELETE FROM `solicitudes_cursos`          WHERE user_id = '$safeId'");
+        $conn->query("DELETE FROM `solicitudes_registro`        WHERE id = '$safeId'");
+
+        $stmt = $conn->prepare("DELETE FROM `usuarios` WHERE id = ?");
+        $stmt->bind_param('s', $id);
+        $stmt->execute();
+
+        $conn->commit();
+    } catch (Throwable $e) {
+        $conn->rollback();
+        throw $e;
+    }
 }
 
 /**

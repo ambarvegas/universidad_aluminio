@@ -79,12 +79,11 @@ function handleButtonLoading(btn, loading, textLoading = 'Procesando...', textOr
  */
 async function withLoading(btn, asyncFn, loadingText = 'Procesando...', onError = null) {
     const btnElement = typeof btn === 'string' ? document.querySelector(btn) : btn;
-    if (!btnElement) return;
 
-    if (btnElement.disabled) return;
+    if (btnElement && btnElement.disabled) return;
 
     try {
-        handleButtonLoading(btnElement, true, loadingText);
+        if (btnElement) handleButtonLoading(btnElement, true, loadingText);
         await asyncFn();
     } catch (error) {
         console.error('Error en operación:', error);
@@ -94,7 +93,7 @@ async function withLoading(btn, asyncFn, loadingText = 'Procesando...', onError 
             showToast('Error: ' + error.message, 'danger');
         }
     } finally {
-        handleButtonLoading(btnElement, false);
+        if (btnElement) handleButtonLoading(btnElement, false);
     }
 }
 
@@ -790,26 +789,27 @@ window.guardarUsuario = async (e) => {
 };
 
 window.eliminarUsuario = async (id) => {
-    if (id === '25482938') {
+    const idStr = String(id || '').trim();
+    if (idStr === '25482938') {
         showToast("No se puede eliminar al administrador principal.", "warning");
         return;
     }
-    const u = usuarios.find(user => user.id === id);
-    const nombreUsuario = u ? u.nombre : id;
+    const u = usuarios.find(user => String(user.id) === idStr);
+    const nombreUsuario = u ? u.nombre : idStr;
 
     const ok = await showConfirmModal({
         title: '¿Eliminar Usuario?',
-        message: `¿Estás seguro de eliminar el acceso para <strong>${nombreUsuario}</strong> (C.I. ${id})?`,
+        message: `¿Estás seguro de eliminar el acceso para <strong>${nombreUsuario}</strong> (C.I. ${idStr})?`,
         confirmText: 'Sí, eliminar',
         confirmVariant: 'danger'
     });
     if (!ok) return;
 
-    const btn = event?.target?.closest('button');
+    const btn = document.querySelector('#confirmModal .btn-danger') || event?.target?.closest('button');
     await withLoading(btn, async () => {
-        usuarios = usuarios.filter(u => u.id !== id);
+        usuarios = usuarios.filter(user => String(user.id) !== idStr);
         try {
-            await window.API.eliminarUsuario(id);
+            await window.API.eliminarUsuario(idStr);
         } catch (err) {
             console.warn('Fallback a guardarUsuarios:', err);
             await guardarUsuarios();
