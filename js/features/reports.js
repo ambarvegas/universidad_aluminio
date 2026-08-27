@@ -339,6 +339,121 @@ function inicializarFiltroUsuariosBrechas() {
 }
 
 // ============================================================
+// EXPORTAR REPORTE EN EXCEL (XLSX)
+// ============================================================
+
+function exportarReporteXLSX() {
+    if (typeof XLSX === 'undefined') {
+        if (typeof showToast === 'function') {
+            showToast('Cargando motor de exportación Excel, reintenta en un momento...', 'warning');
+        } else {
+            alert('Cargando motor de exportación Excel, reintenta en un momento...');
+        }
+        return;
+    }
+
+    const usuariosActivos = (usuarios || []).filter(u => u.rol !== 'admin' && u.estado !== 'suspendido');
+
+    // 1. Datos para Hoja Top Learners (Desempeño General)
+    const dataLearners = usuariosActivos.map((u, idx) => {
+        const cursosAsig = Array.isArray(u.asignados) ? u.asignados : [];
+        const totalCursos = cursosAsig.length;
+        let sumPct = 0;
+        cursosAsig.forEach(cid => {
+            const c = (cursos || []).find(x => x.id === cid);
+            if (c) sumPct += _porcentajeCurso(u, c);
+        });
+        const promedio = totalCursos > 0 ? Math.round(sumPct / totalCursos) : 0;
+        const completados = Array.isArray(u.certificadosCurso) ? u.certificadosCurso.filter(id => cursosAsig.includes(id)).length : 0;
+        const rolObj = (rolesConfig || []).find(r => r.id === u.rol);
+
+        return {
+            'Posición': idx + 1,
+            'Cédula / ID': u.id,
+            'Nombre del Colaborador': u.nombre,
+            'Rol / Cargo': rolObj ? rolObj.nombre : u.rol,
+            'Estado': (u.estado || 'activo').toUpperCase(),
+            'Cursos Asignados': totalCursos,
+            'Cursos Completados': completados,
+            'Progreso Promedio (%)': `${promedio}%`,
+            'Certificados Obtenidos': Array.isArray(u.certificadosCurso) ? u.certificadosCurso.length : 0
+        };
+    }).sort((a, b) => parseInt(b['Progreso Promedio (%)']) - parseInt(a['Progreso Promedio (%)']));
+
+    // Reasignar posiciones ordenadas por promedio
+    dataLearners.forEach((row, i) => row['Posición'] = i + 1);
+
+    // 2. Datos para Hoja Brechas de Aprendizaje Detalladas
+    const dataBrechas = [];
+    usuariosActivos.forEach(u => {
+        const brechas = _calcularBrechasUsuario(u);
+        const rolObj = (rolesConfig || []).find(r => r.id === u.rol);
+        const rolNombre = rolObj ? rolObj.nombre : u.rol;
+
+        if (brechas.length === 0) {
+            dataBrechas.push({
+                'Cédula / ID': u.id,
+                'Colaborador': u.nombre,
+                'Cargo': rolNombre,
+                'Curso': 'Todos los cursos asignados al día',
+                'Estado Curso': 'COMPLETADO',
+                '% Avance': '100%',
+                'Módulos Pendientes': 'Ninguno',
+                'Lecciones Faltantes': 'Ninguna'
+            });
+        } else {
+            brechas.forEach(b => {
+                const modsText = b.modulos.map(m => m.titulo).join('; ') || 'Sin módulos pendientes';
+                const lecsText = b.modulos.flatMap(m => m.leccionesFaltantes.map(l => `${m.titulo}: ${l.titulo}`)).join(' | ') || 'Sin lecciones pendientes';
+                dataBrechas.push({
+                    'Cédula / ID': u.id,
+                    'Colaborador': u.nombre,
+                    'Cargo': rolNombre,
+                    'Curso': b.titulo,
+                    'Estado Curso': b.estado === 'sin-iniciar' ? 'SIN INICIAR' : 'EN PROGRESO',
+                    '% Avance': `${b.porcentaje}%`,
+                    'Módulos Pendientes': modsText,
+                    'Lecciones Faltantes': lecsText
+                });
+            });
+        }
+    });
+
+    try {
+        const wb = XLSX.utils.book_new();
+
+        const wsLearners = XLSX.utils.json_to_sheet(dataLearners);
+        const wsBrechas  = XLSX.utils.json_to_sheet(dataBrechas);
+
+        // Anchos de columna
+        wsLearners['!cols'] = [
+            { wch: 10 }, { wch: 16 }, { wch: 28 }, { wch: 22 },
+            { wch: 12 }, { wch: 18 }, { wch: 20 }, { wch: 22 }, { wch: 22 }
+        ];
+
+        wsBrechas['!cols'] = [
+            { wch: 16 }, { wch: 28 }, { wch: 22 }, { wch: 32 },
+            { wch: 16 }, { wch: 12 }, { wch: 35 }, { wch: 50 }
+        ];
+
+        XLSX.utils.book_append_sheet(wb, wsLearners, "Top Learners (Desempeño)");
+        XLSX.utils.book_append_sheet(wb, wsBrechas, "Brechas de Aprendizaje");
+
+        const hoy = new Date().toISOString().slice(0, 10);
+        XLSX.writeFile(wb, `Reporte_Academico_Universidad_Aluminio_${hoy}.xlsx`);
+
+        if (typeof showToast === 'function') {
+            showToast('📊 Reporte XLSX exportado con éxito.', 'success');
+        }
+    } catch (err) {
+        console.error('Error exportando XLSX:', err);
+        if (typeof showToast === 'function') {
+            showToast('Error al exportar reporte Excel: ' + err.message, 'danger');
+        }
+    }
+}
+
+// ============================================================
 // FUNCIÓN PRINCIPAL — Llamada desde admin.html
 // ============================================================
 
@@ -354,3 +469,5 @@ window.renderRobustReports        = renderRobustReports;
 window.renderBrechasAprendizaje   = renderBrechasAprendizaje;
 window.renderTopLearners          = renderTopLearners;
 window.renderCumplimientoCargo    = renderCumplimientoCargo;
+window.exportarReporteXLSX        = exportarReporteXLSX;
+

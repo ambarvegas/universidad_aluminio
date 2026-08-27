@@ -3504,10 +3504,15 @@ function actualizarTablas() {
 
                 tablaCursosBody.innerHTML += `
                     <tr>
-                        <td><code class="fw-bold text-primary">${c.id}</code></td>
+                        <td><span class="code-chip">${c.id}</span></td>
                         <td>
-                            <div class="fw-bold">${c.titulo}</div>
-                            <div class="mt-1">${badgeTipo}</div>
+                            <div class="d-flex align-items-center gap-3">
+                                ${c.imagen ? `<img src="${typeof resolverSrcImagen === 'function' ? resolverSrcImagen(c.imagen) : c.imagen}" class="rounded border" style="width:48px; height:32px; object-fit:cover;" alt="Portada">` : `<div class="bg-primary bg-opacity-10 text-primary rounded d-flex align-items-center justify-content-center" style="width:48px; height:32px;"><i class="bi bi-journal-bookmark"></i></div>`}
+                                <div>
+                                    <div class="fw-bold text-dark">${c.titulo}</div>
+                                    <div class="mt-1">${badgeTipo}</div>
+                                </div>
+                            </div>
                         </td>
                         <td>
                             <span class="badge bg-light text-dark border me-1"><i class="bi bi-folder2-open me-1 text-primary"></i>${totalModulos} mód.</span>
@@ -3515,12 +3520,14 @@ function actualizarTablas() {
                         </td>
                         <td>${prelacionTexto}</td>
                         <td class="text-end">
-                            <button class="btn btn-sm btn-outline-primary me-1" onclick="abrirEditor('${c.id}')" title="Editar contenido y temario">
-                                <i class="bi bi-pencil-square me-1"></i>Editar
-                            </button>
-                            <button class="btn btn-sm btn-outline-danger" onclick="eliminarCurso('${c.id}')" title="Eliminar curso">
-                                <i class="bi bi-trash"></i>
-                            </button>
+                            <div class="btn-action-group">
+                                <button class="btn btn-sm btn-outline-primary" onclick="abrirEditor('${c.id}')" title="Editar contenido y temario">
+                                    <i class="bi bi-pencil-square me-1"></i>Editar
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="eliminarCurso('${c.id}')" title="Eliminar curso">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
                         </td>
                     </tr>`;
             });
@@ -3559,35 +3566,37 @@ function actualizarTablas() {
                 userTable.innerHTML += `
                     <tr>
                         <td>
-                            <div class="d-flex align-items-center gap-2">
-                                <div class="user-avatar" style="width: 36px; height: 36px; font-size: 0.85rem;">
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="user-avatar" style="width: 40px; height: 40px; font-size: 0.9rem;">
                                     ${obtenerIniciales(u.nombre)}
                                 </div>
                                 <div>
-                                    <div class="fw-bold text-primary">${u.nombre}</div>
-                                    ${certCount > 0 ? `<small class="text-success"><i class="bi bi-award-fill me-1"></i>${certCount} cert.</small>` : ''}
+                                    <div class="fw-bold text-dark">${u.nombre}</div>
+                                    ${certCount > 0 ? `<small class="text-success fw-semibold"><i class="bi bi-award-fill me-1"></i>${certCount} certificado${certCount !== 1 ? 's' : ''}</small>` : ''}
                                 </div>
                             </div>
                         </td>
-                        <td><code class="fw-bold">${u.id}</code></td>
+                        <td><span class="code-chip">${u.id}</span></td>
                         <td>
                             <span class="badge bg-light text-dark border mb-1">${(u.rol || 'Sin Rol').replace('_', ' ')}</span>
                             <div>${assignedCareersNames || '<small class="text-muted fst-italic">Sin carreras asociadas</small>'}</div>
                         </td>
                         <td>${badgeStatus}</td>
                         <td class="text-end">
-                            <button class="btn btn-sm btn-outline-primary me-1" onclick="abrirEditorUsuario('${u.id}')" title="Editar datos del usuario">
-                                <i class="bi bi-person-gear"></i>
-                            </button>
-                            <button class="btn btn-sm btn-outline-warning me-1" onclick="abrirRestablecerAvance('${u.id}')" title="Restablecer progreso">
-                                <i class="bi bi-arrow-counterclockwise"></i>
-                            </button>
-                            <button class="btn btn-sm btn-outline-success me-1" onclick="abrirMarcarCompletado('${u.id}')" title="Marcar módulos completados">
-                                <i class="bi bi-check2-circle"></i>
-                            </button>
-                            <button class="btn btn-sm btn-outline-danger" onclick="eliminarUsuario('${u.id}')" title="Eliminar usuario">
-                                <i class="bi bi-trash"></i>
-                            </button>
+                            <div class="btn-action-group">
+                                <button class="btn btn-sm btn-outline-primary" onclick="abrirEditorUsuario('${u.id}')" title="Editar datos del usuario">
+                                    <i class="bi bi-person-gear me-1"></i>Editar
+                                </button>
+                                <button class="btn btn-sm btn-outline-warning" onclick="abrirRestablecerAvance('${u.id}')" title="Restablecer progreso">
+                                    <i class="bi bi-arrow-counterclockwise"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-success" onclick="abrirMarcarCompletado('${u.id}')" title="Marcar módulos completados">
+                                    <i class="bi bi-check2-circle"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="eliminarUsuario('${u.id}')" title="Eliminar usuario">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
                         </td>
                     </tr>`;
             });
@@ -3603,19 +3612,21 @@ function actualizarTablas() {
             const totalCar = (r.carreras || []).length;
             rolesTable.innerHTML += `
                 <tr>
-                    <td><code class="fw-bold text-primary">${r.id}</code></td>
-                    <td><strong>${r.nombre}</strong></td>
+                    <td><span class="code-chip">${r.id}</span></td>
+                    <td><strong class="text-dark">${r.nombre}</strong></td>
                     <td>
-                        <span class="badge bg-primary me-1"><i class="bi bi-journal me-1"></i>${totalC} Cursos</span>
-                        <span class="badge bg-success"><i class="bi bi-diagram-3 me-1"></i>${totalCar} Carreras</span>
+                        <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 me-1"><i class="bi bi-journal me-1"></i>${totalC} Cursos</span>
+                        <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25"><i class="bi bi-diagram-3 me-1"></i>${totalCar} Carreras</span>
                     </td>
                     <td class="text-end">
-                        <button class="btn btn-sm btn-outline-primary me-1" onclick="abrirEditorRol('${r.id}')">
-                            <i class="bi bi-sliders me-1"></i>Configurar Carga
-                        </button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="eliminarRol('${r.id}')">
-                            <i class="bi bi-trash"></i>
-                        </button>
+                        <div class="btn-action-group">
+                            <button class="btn btn-sm btn-outline-primary" onclick="abrirEditorRol('${r.id}')">
+                                <i class="bi bi-sliders me-1"></i>Configurar Carga
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="eliminarRol('${r.id}')">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
                     </td>
                 </tr>`;
         });
@@ -3626,16 +3637,18 @@ function actualizarTablas() {
     if (reqRegTable) {
         reqRegTable.innerHTML = (solicitudesRegistro || []).map(s => `
             <tr>
-                <td><code class="fw-bold">${s.id}</code></td>
-                <td><strong>${s.nombre}</strong></td>
+                <td><span class="code-chip">${s.id}</span></td>
+                <td><strong class="text-dark">${s.nombre}</strong></td>
                 <td><span class="badge bg-light text-dark border">${s.perfilDeseado}</span></td>
                 <td class="text-end">
-                    <button class="btn btn-sm btn-success me-1" onclick="gestionarSolicitudRegistro('${s.id}', true)">
-                        <i class="bi bi-check-lg me-1"></i>Aprobar
-                    </button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="gestionarSolicitudRegistro('${s.id}', false)">
-                        <i class="bi bi-x-lg me-1"></i>Rechazar
-                    </button>
+                    <div class="btn-action-group">
+                        <button class="btn btn-sm btn-success" onclick="gestionarSolicitudRegistro('${s.id}', true)">
+                            <i class="bi bi-check-lg me-1"></i>Aprobar
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="gestionarSolicitudRegistro('${s.id}', false)">
+                            <i class="bi bi-x-lg me-1"></i>Rechazar
+                        </button>
+                    </div>
                 </td>
             </tr>
         `).join('') || '<tr><td colspan="4" class="text-center text-muted py-3">No hay solicitudes de registro pendientes.</td></tr>';
@@ -3646,16 +3659,18 @@ function actualizarTablas() {
     if (reqCurTable) {
         reqCurTable.innerHTML = (solicitudesCursos || []).map(s => `
             <tr>
-                <td><strong>${s.userName || s.userId}</strong></td>
+                <td><strong class="text-dark">${s.userName || s.userId}</strong></td>
                 <td><span class="badge-soft-primary">${s.cursoId}</span></td>
                 <td><small class="text-muted">${s.fecha || 'Reciente'}</small></td>
                 <td class="text-end">
-                    <button class="btn btn-sm btn-success me-1" onclick="gestionarSolicitudCurso('${s.userId}', '${s.cursoId}', true)">
-                        <i class="bi bi-check-lg me-1"></i>Aprobar
-                    </button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="gestionarSolicitudCurso('${s.userId}', '${s.cursoId}', false)">
-                        <i class="bi bi-x-lg me-1"></i>Rechazar
-                    </button>
+                    <div class="btn-action-group">
+                        <button class="btn btn-sm btn-success" onclick="gestionarSolicitudCurso('${s.userId}', '${s.cursoId}', true)">
+                            <i class="bi bi-check-lg me-1"></i>Aprobar
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="gestionarSolicitudCurso('${s.userId}', '${s.cursoId}', false)">
+                            <i class="bi bi-x-lg me-1"></i>Rechazar
+                        </button>
+                    </div>
                 </td>
             </tr>
         `).join('') || '<tr><td colspan="4" class="text-center text-muted py-3">No hay solicitudes de acceso a cursos.</td></tr>';
@@ -3668,7 +3683,7 @@ function actualizarTablas() {
         (carreras || []).forEach(car => {
             careerTable.innerHTML += `
                 <tr>
-                    <td><strong>${car.nombre}</strong></td>
+                    <td><strong class="text-dark">${car.nombre}</strong></td>
                     <td>
                         <span class="badge bg-light text-dark border me-2">${(car.cursos || []).length} cursos asignados</span>
                         <button class="btn btn-xs btn-outline-secondary" onclick="duplicarCarrera('${car.id}')" title="Duplicar">
@@ -3676,16 +3691,19 @@ function actualizarTablas() {
                         </button>
                     </td>
                     <td class="text-end">
-                        <button class="btn btn-sm btn-outline-primary me-1" onclick="abrirEditorCarrera('${car.id}')">
-                            <i class="bi bi-pencil-square me-1"></i>Editar
-                        </button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="eliminarCarrera('${car.id}')">
-                            <i class="bi bi-trash"></i>
-                        </button>
+                        <div class="btn-action-group">
+                            <button class="btn btn-sm btn-outline-primary" onclick="abrirEditorCarrera('${car.id}')">
+                                <i class="bi bi-pencil-square me-1"></i>Editar
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="eliminarCarrera('${car.id}')">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
                     </td>
                 </tr>`;
         });
     }
+
 }
 
 document.addEventListener('DOMContentLoaded', async () => {

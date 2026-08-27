@@ -19,6 +19,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
         .btn-xs {
             padding: 0.15rem 0.4rem;
@@ -181,7 +182,7 @@
 
                 <div class="table-responsive">
                     <table class="table table-hover align-middle">
-                        <thead class="table-light">
+                        <thead class="table-custom-header">
                             <tr>
                                 <th style="width: 140px;">Código</th>
                                 <th>Título y Clasificación</th>
@@ -218,7 +219,7 @@
 
                 <div class="table-responsive">
                     <table class="table table-hover align-middle">
-                        <thead class="table-light">
+                        <thead class="table-custom-header">
                             <tr>
                                 <th>Colaborador</th>
                                 <th>Cédula</th>
@@ -260,7 +261,7 @@
                         <h5 class="fw-bold text-primary mb-3"><i class="bi bi-diagram-3 me-2"></i>Carreras y Programas Actuales</h5>
                         <div class="table-responsive">
                             <table class="table table-hover align-middle">
-                                <thead class="table-light">
+                                <thead class="table-custom-header">
                                     <tr>
                                         <th>Nombre del Programa</th>
                                         <th>Cursos Asociados</th>
@@ -283,7 +284,10 @@
                         <h4 class="fw-bold text-primary mb-0">Reportes de Desempeño</h4>
                         <p class="text-muted small mb-0">Análisis de avance, brechas de aprendizaje y cumplimiento por cargo.</p>
                     </div>
-                    <div class="d-flex gap-2">
+                    <div class="d-flex flex-wrap gap-2">
+                        <button class="btn btn-sm btn-success shadow-sm" onclick="exportarReporteXLSX()">
+                            <i class="bi bi-file-earmark-excel-fill me-1"></i>Exportar XLSX
+                        </button>
                         <button class="btn btn-sm btn-primary" id="btn-vista-learners" onclick="cambiarVistaReporte('learners')">
                             <i class="bi bi-trophy-fill me-1"></i>Top Learners
                         </button>
@@ -343,7 +347,7 @@
                     </h5>
                     <div class="table-responsive">
                         <table class="table table-hover align-middle">
-                            <thead class="table-light">
+                            <thead class="table-custom-header">
                                 <tr>
                                     <th>Cédula</th>
                                     <th>Nombre del Aspirante</th>
@@ -364,7 +368,7 @@
                     </h5>
                     <div class="table-responsive">
                         <table class="table table-hover align-middle">
-                            <thead class="table-light">
+                            <thead class="table-custom-header">
                                 <tr>
                                     <th>Colaborador</th>
                                     <th>Curso Solicitado</th>
@@ -391,7 +395,7 @@
                 </div>
                 <div class="table-responsive">
                     <table class="table table-hover align-middle">
-                        <thead class="table-light">
+                        <thead class="table-custom-header">
                             <tr>
                                 <th>Identificador (Código)</th>
                                 <th>Nombre Público del Cargo</th>
