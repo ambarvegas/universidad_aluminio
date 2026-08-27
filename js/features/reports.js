@@ -165,36 +165,100 @@ function renderTopLearners() {
     const usuariosActivos = (usuarios || []).filter(u => u.rol !== 'admin' && u.estado !== 'suspendido');
 
     const datos = usuariosActivos.map(u => {
-        const cursosAsig = _obtenerCursosDelRol(u);
-        const certs = Array.isArray(u.certificadosCurso) ? u.certificadosCurso.length : 0;
-        const total = cursosAsig.length;
-        let sumPct = 0;
-        cursosAsig.forEach(cid => {
-            const c = (cursos || []).find(x => x.id === cid);
-            if (c) sumPct += _porcentajeCurso(u, c);
+        const cursosRolIds = _obtenerCursosDelRol(u);
+        const totalCursos = cursosRolIds.length;
+        const completadosCursos = cursosRolIds.filter(cid => _esCursoCompletado(u, cid)).length;
+        const pctCursos = totalCursos > 0 ? Math.round((completadosCursos / totalCursos) * 100) : 0;
+
+        let totalModulos = 0;
+        let modulosAprobadosCount = 0;
+        let totalLecciones = 0;
+        let leccionesCompletadasCount = 0;
+        let sumaCalificaciones = 0;
+        let totalEvaluaciones = 0;
+        let totalIntentos = 0;
+
+        const uProg = u.progreso || {};
+        const todosCursosIds = [...new Set([...cursosRolIds, ...Object.keys(uProg)])];
+
+        todosCursosIds.forEach(cursoId => {
+            const cursoObj = (cursos || []).find(c => c.id === cursoId);
+            const progCurso = uProg[cursoId] || {};
+
+            if (cursoObj && Array.isArray(cursoObj.modulos)) {
+                totalModulos += cursoObj.modulos.length;
+                const modsAprob = Array.isArray(progCurso.modulosAprobados) ? progCurso.modulosAprobados.length : 0;
+                modulosAprobadosCount += Math.min(modsAprob, cursoObj.modulos.length);
+
+                cursoObj.modulos.forEach(mod => {
+                    const lecs = Array.isArray(mod.lecciones) ? mod.lecciones : [];
+                    totalLecciones += lecs.length;
+                });
+
+                const lecsComp = Array.isArray(progCurso.leccionesCompletadas) ? progCurso.leccionesCompletadas.length : 0;
+                leccionesCompletadasCount += Math.min(lecsComp, totalLecciones);
+            }
+
+            const evals = progCurso.evaluaciones || {};
+            if (typeof evals === 'object') {
+                Object.values(evals).forEach(ev => {
+                    if (ev && typeof ev.calificacion === 'number') {
+                        sumaCalificaciones += ev.calificacion;
+                        totalEvaluaciones++;
+                    }
+                });
+            }
+
+            const intentos = progCurso.intentos || {};
+            if (typeof intentos === 'object') {
+                Object.values(intentos).forEach(val => {
+                    totalIntentos += (parseInt(val) || 0);
+                });
+            }
         });
-        const promedio = total > 0 ? Math.round(sumPct / total) : 0;
-        const completados = cursosAsig.filter(cid => _esCursoCompletado(u, cid)).length;
-        return { usuario: u, completados, total, promedio, certs };
-    }).sort((a, b) => b.promedio - a.promedio || b.completados - a.completados);
+
+        const pctModulos = totalModulos > 0 ? Math.round((modulosAprobadosCount / totalModulos) * 100) : 0;
+        const pctLecciones = totalLecciones > 0 ? Math.round((leccionesCompletadasCount / totalLecciones) * 100) : 0;
+        const promedioEvals = totalEvaluaciones > 0 ? (sumaCalificaciones / totalEvaluaciones).toFixed(1) : "0.0";
+        const tasaCompletitud = Math.round((pctModulos + pctLecciones + pctCursos) / 3);
+
+        return {
+            usuario: u,
+            totalCursos,
+            completadosCursos,
+            pctCursos,
+            totalModulos,
+            modulosAprobadosCount,
+            pctModulos,
+            totalLecciones,
+            leccionesCompletadasCount,
+            pctLecciones,
+            promedioEvals,
+            totalIntentos,
+            tasaCompletitud
+        };
+    }).sort((a, b) => b.tasaCompletitud - a.tasaCompletitud || b.completadosCursos - a.completadosCursos);
 
     if (datos.length === 0) {
-        container.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-4"><i class="bi bi-people fs-2 d-block mb-2"></i>Sin colaboradores registrados.</td></tr>`;
+        container.innerHTML = `<tr><td colspan="9" class="text-center text-muted py-4"><i class="bi bi-people fs-2 d-block mb-2"></i>Sin colaboradores registrados.</td></tr>`;
         return;
     }
 
-    const getColorPct = pct => pct >= 75 ? 'success' : pct >= 40 ? 'warning' : 'danger';
+    const getColorPct = pct => pct >= 70 ? 'success' : pct >= 40 ? 'warning' : 'danger';
     const getMedal = (idx) => idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
 
     container.innerHTML = `
         <thead>
             <tr class="report-thead">
-                <th style="width:50px;">#</th>
-                <th>Colaborador</th>
+                <th style="width:40px;">#</th>
+                <th>Usuario</th>
                 <th>Rol / Cargo</th>
-                <th>Progreso Promedio</th>
-                <th class="text-center">Cursos Hechos vs Rol</th>
-                <th class="text-center">Certificados</th>
+                <th class="text-center">Cursos (Rol)</th>
+                <th style="min-width:130px;">Módulos <small class="text-muted fw-normal">(aprob/total)</small></th>
+                <th style="min-width:130px;">Lecciones <small class="text-muted fw-normal">(complet/total)</small></th>
+                <th class="text-center">Prom. Evals</th>
+                <th class="text-center">Intentos</th>
+                <th class="text-center">Tasa Completitud</th>
             </tr>
         </thead>
         <tbody>
@@ -202,8 +266,10 @@ function renderTopLearners() {
             const initials = (d.usuario.nombre || '?').split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase();
             const rolObj = (rolesConfig || []).find(r => r.id === d.usuario.rol);
             const rolNombre = rolObj ? rolObj.nombre : d.usuario.rol;
-            const color = getColorPct(d.promedio);
-            const pctCursos = d.total > 0 ? Math.round((d.completados / d.total) * 100) : 0;
+            const colorMod = getColorPct(d.pctModulos);
+            const colorLec = getColorPct(d.pctLecciones);
+            const colorTasa = getColorPct(d.tasaCompletitud);
+
             return `
             <tr class="report-row">
                 <td><span class="rank-badge">${getMedal(i)}</span></td>
@@ -212,31 +278,52 @@ function renderTopLearners() {
                         <div class="user-avatar" style="font-size:0.75rem;">${initials}</div>
                         <div>
                             <div class="fw-semibold">${d.usuario.nombre}</div>
-                            <div class="text-muted small">${d.usuario.id}</div>
+                            <div class="text-muted small">${d.usuario.id} ${d.usuario.estado === 'suspendido' || d.usuario.estado === 'inactivo' ? '<span class="badge bg-secondary ms-1">Inactivo</span>' : ''}</div>
                         </div>
                     </div>
                 </td>
                 <td><span class="badge bg-light text-dark border small">${rolNombre}</span></td>
-                <td style="min-width:160px;">
-                    <div class="d-flex align-items-center gap-2">
-                        <div class="flex-grow-1">
-                            <div class="progress-modern"><div class="progress-bar bg-${color}" style="width:${d.promedio}%"></div></div>
+                <td class="text-center" style="min-width:120px;">
+                    <div class="d-inline-block text-start w-100">
+                        <div class="d-flex justify-content-between align-items-center small mb-1">
+                            <span class="fw-semibold">${d.completadosCursos}/${d.totalCursos}</span>
+                            <span class="text-${getColorPct(d.pctCursos)} fw-bold">${d.pctCursos}%</span>
                         </div>
-                        <span class="fw-bold small text-${color === 'success' ? 'success' : color === 'warning' ? 'warning' : 'danger'}">${d.promedio}%</span>
+                        <div class="progress" style="height: 5px; background: #e2e8f0;">
+                            <div class="progress-bar bg-${getColorPct(d.pctCursos)}" style="width: ${d.pctCursos}%"></div>
+                        </div>
                     </div>
                 </td>
-                <td class="text-center" style="min-width:140px;">
-                    <div class="d-inline-block text-start">
-                        <div class="fw-bold text-dark mb-1" style="font-size:0.82rem;">
-                            <i class="bi bi-check2-circle text-success me-1"></i>${d.completados} / ${d.total} hecho${d.completados !== 1 ? 's' : ''}
-                        </div>
-                        <div class="progress" style="height: 5px; width: 100px; background: #e2e8f0;">
-                            <div class="progress-bar bg-success" style="width: ${pctCursos}%"></div>
-                        </div>
+                <td style="min-width:130px;">
+                    <div class="d-flex justify-content-between align-items-center small mb-1">
+                        <span>${d.modulosAprobadosCount}/${d.totalModulos}</span>
+                        <span class="text-${colorMod} fw-bold">${d.pctModulos}%</span>
+                    </div>
+                    <div class="progress" style="height: 5px; background: #e2e8f0;">
+                        <div class="progress-bar bg-${colorMod}" style="width: ${d.pctModulos}%"></div>
+                    </div>
+                </td>
+                <td style="min-width:130px;">
+                    <div class="d-flex justify-content-between align-items-center small mb-1">
+                        <span>${d.leccionesCompletadasCount}/${d.totalLecciones}</span>
+                        <span class="text-${colorLec} fw-bold">${d.pctLecciones}%</span>
+                    </div>
+                    <div class="progress" style="height: 5px; background: #e2e8f0;">
+                        <div class="progress-bar bg-${colorLec}" style="width: ${d.pctLecciones}%"></div>
                     </div>
                 </td>
                 <td class="text-center">
-                    <span class="badge bg-success bg-opacity-10 text-success fw-bold">${d.certs} 🏆</span>
+                    <span class="fw-bold ${parseFloat(d.promedioEvals) >= 70 ? 'text-success' : parseFloat(d.promedioEvals) >= 60 ? 'text-warning' : 'text-danger'}">
+                        ${d.promedioEvals}
+                    </span>
+                </td>
+                <td class="text-center">
+                    <span class="badge bg-secondary opacity-75">${d.totalIntentos}</span>
+                </td>
+                <td class="text-center">
+                    <span class="badge bg-${colorTasa} bg-opacity-15 text-${colorTasa} border border-${colorTasa} fs-6 fw-bold px-2 py-1">
+                        ${d.tasaCompletitud}%
+                    </span>
                 </td>
             </tr>`;
         }).join('')}
@@ -424,30 +511,82 @@ function exportarReporteXLSX() {
     const usuariosActivos = (usuarios || []).filter(u => u.rol !== 'admin' && u.estado !== 'suspendido');
 
     // 1. Datos para Hoja Top Learners (Desempeño General)
-    const dataLearners = usuariosActivos.map((u, idx) => {
-        const cursosAsig = _obtenerCursosDelRol(u);
-        const totalCursos = cursosAsig.length;
-        let sumPct = 0;
-        cursosAsig.forEach(cid => {
-            const c = (cursos || []).find(x => x.id === cid);
-            if (c) sumPct += _porcentajeCurso(u, c);
+    const dataLearners = usuariosActivos.map((u) => {
+        const cursosRolIds = _obtenerCursosDelRol(u);
+        const totalCursos = cursosRolIds.length;
+        const completadosCursos = cursosRolIds.filter(cid => _esCursoCompletado(u, cid)).length;
+        const pctCursos = totalCursos > 0 ? Math.round((completadosCursos / totalCursos) * 100) : 0;
+
+        let totalModulos = 0;
+        let modulosAprobadosCount = 0;
+        let totalLecciones = 0;
+        let leccionesCompletadasCount = 0;
+        let sumaCalificaciones = 0;
+        let totalEvaluaciones = 0;
+        let totalIntentos = 0;
+
+        const uProg = u.progreso || {};
+        const todosCursosIds = [...new Set([...cursosRolIds, ...Object.keys(uProg)])];
+
+        todosCursosIds.forEach(cursoId => {
+            const cursoObj = (cursos || []).find(c => c.id === cursoId);
+            const progCurso = uProg[cursoId] || {};
+
+            if (cursoObj && Array.isArray(cursoObj.modulos)) {
+                totalModulos += cursoObj.modulos.length;
+                const modsAprob = Array.isArray(progCurso.modulosAprobados) ? progCurso.modulosAprobados.length : 0;
+                modulosAprobadosCount += Math.min(modsAprob, cursoObj.modulos.length);
+
+                cursoObj.modulos.forEach(mod => {
+                    const lecs = Array.isArray(mod.lecciones) ? mod.lecciones : [];
+                    totalLecciones += lecs.length;
+                });
+
+                const lecsComp = Array.isArray(progCurso.leccionesCompletadas) ? progCurso.leccionesCompletadas.length : 0;
+                leccionesCompletadasCount += Math.min(lecsComp, totalLecciones);
+            }
+
+            const evals = progCurso.evaluaciones || {};
+            if (typeof evals === 'object') {
+                Object.values(evals).forEach(ev => {
+                    if (ev && typeof ev.calificacion === 'number') {
+                        sumaCalificaciones += ev.calificacion;
+                        totalEvaluaciones++;
+                    }
+                });
+            }
+
+            const intentos = progCurso.intentos || {};
+            if (typeof intentos === 'object') {
+                Object.values(intentos).forEach(val => {
+                    totalIntentos += (parseInt(val) || 0);
+                });
+            }
         });
-        const promedio = totalCursos > 0 ? Math.round(sumPct / totalCursos) : 0;
-        const completados = cursosAsig.filter(id => _esCursoCompletado(u, id)).length;
+
+        const pctModulos = totalModulos > 0 ? Math.round((modulosAprobadosCount / totalModulos) * 100) : 0;
+        const pctLecciones = totalLecciones > 0 ? Math.round((leccionesCompletadasCount / totalLecciones) * 100) : 0;
+        const promedioEvals = totalEvaluaciones > 0 ? (sumaCalificaciones / totalEvaluaciones).toFixed(1) : "0.0";
+        const tasaCompletitud = Math.round((pctModulos + pctLecciones + pctCursos) / 3);
         const rolObj = (rolesConfig || []).find(r => r.id === u.rol);
 
         return {
-            'Posición': idx + 1,
+            'Posición': 0,
             'Cédula / ID': u.id,
             'Nombre del Colaborador': u.nombre,
             'Rol / Cargo': rolObj ? rolObj.nombre : u.rol,
             'Estado': (u.estado || 'activo').toUpperCase(),
-            'Cursos Requeridos (Rol)': totalCursos,
-            'Cursos Completados': completados,
-            'Progreso Promedio (%)': `${promedio}%`,
-            'Certificados Obtenidos': Array.isArray(u.certificadosCurso) ? u.certificadosCurso.length : 0
+            'Cursos Completados (Rol)': `${completadosCursos} / ${totalCursos}`,
+            'Progreso Cursos (%)': `${pctCursos}%`,
+            'Módulos Aprobados': `${modulosAprobadosCount} / ${totalModulos}`,
+            'Progreso Módulos (%)': `${pctModulos}%`,
+            'Lecciones Completadas': `${leccionesCompletadasCount} / ${totalLecciones}`,
+            'Progreso Lecciones (%)': `${pctLecciones}%`,
+            'Promedio Evaluaciones': promedioEvals,
+            'Intentos Totales': totalIntentos,
+            'Tasa Completitud General (%)': `${tasaCompletitud}%`
         };
-    }).sort((a, b) => parseInt(b['Progreso Promedio (%)']) - parseInt(a['Progreso Promedio (%)']));
+    }).sort((a, b) => parseInt(b['Tasa Completitud General (%)']) - parseInt(a['Tasa Completitud General (%)']));
 
     // Reasignar posiciones ordenadas por promedio
     dataLearners.forEach((row, i) => row['Posición'] = i + 1);
