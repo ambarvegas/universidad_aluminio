@@ -144,6 +144,16 @@ function _calcularBrechasUsuario(usuario) {
     return brechas;
 }
 
+function _esCursoCompletado(usuario, cursoId) {
+    if (Array.isArray(usuario.certificadosCurso) && usuario.certificadosCurso.includes(cursoId)) return true;
+    const cursoObj = (cursos || []).find(c => c.id === cursoId);
+    if (!cursoObj) return false;
+    const prog = _getProgresoCurso(usuario, cursoId);
+    const modulosAprobados = Array.isArray(prog.modulosAprobados) ? prog.modulosAprobados : [];
+    const totalModulos = (cursoObj.modulos || []).length;
+    return totalModulos > 0 && modulosAprobados.length >= totalModulos;
+}
+
 // ============================================================
 // VISTA 1: TOP LEARNERS (tabla rediseñada)
 // ============================================================
@@ -164,7 +174,7 @@ function renderTopLearners() {
             if (c) sumPct += _porcentajeCurso(u, c);
         });
         const promedio = total > 0 ? Math.round(sumPct / total) : 0;
-        const completados = Array.isArray(u.certificadosCurso) ? u.certificadosCurso.filter(id => cursosAsig.includes(id)).length : 0;
+        const completados = cursosAsig.filter(cid => _esCursoCompletado(u, cid)).length;
         return { usuario: u, completados, total, promedio, certs };
     }).sort((a, b) => b.promedio - a.promedio || b.completados - a.completados);
 
@@ -181,9 +191,9 @@ function renderTopLearners() {
             <tr class="report-thead">
                 <th style="width:50px;">#</th>
                 <th>Colaborador</th>
-                <th>Rol</th>
+                <th>Rol / Cargo</th>
                 <th>Progreso Promedio</th>
-                <th class="text-center">Cursos</th>
+                <th class="text-center">Cursos Hechos vs Rol</th>
                 <th class="text-center">Certificados</th>
             </tr>
         </thead>
@@ -193,6 +203,7 @@ function renderTopLearners() {
             const rolObj = (rolesConfig || []).find(r => r.id === d.usuario.rol);
             const rolNombre = rolObj ? rolObj.nombre : d.usuario.rol;
             const color = getColorPct(d.promedio);
+            const pctCursos = d.total > 0 ? Math.round((d.completados / d.total) * 100) : 0;
             return `
             <tr class="report-row">
                 <td><span class="rank-badge">${getMedal(i)}</span></td>
@@ -214,8 +225,15 @@ function renderTopLearners() {
                         <span class="fw-bold small text-${color === 'success' ? 'success' : color === 'warning' ? 'warning' : 'danger'}">${d.promedio}%</span>
                     </div>
                 </td>
-                <td class="text-center">
-                    <span class="badge bg-primary bg-opacity-10 text-primary fw-semibold">${d.completados}/${d.total}</span>
+                <td class="text-center" style="min-width:140px;">
+                    <div class="d-inline-block text-start">
+                        <div class="fw-bold text-dark mb-1" style="font-size:0.82rem;">
+                            <i class="bi bi-check2-circle text-success me-1"></i>${d.completados} / ${d.total} hecho${d.completados !== 1 ? 's' : ''}
+                        </div>
+                        <div class="progress" style="height: 5px; width: 100px; background: #e2e8f0;">
+                            <div class="progress-bar bg-success" style="width: ${pctCursos}%"></div>
+                        </div>
+                    </div>
                 </td>
                 <td class="text-center">
                     <span class="badge bg-success bg-opacity-10 text-success fw-bold">${d.certs} 🏆</span>
@@ -415,7 +433,7 @@ function exportarReporteXLSX() {
             if (c) sumPct += _porcentajeCurso(u, c);
         });
         const promedio = totalCursos > 0 ? Math.round(sumPct / totalCursos) : 0;
-        const completados = Array.isArray(u.certificadosCurso) ? u.certificadosCurso.filter(id => cursosAsig.includes(id)).length : 0;
+        const completados = cursosAsig.filter(id => _esCursoCompletado(u, id)).length;
         const rolObj = (rolesConfig || []).find(r => r.id === u.rol);
 
         return {
