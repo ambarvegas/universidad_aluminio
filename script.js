@@ -155,10 +155,9 @@ const getCareerIdFromRole = (roleId) => {
 
 function crearEstructuraUsuario(u) {
     if (!u) return null;
-    return {
+    const res = {
         id: String(u.id || "").trim(),
         nombre: String(u.nombre || "").trim(),
-        clave: String(u.clave || "12345"),
         rol: String(u.rol || "participante"),
         estado: String(u.estado || "activo"),
         asignados: Array.isArray(u.asignados) ? u.asignados : [],
@@ -167,6 +166,10 @@ function crearEstructuraUsuario(u) {
         certificadosCurso: Array.isArray(u.certificadosCurso) ? u.certificadosCurso : [],
         certificadosCarrera: Array.isArray(u.certificadosCarrera) ? u.certificadosCarrera : []
     };
+    if (u.clave && String(u.clave).trim() !== "") {
+        res.clave = String(u.clave).trim();
+    }
+    return res;
 }
 
 function actualizarEstadoCarrerasUsuario(usuario) {
@@ -752,7 +755,11 @@ window.guardarUsuario = async (e) => {
             usuarios[idx].nombre = nombre;
             usuarios[idx].rol = rol;
             usuarios[idx].estado = estado;
-            if (claveNueva) usuarios[idx].clave = claveNueva;
+            if (claveNueva) {
+                usuarios[idx].clave = claveNueva;
+            } else {
+                delete usuarios[idx].clave;
+            }
             if (autoAssignCareerId && !usuarios[idx].carrerasAsignadas.some(ca => ca.id === autoAssignCareerId)) {
                 usuarios[idx].carrerasAsignadas.push({ id: autoAssignCareerId, estado: "Incompleta" });
             }

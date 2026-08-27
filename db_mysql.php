@@ -392,6 +392,14 @@ function db_write_all(mysqli $conn, array $data): void {
         $conn->query("TRUNCATE TABLE `solicitudes_cursos`");
 
         // --- Recopilar arrays de filas para Bulk Insert ---
+        $existingHashes = [];
+        $resH = $conn->query("SELECT id, clave FROM `usuarios`");
+        if ($resH) {
+            while ($r = $resH->fetch_assoc()) {
+                $existingHashes[$r['id']] = $r['clave'];
+            }
+        }
+
         $usuariosRows          = [];
         $asignadosRows         = [];
         $carrerasAsignadasRows = [];
@@ -400,16 +408,21 @@ function db_write_all(mysqli $conn, array $data): void {
         $certCarreraRows       = [];
 
         foreach (($data['usuarios'] ?? []) as $u) {
-            $id     = trim((string)($u['id'] ?? ''));
-            $nombre = trim((string)($u['nombre'] ?? ''));
-            $clave  = trim((string)($u['clave'] ?? '12345'));
-            $rol    = trim((string)($u['rol'] ?? 'participante'));
-            $estado = trim((string)($u['estado'] ?? 'activo'));
+            $id       = trim((string)($u['id'] ?? ''));
+            $nombre   = trim((string)($u['nombre'] ?? ''));
+            $rawClave = trim((string)($u['clave'] ?? ''));
+            $rol      = trim((string)($u['rol'] ?? 'participante'));
+            $estado   = trim((string)($u['estado'] ?? 'activo'));
             if (!$id) continue;
 
-            // Hashear automáticamente si viene en texto plano
-            if (!str_starts_with($clave, '$2y$')) {
-                $clave = password_hash($clave, PASSWORD_BCRYPT);
+            if (!empty($rawClave)) {
+                if (str_starts_with($rawClave, '$2y$')) {
+                    $clave = $rawClave;
+                } else {
+                    $clave = password_hash($rawClave, PASSWORD_BCRYPT);
+                }
+            } else {
+                $clave = $existingHashes[$id] ?? password_hash('12345', PASSWORD_BCRYPT);
             }
 
             $usuariosRows[] = [$id, $nombre, $clave, $rol, $estado];
@@ -732,10 +745,13 @@ function db_upsert_usuario(mysqli $conn, array $u): void {
             $claveActual = $rowC['clave'];
         }
 
-        if (!empty($u['clave']) && $u['clave'] !== ($claveActual ?? '')) {
-            $nuevaClave = str_starts_with($u['clave'], '$2y$')
-                ? $u['clave']
-                : password_hash($u['clave'], PASSWORD_BCRYPT);
+        $rawClave = trim((string)($u['clave'] ?? ''));
+        if (!empty($rawClave)) {
+            if (str_starts_with($rawClave, '$2y$')) {
+                $nuevaClave = $rawClave;
+            } else {
+                $nuevaClave = password_hash($rawClave, PASSWORD_BCRYPT);
+            }
         } else {
             $nuevaClave = $claveActual ?? password_hash('12345', PASSWORD_BCRYPT);
         }
