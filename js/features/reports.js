@@ -32,12 +32,62 @@ function _porcentajeCurso(usuario, curso) {
     return totalLecciones === 0 ? 0 : Math.round((completadasCount / totalLecciones) * 100);
 }
 
-function _calcularBrechasUsuario(usuario) {
-    const cursosAsignados = Array.isArray(usuario.asignados) ? usuario.asignados : [];
-    // También incluir cursos públicos accesibles
-    const cursosPublicos = (cursos || []).filter(c => c.tipo === 'publico').map(c => c.id);
-    const todosIds = [...new Set([...cursosAsignados, ...cursosPublicos])];
+/**
+ * Obtiene todos los IDs de cursos requeridos para un usuario según su ROL,
+ * incluyendo cursos directos del rol, carreras asociadas al rol y asignaciones manuales.
+ */
+function _obtenerCursosDelRol(usuario) {
+    const cursosSet = new Set();
+    if (!usuario) return [];
 
+    // 1. Cursos asociados al Rol directamente (en rolesConfig)
+    const userRoleConfig = (rolesConfig || []).find(r => r.id === usuario.rol);
+    if (userRoleConfig) {
+        if (Array.isArray(userRoleConfig.cursos)) {
+            userRoleConfig.cursos.forEach(cid => { if (cid) cursosSet.add(cid); });
+        }
+        if (Array.isArray(userRoleConfig.carreras)) {
+            userRoleConfig.carreras.forEach(carId => {
+                const carrera = (carreras || []).find(c => c.id === carId);
+                if (carrera && Array.isArray(carrera.cursos)) {
+                    carrera.cursos.forEach(cid => { if (cid) cursosSet.add(cid); });
+                }
+            });
+        }
+    }
+
+    // 2. Carrera asociada automáticamente según el rol (getCareerIdFromRole)
+    if (typeof getCareerIdFromRole === 'function') {
+        const autoCareerId = getCareerIdFromRole(usuario.rol);
+        if (autoCareerId) {
+            const carreraAuto = (carreras || []).find(c => c.id === autoCareerId);
+            if (carreraAuto && Array.isArray(carreraAuto.cursos)) {
+                carreraAuto.cursos.forEach(cid => { if (cid) cursosSet.add(cid); });
+            }
+        }
+    }
+
+    // 3. Carreras asignadas expresamente en el perfil del usuario
+    if (Array.isArray(usuario.carrerasAsignadas)) {
+        usuario.carrerasAsignadas.forEach(ca => {
+            const caId = typeof ca === 'string' ? ca : (ca.id || '');
+            const carrera = (carreras || []).find(c => c.id === caId);
+            if (carrera && Array.isArray(carrera.cursos)) {
+                carrera.cursos.forEach(cid => { if (cid) cursosSet.add(cid); });
+            }
+        });
+    }
+
+    // 4. Asignaciones directas del usuario
+    if (Array.isArray(usuario.asignados)) {
+        usuario.asignados.forEach(cid => { if (cid) cursosSet.add(cid); });
+    }
+
+    return Array.from(cursosSet);
+}
+
+function _calcularBrechasUsuario(usuario) {
+    const todosIds = _obtenerCursosDelRol(usuario);
     const brechas = [];
 
     todosIds.forEach(cursoId => {
@@ -49,7 +99,8 @@ function _calcularBrechasUsuario(usuario) {
         const modulosAprobados = Array.isArray(prog.modulosAprobados) ? prog.modulosAprobados : [];
         const certificado = Array.isArray(usuario.certificadosCurso) && usuario.certificadosCurso.includes(cursoId);
 
-        if (certificado) return; // Curso completado — no es brecha
+        const totalModulos = (curso.modulos || []).length;
+        if (certificado || (totalModulos > 0 && modulosAprobados.length >= totalModulos)) return; // Curso completado
 
         const modsFaltantes = [];
         (curso.modulos || []).forEach((mod, modIdx) => {
@@ -104,7 +155,7 @@ function renderTopLearners() {
     const usuariosActivos = (usuarios || []).filter(u => u.rol !== 'admin' && u.estado !== 'suspendido');
 
     const datos = usuariosActivos.map(u => {
-        const cursosAsig = Array.isArray(u.asignados) ? u.asignados : [];
+        const cursosAsig = _obtenerCursosDelRol(u);
         const certs = Array.isArray(u.certificadosCurso) ? u.certificadosCurso.length : 0;
         const total = cursosAsig.length;
         let sumPct = 0;
@@ -356,7 +407,7 @@ function exportarReporteXLSX() {
 
     // 1. Datos para Hoja Top Learners (Desempeño General)
     const dataLearners = usuariosActivos.map((u, idx) => {
-        const cursosAsig = Array.isArray(u.asignados) ? u.asignados : [];
+        const cursosAsig = _obtenerCursosDelRol(u);
         const totalCursos = cursosAsig.length;
         let sumPct = 0;
         cursosAsig.forEach(cid => {
@@ -373,7 +424,7 @@ function exportarReporteXLSX() {
             'Nombre del Colaborador': u.nombre,
             'Rol / Cargo': rolObj ? rolObj.nombre : u.rol,
             'Estado': (u.estado || 'activo').toUpperCase(),
-            'Cursos Asignados': totalCursos,
+            'Cursos Requeridos (Rol)': totalCursos,
             'Cursos Completados': completados,
             'Progreso Promedio (%)': `${promedio}%`,
             'Certificados Obtenidos': Array.isArray(u.certificadosCurso) ? u.certificadosCurso.length : 0
