@@ -846,3 +846,447 @@ footer {
 ::-webkit-scrollbar-thumb:hover {
     background: #94a3b8;
 }
+
+/* ============================================================
+   PANEL DE CONFIGURACIÓN — TARJETAS Y CONTROLES DE COLOR
+   ============================================================ */
+
+/* Tarjeta de configuración institucional */
+.config-card {
+    background: var(--card-bg);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--aluminum-border);
+    box-shadow: var(--shadow-sm);
+    padding: 1.5rem;
+    transition: var(--transition);
+}
+
+.config-card:hover {
+    box-shadow: var(--shadow-md);
+    border-color: rgba(2, 132, 199, 0.25);
+}
+
+/* Encabezado de tarjeta con icono */
+.config-card-header {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--aluminum-border);
+}
+
+.config-card-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.35rem;
+    flex-shrink: 0;
+}
+
+/* Letras espaciadas para labels */
+.ls-1 {
+    letter-spacing: 0.05em;
+}
+
+/* Color Picker Row */
+.color-picker-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+/* Swatch nativo del color picker */
+.color-swatch-input {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 44px;
+    height: 44px;
+    border: 2px solid var(--aluminum-border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    padding: 2px;
+    background: none;
+    flex-shrink: 0;
+    transition: var(--transition);
+}
+
+.color-swatch-input:hover {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
+}
+
+.color-swatch-input::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+.color-swatch-input::-webkit-color-swatch {
+    border: none;
+    border-radius: calc(var(--radius-sm) - 3px);
+}
+
+/* Input hex monospace */
+.font-mono {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.875rem;
+    letter-spacing: 0.04em;
+}
+
+/* Barra de previsualización de colores */
+.color-preview-bar {
+    display: flex;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    height: 36px;
+    border: 1px solid var(--aluminum-border);
+}
+
+.color-preview-segment {
+    flex: 1;
+    transition: background 0.25s ease;
+}
+
+/* Caja de preview del logo */
+.logo-preview-box {
+    background: #f8fafc;
+    border: 1px dashed var(--aluminum-border);
+    border-radius: var(--radius-sm);
+    padding: 0.75rem 1rem;
+    min-height: 60px;
+}
+
+/* ============================================================
+   REPORTES — TOP LEARNERS Y BRECHAS DE APRENDIZAJE
+   ============================================================ */
+
+/* Encabezado de tabla de reportes */
+.report-thead th {
+    background: var(--primary-color);
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 0.85rem 1rem;
+    border: none;
+}
+
+/* Filas de tabla de reportes */
+.report-row td {
+    padding: 0.9rem 1rem;
+    border-bottom: 1px solid var(--aluminum-border);
+    vertical-align: middle;
+    font-size: 0.9rem;
+}
+
+.report-row:last-child td { border-bottom: none; }
+.report-row:hover td { background: #f8fafc; }
+
+/* Badge de ranking */
+.rank-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    font-size: 0.85rem;
+    font-weight: 700;
+    background: var(--aluminum-light);
+    color: var(--text-muted);
+}
+
+/* Tarjeta de usuario para brechas */
+.brecha-user-card {
+    border: 1px solid var(--aluminum-border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: white;
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition);
+}
+
+.brecha-user-card:hover {
+    border-color: rgba(2, 132, 199, 0.2);
+    box-shadow: var(--shadow-md);
+}
+
+.brecha-user-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.25rem;
+    cursor: pointer;
+    background: #fafbfc;
+    border-bottom: 1px solid transparent;
+    transition: var(--transition);
+    user-select: none;
+}
+
+.brecha-user-header:hover { background: #f1f5f9; }
+
+.brecha-user-card.open .brecha-user-header {
+    background: rgba(2, 132, 199, 0.05);
+    border-bottom-color: var(--aluminum-border);
+}
+
+.brecha-user-body {
+    display: none;
+    padding: 1rem 1.25rem;
+}
+
+.brecha-user-card.open .brecha-user-body { display: block; }
+
+.brecha-chevron {
+    transition: transform 0.25s ease;
+    color: var(--text-muted);
+}
+
+.brecha-user-card.open .brecha-chevron { transform: rotate(180deg); }
+
+/* Badges de estado */
+.badge-brecha {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.3rem 0.7rem;
+    border-radius: var(--radius-full);
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.badge-brecha.completado {
+    background: var(--success-soft);
+    color: #059669;
+}
+
+.badge-brecha.pendiente {
+    background: var(--warning-soft);
+    color: #b45309;
+}
+
+/* Árbol de brechas */
+.brecha-details { margin-bottom: 0.5rem; }
+.brecha-details summary { list-style: none; cursor: pointer; }
+.brecha-details summary::-webkit-details-marker { display: none; }
+
+.brecha-curso-summary,
+.brecha-modulo-summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.65rem 0.85rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--aluminum-border);
+    background: #f8fafc;
+    margin-bottom: 0.35rem;
+    transition: var(--transition);
+}
+
+.brecha-curso-summary:hover,
+.brecha-modulo-summary:hover {
+    background: #f0f9ff;
+    border-color: var(--accent-color);
+}
+
+details[open] > summary.brecha-curso-summary,
+details[open] > summary.brecha-modulo-summary {
+    background: rgba(2, 132, 199, 0.08);
+    border-color: var(--accent-color);
+}
+
+.brecha-summary-icon {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+}
+
+details[open] .brecha-summary-icon { transform: rotate(90deg); }
+
+.brecha-modulos-list,
+.brecha-lecciones-list {
+    padding: 0.5rem 0 0.25rem 1rem;
+    border-left: 2px solid var(--aluminum-border);
+    margin-left: 0.5rem;
+}
+
+.brecha-leaf {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.85rem;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.brecha-empty {
+    padding: 1.5rem;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+/* Estado de brecha */
+.brecha-estado-badge {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.2rem 0.55rem;
+    border-radius: var(--radius-full);
+}
+
+.brecha-estado-badge.sin-iniciar {
+    background: var(--danger-soft);
+    color: #dc2626;
+}
+
+.brecha-estado-badge.en-progreso {
+    background: var(--warning-soft);
+    color: #b45309;
+}
+
+/* Color para ícono de módulo */
+.text-purple { color: #9333ea; }
+
+/* ============================================================
+   RESPONSIVIDAD MÓVIL MEJORADA
+   ============================================================ */
+
+/* Tabs del admin: scroll horizontal en móvil */
+@media (max-width: 768px) {
+    .nav-pills-admin {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        padding-bottom: 0.3rem;
+    }
+
+    .nav-pills-admin::-webkit-scrollbar { display: none; }
+
+    .nav-pills-admin .nav-item { flex-shrink: 0; }
+
+    .nav-pills-admin .nav-link {
+        font-size: 0.8rem;
+        padding: 0.5rem 0.85rem;
+        white-space: nowrap;
+    }
+}
+
+/* Hero banner en móvil */
+@media (max-width: 576px) {
+    .hero-banner {
+        padding: 2rem 0 1.5rem;
+        border-radius: 0 0 var(--radius-md) var(--radius-md);
+    }
+
+    .hero-banner h1 {
+        font-size: 1.6rem;
+    }
+
+    .hero-banner p {
+        font-size: 0.9rem;
+    }
+
+    /* KPIs en 2 columnas en móvil */
+    #student-kpis .col-4 {
+        width: 50% !important;
+        flex: 0 0 50% !important;
+        max-width: 50% !important;
+    }
+
+    #student-kpis .col-4:last-child {
+        width: 100% !important;
+        flex: 0 0 100% !important;
+        max-width: 100% !important;
+    }
+
+    /* KPI admin: 2 cols */
+    .row.g-3 > .col-sm-6.col-xl-3 {
+        flex: 0 0 50%;
+        max-width: 50%;
+    }
+}
+
+/* Barra de filtros en móvil */
+@media (max-width: 767px) {
+    .filter-toolbar .row { gap: 0.75rem; }
+
+    #filtros-categoria {
+        justify-content: flex-start !important;
+        overflow-x: auto;
+        flex-wrap: nowrap !important;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 0.25rem;
+    }
+
+    #filtros-categoria::-webkit-scrollbar { display: none; }
+    #filtros-categoria .filter-pill-btn { flex-shrink: 0; }
+}
+
+/* Tablas responsivas en móvil */
+@media (max-width: 576px) {
+    .table-responsive { border-radius: var(--radius-sm); }
+
+    /* Ocultar columnas menos importantes en móvil */
+    .table th:nth-child(4),
+    .table td:nth-child(4) {
+        display: none;
+    }
+
+    /* Botones de acción: solo icono */
+    .btn.btn-xs span { display: none; }
+    .btn.btn-xs { padding: 0.2rem 0.4rem; }
+}
+
+/* Modales: full-screen en móvil */
+@media (max-width: 576px) {
+    .modal-dialog {
+        margin: 0.5rem;
+        max-width: calc(100vw - 1rem);
+    }
+
+    .modal-body { padding: 1rem !important; }
+    .modal-footer { padding: 0.75rem 1rem !important; }
+
+    .lms-sidebar { margin-bottom: 1rem; }
+}
+
+/* Navbar: ajustes móvil */
+@media (max-width: 576px) {
+    .navbar { padding: 0.6rem 0; }
+    .navbar-brand { font-size: 1.1rem; }
+    .navbar-brand span { display: none; } /* Solo icono en pantalla muy pequeña */
+
+    /* Panel admin: main padding reducido */
+    .container-fluid.px-lg-4 { padding: 0 0.75rem !important; }
+}
+
+/* Cards de configuración: stack en móvil */
+@media (max-width: 991px) {
+    .config-card { margin-bottom: 0; }
+}
+
+/* Brecha user cards: compactar en móvil */
+@media (max-width: 576px) {
+    .brecha-user-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+
+    .brecha-modulos-list,
+    .brecha-lecciones-list {
+        margin-left: 0.25rem;
+        padding-left: 0.5rem;
+    }
+}
+
+/* LMS Player: sidebar a pantalla completa en móvil */
+@media (max-width: 767px) {
+    .lms-sidebar { order: -1; }
+    .player-nav-bar { flex-direction: column; gap: 0.75rem; text-align: center; }
+}
+

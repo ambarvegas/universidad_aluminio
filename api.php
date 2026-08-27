@@ -49,6 +49,77 @@ $action = $_GET['action'] ?? 'db';
 
 switch ($action) {
 
+    // ------ SUBIDA DE IMAGENES (multipart/form-data) -------------
+    case 'upload_image':
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+
+        $uploadDir = __DIR__ . '/uploads/';
+        if (!is_dir($uploadDir)) {
+            if (!mkdir($uploadDir, 0755, true)) {
+                http_response_code(500); echo json_encode(['error' => 'No se pudo crear el directorio de uploads']); break;
+            }
+        }
+
+        if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
+            $err = $_FILES['file']['error'] ?? 'sin archivo';
+            http_response_code(400); echo json_encode(['error' => "Error de subida: $err"]); break;
+        }
+
+        $allowedMime = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mime  = $finfo->file($_FILES['file']['tmp_name']);
+
+        if (!in_array($mime, $allowedMime)) {
+            http_response_code(400); echo json_encode(['error' => 'Tipo de archivo no permitido: ' . $mime]); break;
+        }
+
+        $type    = trim($_POST['type'] ?? 'portada');   // logo | portada
+        $entidad = trim($_POST['id'] ?? 'gen');
+        $entidad = preg_replace('/[^a-zA-Z0-9_\-]/', '', $entidad);
+        $ext     = 'jpg';
+        $nombre  = $type . '_' . $entidad . '_' . time() . '.' . $ext;
+        $destino = $uploadDir . $nombre;
+
+        // Comprimir con GD
+        $maxWidth = ($type === 'logo') ? 400 : 1200;
+        $quality  = 82;
+
+        switch ($mime) {
+            case 'image/jpeg': case 'image/jpg': $src = imagecreatefromjpeg($_FILES['file']['tmp_name']); break;
+            case 'image/png':  $src = imagecreatefrompng($_FILES['file']['tmp_name']); break;
+            case 'image/gif':  $src = imagecreatefromgif($_FILES['file']['tmp_name']); break;
+            case 'image/webp': $src = imagecreatefromwebp($_FILES['file']['tmp_name']); break;
+            default: $src = null;
+        }
+
+        if (!$src) { http_response_code(500); echo json_encode(['error' => 'No se pudo procesar la imagen']); break; }
+
+        $w = imagesx($src); $h = imagesy($src);
+        if ($w > $maxWidth) { $h = (int)round($h * $maxWidth / $w); $w = $maxWidth; }
+
+        $dst = imagecreatetruecolor($w, $h);
+        // Preservar fondo blanco para PNG transparentes
+        imagefilledrectangle($dst, 0, 0, $w, $h, imagecolorallocate($dst, 255, 255, 255));
+        imagecopyresampled($dst, $src, 0, 0, 0, 0, $w, $h, imagesx($src), imagesy($src));
+        imagedestroy($src);
+
+        if (!imagejpeg($dst, $destino, $quality)) {
+            imagedestroy($dst);
+            http_response_code(500); echo json_encode(['error' => 'Error al guardar la imagen']); break;
+        }
+        imagedestroy($dst);
+
+        // Eliminar imagen anterior del mismo tipo/entidad (limpieza automática)
+        $prevFile = trim($_POST['prev'] ?? '');
+        if ($prevFile && strpos($prevFile, 'uploads/') === 0) {
+            $prevPath = __DIR__ . '/' . $prevFile;
+            if (is_file($prevPath)) @unlink($prevPath);
+        }
+
+        $url = 'uploads/' . $nombre;
+        echo json_encode(['url' => $url, 'message' => 'Imagen subida correctamente']);
+        break;
+
     // ------ COMPATIBILIDAD TOTAL: GET/POST sin ?action ----------
     case 'db':
         if ($method === 'GET') {
@@ -69,6 +140,7 @@ switch ($action) {
             break;
         }
         http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break;
+
 
     // ------ LOGIN SERVER-SIDE ------------------------------------
     case 'login':

@@ -5,6 +5,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Panel de Control Académico — Universidad del Aluminio</title>
+    <meta name="theme-color" content="#0f2b48">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="UniAluminio Admin">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" href="icon-192.png" id="favicon-link">
+    <link rel="apple-touch-icon" href="icon-192.png">
     <!-- Google Fonts & Icons -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -45,9 +51,6 @@
                     <i class="bi bi-shield-check"></i>
                     <span>Universidad del Aluminio | Rectoría</span>
                 </a>
-                <span class="badge bg-success bg-opacity-25 text-success border border-success border-opacity-50 px-2 py-1 small d-none d-md-inline-flex align-items-center">
-                    <i class="bi bi-database-check me-1"></i>MySQL Activo
-                </span>
             </div>
 
             <div class="d-flex align-items-center gap-3">
@@ -150,7 +153,7 @@
             </li>
             <li class="nav-item">
                 <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-config">
-                    <i class="bi bi-gear-fill me-1"></i>Configuración & BD
+                    <i class="bi bi-gear-fill me-1"></i>Configuración
                 </button>
             </li>
         </ul>
@@ -273,25 +276,63 @@
 
             <!-- Pestaña 4: Reportes -->
             <div class="tab-pane fade" id="tab-reportes">
-                <div class="row g-4">
-                    <div class="col-lg-8">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h5 class="fw-bold text-primary mb-0"><i class="bi bi-trophy me-2"></i>Top Learners (Desempeño Integral de Estudiantes)</h5>
-                            <span class="badge bg-primary bg-opacity-10 text-primary">Actualizado en tiempo real</span>
-                        </div>
-                        <div class="table-responsive">
-                            <table class="table table-hover align-middle" id="tabla-top-learners">
-                                <!-- Generado por JS -->
-                            </table>
-                        </div>
+
+                <!-- Sub-navegación de Reportes -->
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4 pb-3 border-bottom">
+                    <div>
+                        <h4 class="fw-bold text-primary mb-0">Reportes de Desempeño</h4>
+                        <p class="text-muted small mb-0">Análisis de avance, brechas de aprendizaje y cumplimiento por cargo.</p>
                     </div>
-                    <div class="col-lg-4">
-                        <h5 class="fw-bold text-primary mb-3"><i class="bi bi-pie-chart-fill me-2"></i>Cumplimiento por Cargo</h5>
-                        <div id="chart-cumplimiento" class="border rounded p-3 bg-light">
-                            <!-- Generado por JS -->
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-primary" id="btn-vista-learners" onclick="cambiarVistaReporte('learners')">
+                            <i class="bi bi-trophy-fill me-1"></i>Top Learners
+                        </button>
+                        <button class="btn btn-sm btn-outline-primary" id="btn-vista-brechas" onclick="cambiarVistaReporte('brechas')">
+                            <i class="bi bi-clipboard2-x-fill me-1"></i>Brechas de Aprendizaje
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Vista 1: Top Learners -->
+                <div id="vista-learners">
+                    <div class="row g-4">
+                        <div class="col-lg-8">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h5 class="fw-bold text-primary mb-0"><i class="bi bi-trophy me-2"></i>Top Learners — Desempeño Integral</h5>
+                                <span class="badge bg-primary bg-opacity-10 text-primary">Actualizado en tiempo real</span>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle" id="tabla-top-learners"></table>
+                            </div>
+                        </div>
+                        <div class="col-lg-4">
+                            <h5 class="fw-bold text-primary mb-3"><i class="bi bi-pie-chart-fill me-2"></i>Cumplimiento por Cargo</h5>
+                            <div id="chart-cumplimiento" class="border rounded p-3 bg-light"></div>
                         </div>
                     </div>
                 </div>
+
+                <!-- Vista 2: Brechas de Aprendizaje -->
+                <div id="vista-brechas" style="display:none;">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+                        <div>
+                            <h5 class="fw-bold text-primary mb-0"><i class="bi bi-clipboard2-x-fill me-2"></i>Brechas de Aprendizaje</h5>
+                            <p class="text-muted small mb-0">Cursos, módulos y lecciones pendientes por colaborador.</p>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-warning bg-opacity-15 text-warning fw-semibold" id="brechas-total-count">Calculando...</span>
+                            <select class="form-select form-select-sm" id="filtro-usuario-brechas" onchange="renderBrechasAprendizaje()" style="width: 220px;">
+                                <option value="">— Todos los colaboradores —</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="brechas-container">
+                        <div class="text-center text-muted py-5">
+                            <div class="spinner-border spinner-border-sm text-primary me-2"></div>Calculando brechas...
+                        </div>
+                    </div>
+                </div>
+
             </div>
 
             <!-- Pestaña 5: Solicitudes -->
@@ -365,43 +406,150 @@
 
             <!-- Pestaña 7: Configuración -->
             <div class="tab-pane fade" id="tab-config">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4 pb-3 border-bottom">
+                    <div>
+                        <h4 class="fw-bold text-primary mb-0">Configuración de la Plataforma</h4>
+                        <p class="text-muted small mb-0">Personaliza la identidad visual, los colores y los parámetros operativos del sistema.</p>
+                    </div>
+                    <button class="btn btn-success" onclick="guardarTodasLasConfiguraciones()" id="btn-guardar-config">
+                        <i class="bi bi-floppy-fill me-1"></i>Guardar Todo
+                    </button>
+                </div>
+
                 <div class="row g-4">
-                    <div class="col-md-6">
-                        <div class="card p-4 border h-100 bg-white rounded-3">
-                            <h5 class="fw-bold text-primary mb-3"><i class="bi bi-database me-2"></i>Copia de Seguridad & Migración</h5>
-                            <p class="text-muted small">Exporta toda la base de datos a formato JSON o importa un respaldo para restaurar la información.</p>
-                            
-                            <div class="d-flex flex-wrap gap-2 mt-3">
-                                <button class="btn btn-dark" onclick="exportarBaseDeDatos()">
-                                    <i class="bi bi-download me-1"></i>Exportar Base de Datos JSON
-                                </button>
-                                <label class="btn btn-outline-dark mb-0" id="btn-importar-json">
-                                    <i class="bi bi-upload me-1"></i>Importar Respaldo JSON
-                                    <input type="file" hidden onchange="importarBaseDeDatos(event)" accept=".json">
+
+                    <!-- Card 1: Identidad Institucional -->
+                    <div class="col-lg-4">
+                        <div class="config-card h-100">
+                            <div class="config-card-header">
+                                <div class="config-card-icon" style="background: rgba(2,132,199,0.12); color: #0284c7;">
+                                    <i class="bi bi-building"></i>
+                                </div>
+                                <div>
+                                    <h6 class="fw-bold mb-0">Identidad Institucional</h6>
+                                    <p class="text-muted small mb-0">Nombre, logo y marca</p>
+                                </div>
+                            </div>
+
+                            <div class="mb-4">
+                                <label class="form-label fw-semibold small text-uppercase text-muted ls-1">Nombre de la Universidad</label>
+                                <input type="text" class="form-control" id="cfg-nombre-universidad"
+                                    placeholder="Ej: Universidad del Aluminio"
+                                    oninput="previsualizarNombreUniversidad(this.value)">
+                                <p class="text-muted small mt-1"><i class="bi bi-info-circle me-1"></i>Se reflejará en el navbar, footer y página de inicio.</p>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold small text-uppercase text-muted ls-1">Logo Institucional</label>
+                                <div id="logo-preview-container" class="logo-preview-box mb-2" style="display:none;">
+                                    <img id="logo-preview-img" src="" alt="Logo" class="img-fluid rounded" style="max-height:80px; object-fit:contain;">
+                                    <button type="button" class="btn btn-xs btn-outline-danger ms-3" onclick="eliminarLogo()">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                                <label class="btn btn-outline-primary btn-sm w-100" id="btn-cargar-logo">
+                                    <i class="bi bi-upload me-1"></i>Subir Logo (PNG / JPG)
+                                    <input type="file" hidden onchange="cargarLogoInstitucion(event)" accept="image/*" id="input-logo">
                                 </label>
                             </div>
                         </div>
                     </div>
 
-                    <div class="col-md-6">
-                        <div class="card p-4 border h-100 bg-white rounded-3">
-                            <h5 class="fw-bold text-primary mb-3"><i class="bi bi-sliders me-2"></i>Parámetros del Sistema</h5>
-                            
-                            <div class="mb-3">
-                                <label class="form-label fw-bold small">Porcentaje de Aprobación Mínimo Global (%)</label>
-                                <div class="input-group">
-                                    <input type="number" class="form-control" id="cfg-min-aprobacion" min="1" max="100" onchange="actualizarMinAprobacionGlobal(this.value)">
-                                    <span class="input-group-text">%</span>
+                    <!-- Card 2: Colores de la Plataforma -->
+                    <div class="col-lg-4">
+                        <div class="config-card h-100">
+                            <div class="config-card-header">
+                                <div class="config-card-icon" style="background: rgba(147,51,234,0.12); color: #9333ea;">
+                                    <i class="bi bi-palette-fill"></i>
                                 </div>
-                                <p class="text-muted small mt-1">Este porcentaje es el estándar requerido en todas las evaluaciones de módulos.</p>
+                                <div>
+                                    <h6 class="fw-bold mb-0">Colores de la Plataforma</h6>
+                                    <p class="text-muted small mb-0">Tema visual e identidad</p>
+                                </div>
                             </div>
 
-                            <div class="mb-3 pt-2 border-top">
-                                <label class="form-label fw-bold small">Logo Institucional (PNG/JPG)</label>
-                                <input type="file" class="form-control form-control-sm" onchange="cargarLogoInstitucion(event)" accept="image/*" id="input-logo">
+                            <div class="mb-4">
+                                <label class="form-label fw-semibold small text-uppercase text-muted ls-1">Color Primario (Fondo/Navbar)</label>
+                                <div class="color-picker-row">
+                                    <input type="color" class="color-swatch-input" id="cfg-color-primario" oninput="previewColores()">
+                                    <input type="text" class="form-control form-control-sm font-mono" id="cfg-color-primario-hex" placeholder="#0f2b48"
+                                        oninput="sincronizarColorHex('cfg-color-primario', this.value)" maxlength="7">
+                                </div>
+                            </div>
+
+                            <div class="mb-4">
+                                <label class="form-label fw-semibold small text-uppercase text-muted ls-1">Color de Acento (Botones/Links)</label>
+                                <div class="color-picker-row">
+                                    <input type="color" class="color-swatch-input" id="cfg-color-acento" oninput="previewColores()">
+                                    <input type="text" class="form-control form-control-sm font-mono" id="cfg-color-acento-hex" placeholder="#0284c7"
+                                        oninput="sincronizarColorHex('cfg-color-acento', this.value)" maxlength="7">
+                                </div>
+                            </div>
+
+                            <div class="color-preview-bar mb-3">
+                                <div id="preview-bar-primary" class="color-preview-segment" title="Color primario"></div>
+                                <div id="preview-bar-accent" class="color-preview-segment" title="Color de acento"></div>
+                                <div class="color-preview-segment" style="background: #10b981;" title="Éxito (fijo)"></div>
+                                <div class="color-preview-segment" style="background: #f59e0b;" title="Advertencia (fijo)"></div>
+                            </div>
+
+                            <button class="btn btn-outline-secondary btn-sm w-100" onclick="restablecerColores()">
+                                <i class="bi bi-arrow-counterclockwise me-1"></i>Restablecer colores originales
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Card 3: Parámetros del Sistema -->
+                    <div class="col-lg-4">
+                        <div class="config-card h-100">
+                            <div class="config-card-header">
+                                <div class="config-card-icon" style="background: rgba(16,185,129,0.12); color: #10b981;">
+                                    <i class="bi bi-sliders"></i>
+                                </div>
+                                <div>
+                                    <h6 class="fw-bold mb-0">Parámetros del Sistema</h6>
+                                    <p class="text-muted small mb-0">Evaluaciones y operación</p>
+                                </div>
+                            </div>
+
+                            <div class="mb-4">
+                                <label class="form-label fw-semibold small text-uppercase text-muted ls-1">% Mínimo de Aprobación</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="cfg-min-aprobacion"
+                                        min="1" max="100" onchange="actualizarMinAprobacionGlobal(this.value)">
+                                    <span class="input-group-text fw-bold">%</span>
+                                </div>
+                                <p class="text-muted small mt-1">Estándar mínimo para aprobar evaluaciones de módulos.</p>
+                            </div>
+
+                            <div class="mb-4 pt-3 border-top">
+                                <label class="form-label fw-semibold small text-uppercase text-muted ls-1">Mensaje de Bienvenida</label>
+                                <textarea class="form-control" id="cfg-mensaje-bienvenida" rows="3"
+                                    placeholder="Ej: Bienvenido a tu plataforma de formación continua."
+                                    oninput="actualizarMensajeBienvenida(this.value)"></textarea>
+                                <p class="text-muted small mt-1">Aparece en el banner principal del portal del alumno.</p>
+                            </div>
+
+                            <div class="pt-3 border-top">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <p class="fw-semibold small mb-0">Modo de Mantenimiento</p>
+                                        <p class="text-muted small mb-0">Suspende nuevos registros temporalmente</p>
+                                    </div>
+                                    <div class="form-check form-switch ms-3">
+                                        <input class="form-check-input" type="checkbox" role="switch"
+                                            id="cfg-modo-mantenimiento" style="width:2.5rem; height:1.3rem;"
+                                            onchange="actualizarModoMantenimiento(this.checked)">
+                                    </div>
+                                </div>
+                                <div id="mantenimiento-alert" class="alert alert-warning small mt-2 py-2 px-3" style="display:none;">
+                                    <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                                    <strong>Modo activo:</strong> Los nuevos registros están deshabilitados.
+                                </div>
                             </div>
                         </div>
                     </div>
+
                 </div>
             </div>
 
@@ -687,6 +835,9 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="js/ui/modal.js"></script>
     <script src="js/api.js"></script>
+    <script src="js/features/images.js"></script>
+    <script src="js/features/config.js"></script>
+    <script src="js/features/reports.js"></script>
     <script src="script.js"></script>
 </body>
 

@@ -549,12 +549,37 @@ window.mostrarVistaPreviaPortada = () => {
     const imgPrev = document.getElementById('img-vista-previa');
     if (vistaPrev && imgPrev) {
         if (tempImagenPortada) {
-            imgPrev.src = tempImagenPortada;
+            imgPrev.src = typeof resolverSrcImagen === 'function' ? resolverSrcImagen(tempImagenPortada) : tempImagenPortada;
             vistaPrev.style.display = 'block';
         } else {
             vistaPrev.style.display = 'none';
             imgPrev.src = '';
         }
+    }
+};
+
+/**
+ * Carga imagen de portada al servidor (PHP GD) y actualiza la vista previa.
+ * Usa subirImagenServidor() si está disponible, fallback a base64.
+ */
+window.cargarImagenPortada = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    const btn = event.target.closest('label') || event.target;
+    const cursoId = document.getElementById('edit-id')?.value || 'nuevo';
+    try {
+        if (typeof subirImagenServidor === 'function') {
+            const prevUrl = tempImagenPortada;
+            const url = await subirImagenServidor(file, 'portada', cursoId, prevUrl);
+            tempImagenPortada = url;
+        } else {
+            // Fallback base64
+            const b64 = await comprimirImagenBase64(file, 1200, 0.82);
+            tempImagenPortada = b64;
+        }
+        mostrarVistaPreviaPortada();
+    } catch (err) {
+        showToast('Error al cargar la imagen: ' + err.message, 'danger');
     }
 };
 
@@ -3666,6 +3691,11 @@ function actualizarTablas() {
 document.addEventListener('DOMContentLoaded', async () => {
     await cargarDatosDelServidor();
 
+    // Aplicar configuración guardada (colores, nombre, etc.)
+    if (typeof cargarConfiguracion === 'function') {
+        cargarConfiguracion();
+    }
+
     verificarProteccion();
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -3684,4 +3714,40 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
     }
+
+    // Registrar Service Worker (PWA)
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').catch(err => {
+            console.warn('SW no registrado:', err);
+        });
+    }
 });
+
+// ============================================================
+// REPORTES — Cambio de Vista
+// ============================================================
+window.cambiarVistaReporte = (vista) => {
+    const vistaLearners = document.getElementById('vista-learners');
+    const vistaBrechas  = document.getElementById('vista-brechas');
+    const btnL = document.getElementById('btn-vista-learners');
+    const btnB = document.getElementById('btn-vista-brechas');
+
+    if (vista === 'learners') {
+        if (vistaLearners) vistaLearners.style.display = '';
+        if (vistaBrechas)  vistaBrechas.style.display  = 'none';
+        if (btnL) { btnL.className = 'btn btn-sm btn-primary'; }
+        if (btnB) { btnB.className = 'btn btn-sm btn-outline-primary'; }
+        if (typeof renderTopLearners === 'function') renderTopLearners();
+        if (typeof renderCumplimientoCargo === 'function') renderCumplimientoCargo();
+    } else {
+        if (vistaLearners) vistaLearners.style.display = 'none';
+        if (vistaBrechas)  vistaBrechas.style.display  = '';
+        if (btnL) { btnL.className = 'btn btn-sm btn-outline-primary'; }
+        if (btnB) { btnB.className = 'btn btn-sm btn-primary'; }
+        if (typeof renderBrechasAprendizaje === 'function') {
+            if (typeof inicializarFiltroUsuariosBrechas === 'function') inicializarFiltroUsuariosBrechas();
+            renderBrechasAprendizaje();
+        }
+    }
+};
+
