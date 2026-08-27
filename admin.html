@@ -328,10 +328,15 @@
 
                 <!-- Vista 2: Brechas de Aprendizaje -->
                 <div id="vista-brechas" style="display:none;">
-                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
-                        <div>
-                            <h5 class="fw-bold text-primary mb-0"><i class="bi bi-clipboard2-x-fill me-2"></i>Brechas de Aprendizaje</h5>
-                            <p class="text-muted small mb-0">Cursos, módulos y lecciones pendientes por colaborador.</p>
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4 p-3 bg-light rounded-3 border">
+                        <div class="d-flex align-items-center gap-3">
+                            <button class="btn btn-sm btn-outline-primary shadow-sm" onclick="cambiarVistaReporte('learners')" title="Volver al Reporte Principal">
+                                <i class="bi bi-arrow-left me-1"></i>Volver al Reporte Principal
+                            </button>
+                            <div>
+                                <h5 class="fw-bold text-primary mb-0"><i class="bi bi-clipboard2-x-fill me-2"></i>Brechas de Aprendizaje</h5>
+                                <p class="text-muted small mb-0">Cursos, módulos y lecciones pendientes por colaborador.</p>
+                            </div>
                         </div>
                         <div class="d-flex align-items-center gap-2">
                             <span class="badge bg-warning bg-opacity-15 text-warning fw-semibold" id="brechas-total-count">Calculando...</span>

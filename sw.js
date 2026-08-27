@@ -4,8 +4,8 @@
  * se reflejen de inmediato mientras se mantiene la capacidad offline.
  */
 
-const CACHE_NAME    = 'unialuminio-v8';
-const CACHE_DYNAMIC = 'unialuminio-dynamic-v8';
+const CACHE_NAME    = 'unialuminio-v9';
+const CACHE_DYNAMIC = 'unialuminio-dynamic-v9';
 
 // Assets estáticos que se cachean al instalar el SW
 const STATIC_ASSETS = [
