@@ -21,9 +21,13 @@ define('MYSQL_CHARSET', 'utf8mb4');
  * Lanza una excepción si no puede conectarse.
  */
 function db_connect(): mysqli {
-    $conn = new mysqli(MYSQL_HOST, MYSQL_USER, MYSQL_PASS, MYSQL_DB, MYSQL_PORT);
-    if ($conn->connect_error) {
-        throw new RuntimeException('Error de conexión MySQL: ' . $conn->connect_error);
+    $conn = mysqli_init();
+    if (!$conn) {
+        throw new RuntimeException('Error al inicializar mysqli');
+    }
+    $conn->options(MYSQLI_OPT_CONNECT_TIMEOUT, 10);
+    if (!@$conn->real_connect(MYSQL_HOST, MYSQL_USER, MYSQL_PASS, MYSQL_DB, MYSQL_PORT)) {
+        throw new RuntimeException('Error de conexión MySQL: ' . mysqli_connect_error());
     }
     $conn->set_charset(MYSQL_CHARSET);
     return $conn;
@@ -98,12 +102,13 @@ function db_create_tables(mysqli $conn): void {
 
         // Cursos (imagen y módulos se guardan como texto/JSON por compatibilidad)
         "CREATE TABLE IF NOT EXISTS `cursos` (
-            `id`        VARCHAR(100) NOT NULL,
-            `titulo`    VARCHAR(255) NOT NULL DEFAULT '',
-            `tipo`      VARCHAR(50)  NOT NULL DEFAULT 'especializado',
-            `imagen`    LONGTEXT,
-            `prelacion` VARCHAR(100) DEFAULT NULL,
-            `modulos`   LONGTEXT,
+            `id`              VARCHAR(100) NOT NULL,
+            `titulo`          VARCHAR(255) NOT NULL DEFAULT '',
+            `tipo`            VARCHAR(50)  NOT NULL DEFAULT 'especializado',
+            `imagen`          LONGTEXT,
+            `prelacion`       VARCHAR(100) DEFAULT NULL,
+            `modulos`         LONGTEXT,
+            `en_construccion` TINYINT(1)   NOT NULL DEFAULT 0,
             PRIMARY KEY (`id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
@@ -180,6 +185,12 @@ function db_create_tables(mysqli $conn): void {
         if (!$conn->query($sql)) {
             throw new RuntimeException('Error creando tabla: ' . $conn->error . ' — SQL: ' . substr($sql, 0, 80));
         }
+    }
+
+    // Migración automática para base de datos existente
+    $colCheck = $conn->query("SHOW COLUMNS FROM `cursos` LIKE 'en_construccion'");
+    if ($colCheck && $colCheck->num_rows === 0) {
+        $conn->query("ALTER TABLE `cursos` ADD COLUMN `en_construccion` TINYINT(1) NOT NULL DEFAULT 0");
     }
 }
 
@@ -281,11 +292,14 @@ function db_read_all(mysqli $conn): array {
     $db['usuarios'] = array_values($usuariosMap);
 
     // --- Cursos ---
-    $res = $conn->query("SELECT id, titulo, tipo, imagen, prelacion, modulos FROM `cursos`");
-    while ($row = $res->fetch_assoc()) {
-        $row['modulos'] = json_decode($row['modulos'] ?? '[]', true) ?? [];
-        if (!$row['prelacion']) unset($row['prelacion']);
-        $db['cursos'][] = $row;
+    $res = $conn->query("SELECT * FROM `cursos`");
+    if ($res) {
+        while ($row = $res->fetch_assoc()) {
+            $row['modulos'] = json_decode($row['modulos'] ?? '[]', true) ?? [];
+            if (!$row['prelacion']) unset($row['prelacion']);
+            $row['enConstruccion'] = !empty($row['en_construccion']) ? true : false;
+            $db['cursos'][] = $row;
+        }
     }
 
     // --- Carreras ---
@@ -382,7 +396,7 @@ function db_write_all(mysqli $conn, array $data): void {
         // Desactivar FK checks temporalmente para truncar sin orden
         $conn->query("SET FOREIGN_KEY_CHECKS = 0");
 
-        // --- Recopilar hashes y progreso existente para no sobrescribir claves ni borrar evaluaciones ---
+        // --- Recopilar hashes, progreso y certificados existentes para no sobrescribir ni borrar datos ---
         $existingHashes = [];
         $resH = $conn->query("SELECT id, clave FROM `usuarios`");
         if ($resH) {
@@ -396,6 +410,22 @@ function db_write_all(mysqli $conn, array $data): void {
         if ($resP) {
             while ($r = $resP->fetch_assoc()) {
                 $existingDbProgreso[$r['usuario_id']][$r['curso_id']] = $r;
+            }
+        }
+
+        $existingCertCurso = [];
+        $resCC = $conn->query("SELECT usuario_id, curso_id FROM `usuario_certificados_curso`");
+        if ($resCC) {
+            while ($r = $resCC->fetch_assoc()) {
+                $existingCertCurso[$r['usuario_id']][] = $r['curso_id'];
+            }
+        }
+
+        $existingCertCarrera = [];
+        $resCarC = $conn->query("SELECT usuario_id, carrera_id FROM `usuario_certificados_carrera`");
+        if ($resCarC) {
+            while ($r = $resCarC->fetch_assoc()) {
+                $existingCertCarrera[$r['usuario_id']][] = $r['carrera_id'];
             }
         }
 
@@ -483,7 +513,22 @@ function db_write_all(mysqli $conn, array $data): void {
                 $mergedLec  = array_values(array_unique(array_merge($dbLec, $payLec)));
                 $mergedMod  = array_values(array_unique(array_merge($dbMod, $payMod)));
                 $mergedMed  = array_values(array_unique(array_merge($dbMed, $payMed)));
-                $mergedEval = array_replace($dbEval, $payEval);
+
+                // Fusión segura de evaluaciones preferir mayores notas
+                $allEvalKeys = array_unique(array_merge(array_keys($dbEval), array_keys($payEval)));
+                $mergedEval = [];
+                foreach ($allEvalKeys as $ek) {
+                    $eDb = $dbEval[$ek] ?? null;
+                    $ePay = $payEval[$ek] ?? null;
+                    if ($eDb !== null && $ePay === null) $mergedEval[$ek] = $eDb;
+                    elseif ($eDb === null && $ePay !== null) $mergedEval[$ek] = $ePay;
+                    else {
+                        $sDb = is_array($eDb) ? (int)($eDb['nota'] ?? 0) : 0;
+                        $sPay = is_array($ePay) ? (int)($ePay['nota'] ?? 0) : 0;
+                        $mergedEval[$ek] = ($sDb >= $sPay) ? $eDb : $ePay;
+                    }
+                }
+
                 $mergedInt  = array_replace($dbInt, $payInt);
 
                 $lec  = json_encode($mergedLec);
@@ -495,14 +540,18 @@ function db_write_all(mysqli $conn, array $data): void {
                 $progresoRows[] = [$id, $cIdStr, $lec, $mod, $med, $eval, $int];
             }
 
-            // Certificados curso (deduplicar)
-            $certCursoUnique = array_unique(array_filter((array)($u['certificadosCurso'] ?? [])));
+            // Certificados curso (fusionar BD + payload y deduplicar)
+            $dbCerts = $existingCertCurso[$id] ?? [];
+            $payCerts = (array)($u['certificadosCurso'] ?? []);
+            $certCursoUnique = array_values(array_unique(array_filter(array_merge($dbCerts, $payCerts))));
             foreach ($certCursoUnique as $cId) {
                 if ($cId) $certCursoRows[] = [$id, (string)$cId];
             }
 
-            // Certificados carrera (deduplicar)
-            $certCarUnique = array_unique(array_filter((array)($u['certificadosCarrera'] ?? [])));
+            // Certificados carrera (fusionar BD + payload y deduplicar)
+            $dbCarCerts = $existingCertCarrera[$id] ?? [];
+            $payCarCerts = (array)($u['certificadosCarrera'] ?? []);
+            $certCarUnique = array_values(array_unique(array_filter(array_merge($dbCarCerts, $payCarCerts))));
             foreach ($certCarUnique as $carId) {
                 if ($carId) $certCarreraRows[] = [$id, (string)$carId];
             }
@@ -522,17 +571,18 @@ function db_write_all(mysqli $conn, array $data): void {
         // --- Cursos ---
         $cursosRows = [];
         foreach (($data['cursos'] ?? []) as $c) {
-            $cId      = $c['id']       ?? '';
-            $titulo   = $c['titulo']   ?? '';
-            $tipo     = $c['tipo']     ?? 'especializado';
-            $imagen   = $c['imagen']   ?? '';
-            $prel     = $c['prelacion'] ?? null;
-            $modulos  = json_encode($c['modulos'] ?? []);
+            $cId            = $c['id']             ?? '';
+            $titulo         = $c['titulo']         ?? '';
+            $tipo           = $c['tipo']           ?? 'especializado';
+            $imagen         = $c['imagen']         ?? '';
+            $prel           = $c['prelacion']      ?? null;
+            $modulos        = json_encode($c['modulos'] ?? []);
+            $enConstruccion = !empty($c['enConstruccion']) ? 1 : 0;
             if (!$cId) continue;
-            $cursosRows[] = [$cId, $titulo, $tipo, $imagen, $prel, $modulos];
+            $cursosRows[] = [$cId, $titulo, $tipo, $imagen, $prel, $modulos, $enConstruccion];
         }
-        db_bulk_insert($conn, 'cursos', ['id', 'titulo', 'tipo', 'imagen', 'prelacion', 'modulos'], $cursosRows, 50,
-            "ON DUPLICATE KEY UPDATE titulo=VALUES(titulo), tipo=VALUES(tipo), imagen=VALUES(imagen), prelacion=VALUES(prelacion), modulos=VALUES(modulos)");
+        db_bulk_insert($conn, 'cursos', ['id', 'titulo', 'tipo', 'imagen', 'prelacion', 'modulos', 'en_construccion'], $cursosRows, 50,
+            "ON DUPLICATE KEY UPDATE titulo=VALUES(titulo), tipo=VALUES(tipo), imagen=VALUES(imagen), prelacion=VALUES(prelacion), modulos=VALUES(modulos), en_construccion=VALUES(en_construccion)");
 
         // Eliminar cursos que ya no existen
         $idsActuales = array_filter(array_column($data['cursos'] ?? [], 'id'));
@@ -762,11 +812,13 @@ function db_read_safe(mysqli $conn): array {
 function db_upsert_usuario(mysqli $conn, array $u): void {
     $conn->begin_transaction();
     try {
-        $id     = $u['id']     ?? '';
-        $nombre = $u['nombre'] ?? '';
-        $rol    = $u['rol']    ?? 'participante';
-        $estado = $u['estado'] ?? 'activo';
+        $id     = trim((string)($u['id']     ?? ''));
+        $nombre = trim((string)($u['nombre'] ?? ''));
+        $rol    = trim((string)($u['rol']    ?? 'participante'));
+        $estado = trim((string)($u['estado'] ?? 'activo'));
         if (!$id) { $conn->rollback(); return; }
+
+        $safeId = $conn->real_escape_string($id);
 
         // Manejar clave — si viene como texto plano, hashear
         $claveActual = null;
@@ -796,17 +848,17 @@ function db_upsert_usuario(mysqli $conn, array $u): void {
         $stmt->bind_param('sssss', $id, $nombre, $nuevaClave, $rol, $estado);
         $stmt->execute();
 
-        // Limpiar y reescribir relaciones
-        $conn->query("DELETE FROM `usuario_asignados`           WHERE usuario_id = '$id'");
-        $conn->query("DELETE FROM `usuario_carreras_asignadas`  WHERE usuario_id = '$id'");
-        $conn->query("DELETE FROM `usuario_progreso`            WHERE usuario_id = '$id'");
-        $conn->query("DELETE FROM `usuario_certificados_curso`  WHERE usuario_id = '$id'");
-        $conn->query("DELETE FROM `usuario_certificados_carrera` WHERE usuario_id = '$id'");
+        // Limpiar y reescribir solo relaciones de asignación directa de cursos y carreras
+        $conn->query("DELETE FROM `usuario_asignados`           WHERE usuario_id = '$safeId'");
+        $conn->query("DELETE FROM `usuario_carreras_asignadas`  WHERE usuario_id = '$safeId'");
 
         $stmtA = $conn->prepare("INSERT IGNORE INTO `usuario_asignados` (usuario_id, curso_id) VALUES (?,?)");
         foreach (($u['asignados'] ?? []) as $cId) {
-            $stmtA->bind_param('ss', $id, $cId);
-            $stmtA->execute();
+            $cIdStr = (string)$cId;
+            if ($cIdStr) {
+                $stmtA->bind_param('ss', $id, $cIdStr);
+                $stmtA->execute();
+            }
         }
 
         $stmtCA = $conn->prepare("INSERT INTO `usuario_carreras_asignadas` (usuario_id, carrera_id, estado) VALUES (?,?,?)");
@@ -818,33 +870,34 @@ function db_upsert_usuario(mysqli $conn, array $u): void {
             $stmtCA->execute();
         }
 
-        $stmtP = $conn->prepare(
-            "INSERT INTO `usuario_progreso` (usuario_id, curso_id, lecciones_completadas, modulos_aprobados, medallas, evaluaciones, intentos)
-             VALUES (?,?,?,?,?,?,?)"
-        );
+        // Fusión de progreso (NO borra progreso previo existente en MySQL)
         $prog = $u['progreso'] ?? [];
         if (is_object($prog)) $prog = (array)$prog;
-        foreach ($prog as $cId => $p) {
-            $lec  = json_encode($p['leccionesCompletadas'] ?? []);
-            $mod  = json_encode($p['modulosAprobados']     ?? []);
-            $med  = json_encode($p['medallas']             ?? []);
-            $eval = json_encode($p['evaluaciones']         ?? (object)[]);
-            $int  = json_encode($p['intentos']             ?? (object)[]);
-            $cStr = (string)$cId;
-            $stmtP->bind_param('sssssss', $id, $cStr, $lec, $mod, $med, $eval, $int);
-            $stmtP->execute();
+        if (!empty($prog)) {
+            foreach ($prog as $cId => $p) {
+                if (!empty($p) && is_array($p)) {
+                    db_upsert_progreso($conn, $id, (string)$cId, $p);
+                }
+            }
         }
 
+        // Certificados (preserva y agrega si no existen)
         $stmtCC = $conn->prepare("INSERT IGNORE INTO `usuario_certificados_curso` (usuario_id, curso_id) VALUES (?,?)");
         foreach (($u['certificadosCurso'] ?? []) as $cId) {
-            $stmtCC->bind_param('ss', $id, $cId);
-            $stmtCC->execute();
+            $cIdStr = (string)$cId;
+            if ($cIdStr) {
+                $stmtCC->bind_param('ss', $id, $cIdStr);
+                $stmtCC->execute();
+            }
         }
 
         $stmtCCar = $conn->prepare("INSERT IGNORE INTO `usuario_certificados_carrera` (usuario_id, carrera_id) VALUES (?,?)");
         foreach (($u['certificadosCarrera'] ?? []) as $carId) {
-            $stmtCCar->bind_param('ss', $id, $carId);
-            $stmtCCar->execute();
+            $carIdStr = (string)$carId;
+            if ($carIdStr) {
+                $stmtCCar->bind_param('ss', $id, $carIdStr);
+                $stmtCCar->execute();
+            }
         }
 
         $conn->commit();
@@ -941,20 +994,30 @@ function db_upsert_progreso(mysqli $conn, string $userId, string $cursoId, array
  * Inserta o actualiza un curso.
  */
 function db_upsert_curso(mysqli $conn, array $c): void {
-    $id      = $c['id']       ?? '';
-    $titulo  = $c['titulo']   ?? '';
-    $tipo    = $c['tipo']     ?? 'especializado';
-    $imagen  = $c['imagen']   ?? '';
-    $prel    = $c['prelacion'] ?? null;
-    $modulos = json_encode($c['modulos'] ?? []);
+    $id             = $c['id']             ?? '';
+    $titulo         = $c['titulo']         ?? '';
+    $tipo           = $c['tipo']           ?? 'especializado';
+    $imagen         = $c['imagen']         ?? '';
+    $prel           = $c['prelacion']      ?? null;
+    $modulos        = json_encode($c['modulos'] ?? []);
+    $enConstruccion = !empty($c['enConstruccion']) ? 1 : 0;
     if (!$id) return;
 
-    $stmt = $conn->prepare(
-        "INSERT INTO `cursos` (id, titulo, tipo, imagen, prelacion, modulos) VALUES (?,?,?,?,?,?)
-         ON DUPLICATE KEY UPDATE titulo=VALUES(titulo), tipo=VALUES(tipo), imagen=VALUES(imagen), prelacion=VALUES(prelacion), modulos=VALUES(modulos)"
-    );
-    $stmt->bind_param('ssssss', $id, $titulo, $tipo, $imagen, $prel, $modulos);
-    $stmt->execute();
+    try {
+        $stmt = $conn->prepare(
+            "INSERT INTO `cursos` (id, titulo, tipo, imagen, prelacion, modulos, en_construccion) VALUES (?,?,?,?,?,?,?)
+             ON DUPLICATE KEY UPDATE titulo=VALUES(titulo), tipo=VALUES(tipo), imagen=VALUES(imagen), prelacion=VALUES(prelacion), modulos=VALUES(modulos), en_construccion=VALUES(en_construccion)"
+        );
+        $stmt->bind_param('ssssssi', $id, $titulo, $tipo, $imagen, $prel, $modulos, $enConstruccion);
+        $stmt->execute();
+    } catch (Throwable $e) {
+        $stmt = $conn->prepare(
+            "INSERT INTO `cursos` (id, titulo, tipo, imagen, prelacion, modulos) VALUES (?,?,?,?,?,?)
+             ON DUPLICATE KEY UPDATE titulo=VALUES(titulo), tipo=VALUES(tipo), imagen=VALUES(imagen), prelacion=VALUES(prelacion), modulos=VALUES(modulos)"
+        );
+        $stmt->bind_param('ssssss', $id, $titulo, $tipo, $imagen, $prel, $modulos);
+        $stmt->execute();
+    }
 }
 
 /**

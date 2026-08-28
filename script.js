@@ -531,6 +531,9 @@ window.prepararFormulario = async (modo) => {
     if (document.getElementById('curso-tipo')) {
         document.getElementById('curso-tipo').value = 'especializado';
     }
+    if (document.getElementById('curso-en-construccion')) {
+        document.getElementById('curso-en-construccion').checked = false;
+    }
     const fileInput = document.getElementById('input-portada');
     if (fileInput) fileInput.value = '';
     tempModulos = [];
@@ -605,6 +608,9 @@ window.abrirEditor = (id) => {
     if (document.getElementById('curso-tipo')) {
         document.getElementById('curso-tipo').value = (c.tipo === 'publico' || c.tipo === 'libre') ? 'publico' : 'especializado';
     }
+    if (document.getElementById('curso-en-construccion')) {
+        document.getElementById('curso-en-construccion').checked = !!c.enConstruccion;
+    }
     tempImagenPortada = c.imagen || "";
     mostrarVistaPreviaPortada();
 
@@ -638,6 +644,7 @@ window.guardarCurso = async (e) => {
         }
 
         const tipo = document.getElementById('curso-tipo') ? document.getElementById('curso-tipo').value : 'especializado';
+        const enConstruccion = document.getElementById('curso-en-construccion') ? document.getElementById('curso-en-construccion').checked : false;
         const idEdit = document.getElementById('edit-id').value;
 
         const nuevoCurso = {
@@ -647,6 +654,7 @@ window.guardarCurso = async (e) => {
             imagen: tempImagenPortada,
             descripcion: document.getElementById('descripcion').value,
             prelacion: document.getElementById('curso-prelacion').value,
+            enConstruccion: enConstruccion,
             modulos: tempModulos
         };
 
@@ -1254,7 +1262,27 @@ window.seleccionarLeccion = (mIdx, lIdx) => {
         return;
     }
 
-    if (!cursoActualData.modulos[mIdx] || !cursoActualData.modulos[mIdx].lecciones || !cursoActualData.modulos[mIdx].lecciones[lIdx]) {
+    if (!cursoActualData.modulos[mIdx]) {
+        console.error(`Módulo ${mIdx} no encontrado`);
+        return;
+    }
+
+    const moduloCheck = cursoActualData.modulos[mIdx];
+    const visorCheck = document.getElementById('visor-contenido');
+    if (moduloCheck && moduloCheck.enConstruccion) {
+        if (visorCheck) {
+            visorCheck.innerHTML = `
+                <div class="card border-warning bg-warning bg-opacity-10 p-5 text-center my-4 rounded-4 shadow-sm">
+                    <div class="display-2 text-warning mb-3"><i class="bi bi-cone-striped"></i></div>
+                    <h3 class="fw-bold text-dark mb-2">Módulo en Construcción</h3>
+                    <p class="text-muted fs-6 mb-0">El módulo <strong>"${moduloCheck.titulo}"</strong> se encuentra actualmente en desarrollo. ¡Sus lecciones estarán disponibles muy pronto!</p>
+                </div>
+            `;
+        }
+        return;
+    }
+
+    if (!moduloCheck.lecciones || !moduloCheck.lecciones[lIdx]) {
         console.error(`Lección no encontrada: módulo ${mIdx}, lección ${lIdx}`);
         return;
     }
@@ -1373,6 +1401,10 @@ window.seleccionarLeccion = (mIdx, lIdx) => {
 window.mostrarEvaluacionModulo = (cursoID, mIdx) => {
     const curso = cursos.find(c => c.id === cursoID) || cursoActualData;
     const modulo = curso.modulos[mIdx];
+    if (modulo && modulo.enConstruccion) {
+        showToast('Este módulo se encuentra en construcción. La evaluación aún no está disponible.', 'warning');
+        return;
+    }
     const visor = document.getElementById('visor-contenido');
 
     if (!sesion.progreso[curso.id]) sesion.progreso[curso.id] = { leccionesCompletadas: [], modulosAprobados: [] };
@@ -1726,7 +1758,7 @@ window.bajarModulo = (idx) => {
 };
 
 window.agregarModulo = () => {
-    tempModulos.push({ titulo: "Nuevo Módulo", lecciones: [] });
+    tempModulos.push({ titulo: "Nuevo Módulo", enConstruccion: false, lecciones: [] });
     renderModulosEditor();
 };
 
@@ -1763,22 +1795,30 @@ function renderModulosEditor() {
     const container = document.getElementById('contenedor-modulos-editor');
     if (!container) return;
     container.innerHTML = tempModulos.map((mod, mIdx) => `
-        <div class="border p-3 mb-3 bg-light rounded shadow-sm">
-            <div class="d-flex align-items-center mb-2">
-                <div class="btn-group me-3">
+        <div class="border p-3 mb-3 ${mod.enConstruccion ? 'bg-warning bg-opacity-10 border-warning' : 'bg-light'} rounded shadow-sm">
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                <div class="btn-group me-1">
                     <button type="button" class="btn btn-sm btn-outline-secondary" onclick="subirModulo(${mIdx})" ${mIdx === 0 ? 'disabled' : ''} title="Subir Módulo"><i class="bi bi-arrow-up"></i></button>
                     <button type="button" class="btn btn-sm btn-outline-secondary" onclick="bajarModulo(${mIdx})" ${mIdx === tempModulos.length - 1 ? 'disabled' : ''} title="Bajar Módulo"><i class="bi bi-arrow-down"></i></button>
                 </div>
-                <input type="text" class="form-control fw-bold me-2" value="${mod.titulo}" oninput="tempModulos[${mIdx}].titulo = this.value">
-                <div class="input-group me-2" style="max-width: 140px;" title="Intentos máximos para la evaluación (0 o vacío para ilimitados)">
+                <input type="text" class="form-control fw-bold flex-grow-1" style="min-width: 200px;" placeholder="Título del Módulo" value="${mod.titulo}" oninput="tempModulos[${mIdx}].titulo = this.value">
+                
+                <div class="form-check form-switch ms-2 me-2" title="Marcar este módulo como en construcción">
+                    <input class="form-check-input" type="checkbox" role="switch" id="mod-const-${mIdx}" ${mod.enConstruccion ? 'checked' : ''} onchange="tempModulos[${mIdx}].enConstruccion = this.checked; renderModulosEditor();">
+                    <label class="form-check-label small fw-bold text-warning" for="mod-const-${mIdx}">
+                        <i class="bi bi-cone-striped me-1"></i>En Construcción
+                    </label>
+                </div>
+
+                <div class="input-group" style="width: 130px;" title="Intentos máximos para la evaluación (0 o vacío para ilimitados)">
                     <span class="input-group-text"><i class="bi bi-arrow-repeat"></i></span>
                     <input type="number" class="form-control form-control-sm" placeholder="Intentos" value="${mod.maxIntentos || ''}" oninput="tempModulos[${mIdx}].maxIntentos = parseInt(this.value) || 0">
                 </div>
-                <button type="button" class="btn btn-sm btn-primary me-2" onclick="abrirEditorModuloEvaluacion(${mIdx})">
+                <button type="button" class="btn btn-sm btn-primary" onclick="abrirEditorModuloEvaluacion(${mIdx})">
                     <i class="bi bi-clipboard-check"></i> Evaluación
                 </button>
                 <button type="button" class="btn btn-sm btn-danger" onclick="eliminarModulo(${mIdx})" title="Eliminar Módulo">
-                    <i class="bi bi-trash"></i> Eliminar
+                    <i class="bi bi-trash"></i>
                 </button>
             </div>
             <div class="ms-4 border-start ps-3">
@@ -2429,6 +2469,8 @@ function verificarAccesoLeccion(mIdx, lIdx) {
 function normalizarCurso(curso) {
     curso.modulos = Array.isArray(curso.modulos) ? curso.modulos.map(mod => ({
         titulo: mod.titulo || 'Módulo sin título',
+        enConstruccion: !!mod.enConstruccion,
+        maxIntentos: mod.maxIntentos || 0,
         lecciones: Array.isArray(mod.lecciones) ? mod.lecciones : [],
         evaluacion: mod.evaluacion && Array.isArray(mod.evaluacion.preguntas) ? { preguntas: mod.evaluacion.preguntas } : { preguntas: [] }
     })) : [];
@@ -2438,6 +2480,21 @@ function normalizarCurso(curso) {
 function renderizarCursoTeachlr(curso) {
     curso = normalizarCurso(curso);
     cursoActualData = curso;
+
+    if (curso.enConstruccion) {
+        return `
+            <div class="card border-warning bg-warning bg-opacity-10 p-5 text-center my-4 rounded-4 shadow-sm">
+                <div class="display-1 text-warning mb-3"><i class="bi bi-cone-striped"></i></div>
+                <h2 class="fw-bold text-dark mb-2">Curso en Construcción</h2>
+                <p class="text-muted fs-5 mb-4">El curso <strong>"${curso.titulo}"</strong> se encuentra actualmente en desarrollo y afinamiento. ¡Estará disponible para ti muy pronto!</p>
+                <div>
+                    <a href="index.html" class="btn btn-primary px-4 shadow-sm">
+                        <i class="bi bi-arrow-left me-1"></i>Volver a Mis Cursos
+                    </a>
+                </div>
+            </div>
+        `;
+    }
 
     if (!sesion.progreso) sesion.progreso = {};
     if (!sesion.progreso[curso.id]) {
@@ -2475,6 +2532,7 @@ function renderizarCursoTeachlr(curso) {
         if (typeof seleccionarLeccion === 'function') {
             let primeraPendiente = null;
             for (let m = 0; m < modulosList.length; m++) {
+                if (modulosList[m].enConstruccion) continue;
                 const lecs = modulosList[m].lecciones || [];
                 for (let l = 0; l < lecs.length; l++) {
                     if (!leccionesCompletadas.includes(`${m}-${l}`) && verificarAccesoLeccion(m, l)) {
@@ -2486,7 +2544,7 @@ function renderizarCursoTeachlr(curso) {
             }
             if (primeraPendiente) {
                 seleccionarLeccion(primeraPendiente.m, primeraPendiente.l);
-            } else if (modulosList.length > 0 && modulosList[0].lecciones && modulosList[0].lecciones.length > 0) {
+            } else if (modulosList.length > 0 && !modulosList[0].enConstruccion && modulosList[0].lecciones && modulosList[0].lecciones.length > 0) {
                 seleccionarLeccion(0, 0);
             }
         }
@@ -2540,6 +2598,7 @@ function renderizarCursoTeachlr(curso) {
                 <!-- Acordeón de Módulos y Lecciones -->
                 <div class="accordion lms-sidebar shadow-sm" id="accordionModulos">
                     ${modulosList.map((mod, idx) => {
+                        const modEnConstruccion = !!mod.enConstruccion;
                         const tieneLecciones = mod.lecciones && mod.lecciones.length > 0;
                         const todasLeccionesMod = tieneLecciones && mod.lecciones.every((_, lIdx) =>
                             leccionesCompletadas.includes(`${idx}-${lIdx}`)
@@ -2551,23 +2610,33 @@ function renderizarCursoTeachlr(curso) {
                         ) && !moduloAprobado;
 
                         let estadoEvaluacion = 'pendiente';
-                        if (moduloAprobado) estadoEvaluacion = 'aprobado';
+                        if (modEnConstruccion) estadoEvaluacion = 'bloqueado';
+                        else if (moduloAprobado) estadoEvaluacion = 'aprobado';
                         else if (!tieneLecciones || !todasLeccionesMod) estadoEvaluacion = 'bloqueado';
                         else if (tieneEvaluacion) estadoEvaluacion = 'disponible';
 
                         return `
-                        <div class="accordion-item border mb-2 rounded-3 overflow-hidden">
+                        <div class="accordion-item border mb-2 rounded-3 overflow-hidden ${modEnConstruccion ? 'border-warning' : ''}">
                             <h2 class="accordion-header">
                                 <button class="accordion-button ${idx === 0 ? '' : 'collapsed'} py-2 px-3 fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#mod${idx}" style="font-size: 0.875rem;">
-                                    ${moduloAprobado 
-                                        ? '<i class="bi bi-check-circle-fill text-success me-2 fs-5"></i>' 
-                                        : (estaEnCurso ? '<i class="bi bi-play-circle-fill text-primary me-2 fs-5"></i>' : '<i class="bi bi-folder2 text-secondary me-2 fs-5"></i>')} 
-                                    <div class="text-truncate">Módulo ${idx + 1}: ${mod.titulo}</div>
+                                    ${modEnConstruccion 
+                                        ? '<i class="bi bi-cone-striped text-warning me-2 fs-5"></i>' 
+                                        : (moduloAprobado 
+                                            ? '<i class="bi bi-check-circle-fill text-success me-2 fs-5"></i>' 
+                                            : (estaEnCurso ? '<i class="bi bi-play-circle-fill text-primary me-2 fs-5"></i>' : '<i class="bi bi-folder2 text-secondary me-2 fs-5"></i>'))} 
+                                    <div class="text-truncate">
+                                        Módulo ${idx + 1}: ${mod.titulo}
+                                        ${modEnConstruccion ? '<span class="badge bg-warning text-dark ms-1" style="font-size:0.65rem;"><i class="bi bi-cone-striped me-1"></i>En Construcción</span>' : ''}
+                                    </div>
                                 </button>
                             </h2>
                             <div id="mod${idx}" class="accordion-collapse collapse ${idx === 0 ? 'show' : ''}" data-bs-parent="#accordionModulos">
                                 <div class="p-1 bg-white">
-                                    ${tieneLecciones ? mod.lecciones.map((lec, lIdx) => {
+                                    ${modEnConstruccion ? `
+                                        <div class="text-muted text-center py-3 small bg-warning bg-opacity-10 m-2 rounded border border-warning">
+                                            <i class="bi bi-cone-striped text-warning me-1"></i>Módulo en construcción
+                                        </div>
+                                    ` : (tieneLecciones ? mod.lecciones.map((lec, lIdx) => {
                                         const lecID = `${idx}-${lIdx}`;
                                         const estaCompletada = leccionesCompletadas.includes(lecID);
                                         const estaBloqueada = !verificarAccesoLeccion(idx, lIdx);
@@ -2588,7 +2657,7 @@ function renderizarCursoTeachlr(curso) {
                                         <div class="text-muted text-center py-2 small">
                                             <i class="bi bi-info-circle me-1"></i>Sin lecciones registradas
                                         </div>
-                                    `}
+                                    `)}
 
                                     <!-- Botón de Evaluación del Módulo -->
                                     <div class="p-1 pt-2 border-top mt-1">
@@ -2645,7 +2714,12 @@ function mostrarDetalleCurso(cursoId) {
 
     if (curso) {
         try {
-            contenidoCursoDiv.innerHTML = renderizarCursoTeachlr(normalizarCurso(curso));
+            const cNorm = normalizarCurso(curso);
+            contenidoCursoDiv.innerHTML = renderizarCursoTeachlr(cNorm);
+
+            // Si el curso completo está en construcción, no se deben cargar lecciones en el visor
+            if (cNorm.enConstruccion) return;
+
             setTimeout(() => {
                 if (cursoActualData && cursoActualData.modulos && cursoActualData.modulos.length > 0) {
                     const primerModulo = cursoActualData.modulos[0];
@@ -3015,7 +3089,9 @@ function renderizarGaleria() {
 
         // Badge de Estado Superior
         let badgeEstado = '';
-        if (prog.completado) {
+        if (c.enConstruccion) {
+            badgeEstado = `<span class="badge bg-warning text-dark shadow-sm fw-bold"><i class="bi bi-cone-striped me-1"></i>En Construcción</span>`;
+        } else if (prog.completado) {
             badgeEstado = `<span class="badge bg-success text-white shadow-sm"><i class="bi bi-award-fill me-1"></i>Completado</span>`;
         } else if (prog.porcentaje > 0) {
             badgeEstado = `<span class="badge bg-primary text-white shadow-sm"><i class="bi bi-clock-history me-1"></i>En Curso ${prog.porcentaje}%</span>`;
@@ -3027,7 +3103,12 @@ function renderizarGaleria() {
 
         // Botón de Acción
         let btnAccion = '';
-        if (c.bloqueado || bloqueadoPorPrelacion) {
+        if (c.enConstruccion) {
+            btnAccion = `
+                <button class="btn btn-warning text-dark w-100 fw-bold shadow-sm" onclick="showToast('El curso &quot;${(c.titulo || '').replace(/"/g, '&quot;')}&quot; se encuentra actualmente en construcción. ¡Próximamente disponible!', 'warning')" style="font-size:0.875rem;">
+                    <i class="bi bi-cone-striped me-1"></i>En Construcción
+                </button>`;
+        } else if (c.bloqueado || bloqueadoPorPrelacion) {
             btnAccion = `
                 <button class="btn btn-outline-secondary w-100" onclick="${bloqueadoPorPrelacion ? "showToast('Debes completar primero: " + mensajePrelacion.replace(/'/g, "\\'") + "', 'warning')" : "solicitarAccesoCurso('" + c.id + "')"}" style="font-size:0.875rem;">
                     <i class="bi ${bloqueadoPorPrelacion ? 'bi-shield-lock-fill' : 'bi-lock-fill'} me-1"></i>
@@ -3242,7 +3323,10 @@ function actualizarTablas() {
                                 ${c.imagen ? `<img src="${typeof resolverSrcImagen === 'function' ? resolverSrcImagen(c.imagen) : c.imagen}" class="rounded border" style="width:48px; height:32px; object-fit:cover;" alt="Portada">` : `<div class="bg-primary bg-opacity-10 text-primary rounded d-flex align-items-center justify-content-center" style="width:48px; height:32px;"><i class="bi bi-journal-bookmark"></i></div>`}
                                 <div>
                                     <div class="fw-bold text-dark">${c.titulo}</div>
-                                    <div class="mt-1">${badgeTipo}</div>
+                                    <div class="mt-1">
+                                        ${badgeTipo}
+                                        ${c.enConstruccion ? '<span class="badge bg-warning text-dark ms-1"><i class="bi bi-cone-striped me-1"></i>En Construcción</span>' : ''}
+                                    </div>
                                 </div>
                             </div>
                         </td>

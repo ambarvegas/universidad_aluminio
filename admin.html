@@ -656,6 +656,15 @@
                                 <input type="file" id="input-portada" class="form-control" onchange="cargarImagenPortada(event)" accept="image/*">
                             </div>
                             <div class="col-12">
+                                <div class="form-check form-switch p-3 bg-light rounded border">
+                                    <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" id="curso-en-construccion">
+                                    <label class="form-check-label fw-bold text-dark" for="curso-en-construccion">
+                                        <i class="bi bi-cone-striped text-warning me-1"></i>Marcar este Curso como "En Construcción"
+                                    </label>
+                                    <div class="form-text text-muted small ms-4">Si se activa, los estudiantes verán una etiqueta "En Construcción" y no podrán ingresar al contenido del curso hasta que sea publicado.</div>
+                                </div>
+                            </div>
+                            <div class="col-12">
                                 <label class="form-label fw-bold small">Descripción General</label>
                                 <textarea id="descripcion" class="form-control" rows="2" placeholder="Resumen del contenido y objetivos de aprendizaje..."></textarea>
                             </div>
