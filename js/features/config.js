@@ -30,11 +30,12 @@ function cargarConfiguracion() {
         aplicarNombreInstitucion(cfg.nombreInstitucion);
     }
 
-    // Logo como favicon
+    // Logo como favicon y en navbars
     const logoSaved = cfg.logo || localStorage.getItem('aluLogo') || '';
     if (logoSaved) {
         actualizarFavicon(logoSaved);
         mostrarPreviewLogo(logoSaved);
+        aplicarLogoEnNavbars(logoSaved);
     }
 
     // Rellenar controles del panel admin si existen en el DOM
@@ -205,18 +206,43 @@ async function guardarColoresPlataforma() {
 
 /**
  * Actualiza el favicon del navegador con el logo institucional.
- * Acepta URL relativa del servidor (uploads/...) o base64.
  */
 function actualizarFavicon(src) {
     if (!src) return;
-    let link = document.querySelector('link[rel="icon"]') || document.querySelector('link[rel="shortcut icon"]');
+    const resolvedSrc = typeof resolverSrcImagen === 'function' ? resolverSrcImagen(src) : src;
+    let link = document.querySelector("link[rel~='icon']");
     if (!link) {
         link = document.createElement('link');
         link.rel = 'icon';
         document.head.appendChild(link);
     }
     link.type = 'image/jpeg';
-    link.href = src;
+    link.href = resolvedSrc;
+}
+
+/**
+ * Aplica el logo en los headers y barras de navegación del campus.
+ */
+function aplicarLogoEnNavbars(logoSrc) {
+    if (!logoSrc) return;
+    const resolved = typeof resolverSrcImagen === 'function' ? resolverSrcImagen(logoSrc) : logoSrc;
+    document.querySelectorAll('.navbar-brand, .login-brand-header').forEach(brand => {
+        let icon = brand.querySelector('.brand-icon-wrapper, .navbar-logo-img');
+        if (icon) {
+            if (icon.tagName === 'IMG') {
+                icon.src = resolved;
+            } else {
+                const img = document.createElement('img');
+                img.className = 'navbar-logo-img me-2 rounded';
+                img.src = resolved;
+                img.alt = 'Logo';
+                img.style.maxHeight = '36px';
+                img.style.maxWidth = '120px';
+                img.style.objectFit = 'contain';
+                icon.replaceWith(img);
+            }
+        }
+    });
 }
 
 async function cargarLogoInstitucion(event) {
@@ -226,25 +252,41 @@ async function cargarLogoInstitucion(event) {
     const label = document.getElementById('btn-cargar-logo');
 
     await withLoading(label, async () => {
-        let logoSrc;
+        let logoSrc = '';
 
-        // Usar subida al servidor si está disponible
+        // 1. Intentar subir imagen física al servidor PHP
         if (typeof subirImagenServidor === 'function') {
-            const prevUrl = (db.configuracion && db.configuracion.logo) || '';
-            logoSrc = await subirImagenServidor(file, 'logo', 'institucional', prevUrl);
-        } else {
+            try {
+                const prevUrl = (db.configuracion && db.configuracion.logo) || '';
+                logoSrc = await subirImagenServidor(file, 'logo', 'institucional', prevUrl);
+            } catch (uploadErr) {
+                console.warn('Subida al servidor falló, usando compresión base64:', uploadErr);
+            }
+        }
+
+        // 2. Si falló la subida física o no está disponible, comprimir a base64
+        if (!logoSrc && typeof comprimirImagenBase64 === 'function') {
             logoSrc = await comprimirImagenBase64(file, 400, 0.85);
-            localStorage.setItem('aluLogo', logoSrc);
+        }
+
+        if (!logoSrc) {
+            throw new Error('No se pudo procesar la imagen seleccionada.');
         }
 
         if (!db.configuracion) db.configuracion = {};
         db.configuracion.logo = logoSrc;
+        localStorage.setItem('aluLogo', logoSrc);
 
         mostrarPreviewLogo(logoSrc);
         actualizarFavicon(logoSrc);
+        aplicarLogoEnNavbars(logoSrc);
 
         try {
-            await window.API.guardarConfig('logo', logoSrc);
+            if (window.API && typeof window.API.guardarConfig === 'function') {
+                await window.API.guardarConfig('logo', logoSrc);
+            } else {
+                await guardarTodo();
+            }
         } catch (e) {
             console.warn('Fallback a guardarTodo para logo:', e);
             await guardarTodo();
@@ -258,21 +300,34 @@ function mostrarPreviewLogo(src) {
     const container = document.getElementById('logo-preview-container');
     const img = document.getElementById('logo-preview-img');
     if (container && img) {
-        img.src = src;
-        container.style.display = 'flex';
-        container.style.alignItems = 'center';
+        if (src) {
+            img.src = typeof resolverSrcImagen === 'function' ? resolverSrcImagen(src) : src;
+            container.style.display = 'flex';
+            container.style.alignItems = 'center';
+        } else {
+            container.style.display = 'none';
+            img.src = '';
+        }
     }
 }
 
-function eliminarLogo() {
+async function eliminarLogo() {
     if (!db.configuracion) db.configuracion = {};
     db.configuracion.logo = '';
     localStorage.removeItem('aluLogo');
-    const container = document.getElementById('logo-preview-container');
-    if (container) container.style.display = 'none';
+    mostrarPreviewLogo('');
     const input = document.getElementById('input-logo');
     if (input) input.value = '';
-    guardarTodo().then(() => showToast('Logo eliminado.', 'info'));
+    try {
+        if (window.API && typeof window.API.guardarConfig === 'function') {
+            await window.API.guardarConfig('logo', '');
+        } else {
+            await guardarTodo();
+        }
+    } catch (e) {
+        await guardarTodo();
+    }
+    showToast('Logo eliminado.', 'info');
 }
 
 // -------------------------------------------------------

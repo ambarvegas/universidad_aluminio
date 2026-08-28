@@ -2351,25 +2351,8 @@ window.confirmarMarcarCompletado = async () => {
 };
 
 // ============================================================
-// 16. FUNCIONES DE CONFIGURACIÓN
+// 16. FUNCIONES DE CONFIGURACIÓN (Ver js/features/config.js)
 // ============================================================
-
-window.cargarLogoInstitucion = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    const input = document.getElementById('input-logo');
-    const originalHtml = input.parentElement?.innerHTML || '';
-
-    try {
-        const compressed = await comprimirImagenBase64(file, 600, 0.85);
-        await guardarLogo(compressed);
-        showToast('Logo de la Universidad actualizado correctamente.', 'success');
-    } catch (e) {
-        console.error("Error al cargar logo:", e);
-        showToast('Error al cargar el logo.', 'danger');
-    }
-};
 
 window.actualizarMinAprobacionGlobal = async (val) => {
     if (!db.configuracion) db.configuracion = {};
