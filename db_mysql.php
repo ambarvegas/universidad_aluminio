@@ -104,6 +104,7 @@ function db_create_tables(mysqli $conn): void {
         "CREATE TABLE IF NOT EXISTS `cursos` (
             `id`              VARCHAR(100) NOT NULL,
             `titulo`          VARCHAR(255) NOT NULL DEFAULT '',
+            `descripcion`     MEDIUMTEXT,
             `tipo`            VARCHAR(50)  NOT NULL DEFAULT 'especializado',
             `imagen`          LONGTEXT,
             `prelacion`       VARCHAR(100) DEFAULT NULL,
@@ -191,6 +192,11 @@ function db_create_tables(mysqli $conn): void {
     $colCheck = $conn->query("SHOW COLUMNS FROM `cursos` LIKE 'en_construccion'");
     if ($colCheck && $colCheck->num_rows === 0) {
         $conn->query("ALTER TABLE `cursos` ADD COLUMN `en_construccion` TINYINT(1) NOT NULL DEFAULT 0");
+    }
+
+    $colDescCheck = $conn->query("SHOW COLUMNS FROM `cursos` LIKE 'descripcion'");
+    if ($colDescCheck && $colDescCheck->num_rows === 0) {
+        $conn->query("ALTER TABLE `cursos` ADD COLUMN `descripcion` MEDIUMTEXT AFTER `titulo`");
     }
 }
 
@@ -298,6 +304,7 @@ function db_read_all(mysqli $conn): array {
             $row['modulos'] = json_decode($row['modulos'] ?? '[]', true) ?? [];
             if (!$row['prelacion']) unset($row['prelacion']);
             $row['enConstruccion'] = !empty($row['en_construccion']) ? true : false;
+            $row['descripcion'] = $row['descripcion'] ?? '';
             $db['cursos'][] = $row;
         }
     }
@@ -573,16 +580,17 @@ function db_write_all(mysqli $conn, array $data): void {
         foreach (($data['cursos'] ?? []) as $c) {
             $cId            = $c['id']             ?? '';
             $titulo         = $c['titulo']         ?? '';
+            $descripcion    = $c['descripcion']    ?? '';
             $tipo           = $c['tipo']           ?? 'especializado';
             $imagen         = $c['imagen']         ?? '';
             $prel           = $c['prelacion']      ?? null;
             $modulos        = json_encode($c['modulos'] ?? []);
             $enConstruccion = !empty($c['enConstruccion']) ? 1 : 0;
             if (!$cId) continue;
-            $cursosRows[] = [$cId, $titulo, $tipo, $imagen, $prel, $modulos, $enConstruccion];
+            $cursosRows[] = [$cId, $titulo, $descripcion, $tipo, $imagen, $prel, $modulos, $enConstruccion];
         }
-        db_bulk_insert($conn, 'cursos', ['id', 'titulo', 'tipo', 'imagen', 'prelacion', 'modulos', 'en_construccion'], $cursosRows, 50,
-            "ON DUPLICATE KEY UPDATE titulo=VALUES(titulo), tipo=VALUES(tipo), imagen=VALUES(imagen), prelacion=VALUES(prelacion), modulos=VALUES(modulos), en_construccion=VALUES(en_construccion)");
+        db_bulk_insert($conn, 'cursos', ['id', 'titulo', 'descripcion', 'tipo', 'imagen', 'prelacion', 'modulos', 'en_construccion'], $cursosRows, 50,
+            "ON DUPLICATE KEY UPDATE titulo=VALUES(titulo), descripcion=VALUES(descripcion), tipo=VALUES(tipo), imagen=VALUES(imagen), prelacion=VALUES(prelacion), modulos=VALUES(modulos), en_construccion=VALUES(en_construccion)");
 
         // Eliminar cursos que ya no existen
         $idsActuales = array_filter(array_column($data['cursos'] ?? [], 'id'));
@@ -996,6 +1004,7 @@ function db_upsert_progreso(mysqli $conn, string $userId, string $cursoId, array
 function db_upsert_curso(mysqli $conn, array $c): void {
     $id             = trim((string)($c['id']             ?? ''));
     $titulo         = trim((string)($c['titulo']         ?? ''));
+    $descripcion    = trim((string)($c['descripcion']    ?? ''));
     $tipo           = trim((string)($c['tipo']           ?? 'especializado'));
     $imagen         = $c['imagen']         ?? '';
     $prel           = !empty($c['prelacion']) ? trim((string)$c['prelacion']) : null;
@@ -1004,10 +1013,10 @@ function db_upsert_curso(mysqli $conn, array $c): void {
     if (!$id) return;
 
     $stmt = $conn->prepare(
-        "INSERT INTO `cursos` (id, titulo, tipo, imagen, prelacion, modulos, en_construccion) VALUES (?,?,?,?,?,?,?)
-         ON DUPLICATE KEY UPDATE titulo=VALUES(titulo), tipo=VALUES(tipo), imagen=VALUES(imagen), prelacion=VALUES(prelacion), modulos=VALUES(modulos), en_construccion=VALUES(en_construccion)"
+        "INSERT INTO `cursos` (id, titulo, descripcion, tipo, imagen, prelacion, modulos, en_construccion) VALUES (?,?,?,?,?,?,?,?)
+         ON DUPLICATE KEY UPDATE titulo=VALUES(titulo), descripcion=VALUES(descripcion), tipo=VALUES(tipo), imagen=VALUES(imagen), prelacion=VALUES(prelacion), modulos=VALUES(modulos), en_construccion=VALUES(en_construccion)"
     );
-    $stmt->bind_param('ssssssi', $id, $titulo, $tipo, $imagen, $prel, $modulos, $enConstruccion);
+    $stmt->bind_param('sssssssi', $id, $titulo, $descripcion, $tipo, $imagen, $prel, $modulos, $enConstruccion);
     $stmt->execute();
 }
 

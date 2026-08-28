@@ -600,8 +600,8 @@ window.abrirEditor = (id) => {
     if (!c) return;
 
     document.getElementById('edit-id').value = c.id;
-    document.getElementById('titulo').value = c.titulo;
-    document.getElementById('descripcion').value = c.descripcion;
+    document.getElementById('titulo').value = c.titulo || '';
+    document.getElementById('descripcion').value = c.descripcion || '';
     if (document.getElementById('curso-prelacion')) {
         document.getElementById('curso-prelacion').value = c.prelacion || '';
     }
@@ -653,11 +653,11 @@ window.guardarCurso = async (e) => {
 
         const nuevoCurso = {
             id: idEdit ? idEdit : "CUR-" + Date.now(),
-            titulo: document.getElementById('titulo').value,
+            titulo: (document.getElementById('titulo')?.value || '').trim(),
             tipo: tipo || 'especializado',
             imagen: tempImagenPortada,
-            descripcion: document.getElementById('descripcion').value,
-            prelacion: document.getElementById('curso-prelacion').value,
+            descripcion: (document.getElementById('descripcion')?.value || '').trim(),
+            prelacion: document.getElementById('curso-prelacion')?.value || '',
             enConstruccion: enConstruccion,
             modulos: tempModulos
         };
