@@ -994,30 +994,21 @@ function db_upsert_progreso(mysqli $conn, string $userId, string $cursoId, array
  * Inserta o actualiza un curso.
  */
 function db_upsert_curso(mysqli $conn, array $c): void {
-    $id             = $c['id']             ?? '';
-    $titulo         = $c['titulo']         ?? '';
-    $tipo           = $c['tipo']           ?? 'especializado';
+    $id             = trim((string)($c['id']             ?? ''));
+    $titulo         = trim((string)($c['titulo']         ?? ''));
+    $tipo           = trim((string)($c['tipo']           ?? 'especializado'));
     $imagen         = $c['imagen']         ?? '';
-    $prel           = $c['prelacion']      ?? null;
+    $prel           = !empty($c['prelacion']) ? trim((string)$c['prelacion']) : null;
     $modulos        = json_encode($c['modulos'] ?? []);
     $enConstruccion = !empty($c['enConstruccion']) ? 1 : 0;
     if (!$id) return;
 
-    try {
-        $stmt = $conn->prepare(
-            "INSERT INTO `cursos` (id, titulo, tipo, imagen, prelacion, modulos, en_construccion) VALUES (?,?,?,?,?,?,?)
-             ON DUPLICATE KEY UPDATE titulo=VALUES(titulo), tipo=VALUES(tipo), imagen=VALUES(imagen), prelacion=VALUES(prelacion), modulos=VALUES(modulos), en_construccion=VALUES(en_construccion)"
-        );
-        $stmt->bind_param('ssssssi', $id, $titulo, $tipo, $imagen, $prel, $modulos, $enConstruccion);
-        $stmt->execute();
-    } catch (Throwable $e) {
-        $stmt = $conn->prepare(
-            "INSERT INTO `cursos` (id, titulo, tipo, imagen, prelacion, modulos) VALUES (?,?,?,?,?,?)
-             ON DUPLICATE KEY UPDATE titulo=VALUES(titulo), tipo=VALUES(tipo), imagen=VALUES(imagen), prelacion=VALUES(prelacion), modulos=VALUES(modulos)"
-        );
-        $stmt->bind_param('ssssss', $id, $titulo, $tipo, $imagen, $prel, $modulos);
-        $stmt->execute();
-    }
+    $stmt = $conn->prepare(
+        "INSERT INTO `cursos` (id, titulo, tipo, imagen, prelacion, modulos, en_construccion) VALUES (?,?,?,?,?,?,?)
+         ON DUPLICATE KEY UPDATE titulo=VALUES(titulo), tipo=VALUES(tipo), imagen=VALUES(imagen), prelacion=VALUES(prelacion), modulos=VALUES(modulos), en_construccion=VALUES(en_construccion)"
+    );
+    $stmt->bind_param('ssssssi', $id, $titulo, $tipo, $imagen, $prel, $modulos, $enConstruccion);
+    $stmt->execute();
 }
 
 /**

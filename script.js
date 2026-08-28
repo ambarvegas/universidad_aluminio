@@ -635,16 +635,20 @@ window.guardarCurso = async (e) => {
 
     const btn = document.getElementById('btn-guardar-curso');
     await withLoading(btn, async () => {
-        if (tempModulos.length === 0) {
-            throw new Error('El curso debe tener al menos un módulo.');
-        }
-        const todasTienenLecciones = tempModulos.every(m => m.lecciones && m.lecciones.length > 0);
-        if (!todasTienenLecciones) {
-            throw new Error('Cada módulo debe contener al menos una lección.');
+        const enConstruccion = document.getElementById('curso-en-construccion') ? document.getElementById('curso-en-construccion').checked : false;
+
+        // Si el curso NO está en construcción, debe tener al menos 1 módulo y cada módulo debe tener lecciones
+        if (!enConstruccion) {
+            if (tempModulos.length === 0) {
+                throw new Error('El curso publicado debe tener al menos un módulo.');
+            }
+            const todasTienenLecciones = tempModulos.every(m => m.lecciones && m.lecciones.length > 0);
+            if (!todasTienenLecciones) {
+                throw new Error('Cada módulo debe contener al menos una lección para ser publicado. Si el contenido aún está en desarrollo, marca la casilla "En Construcción".');
+            }
         }
 
         const tipo = document.getElementById('curso-tipo') ? document.getElementById('curso-tipo').value : 'especializado';
-        const enConstruccion = document.getElementById('curso-en-construccion') ? document.getElementById('curso-en-construccion').checked : false;
         const idEdit = document.getElementById('edit-id').value;
 
         const nuevoCurso = {
@@ -659,8 +663,12 @@ window.guardarCurso = async (e) => {
         };
 
         if (idEdit) {
-            const idx = cursos.findIndex(c => c.id == idEdit);
-            cursos[idx] = nuevoCurso;
+            const idx = cursos.findIndex(c => String(c.id) === String(idEdit));
+            if (idx !== -1) {
+                cursos[idx] = nuevoCurso;
+            } else {
+                cursos.push(nuevoCurso);
+            }
         } else {
             cursos.push(nuevoCurso);
         }
