@@ -5,6 +5,8 @@ db.json.tmp
 db.json.migrated
 db_*.json
 *.sql
+*.xlsx
+~$*.xlsx
 db.lock
 backups/
 scratch/
