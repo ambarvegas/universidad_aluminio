@@ -1547,7 +1547,8 @@ window.validarEvaluacionModulo = async (mIdx) => {
         if (!progreso.evaluaciones) progreso.evaluaciones = {};
         progreso.evaluaciones[mIdx] = {
             calificacion: porcentaje,
-            aprobado: porcentaje >= min
+            aprobado: porcentaje >= min,
+            fecha: new Date().toISOString()
         };
 
         const quizArea = document.querySelector('.quiz-area');

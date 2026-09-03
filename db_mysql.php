@@ -1356,6 +1356,13 @@ function db_upsert_progreso(mysqli $conn, string $userId, string $cursoId, array
     $incomingInt  = is_array($prog['intentos'] ?? null)     ? $prog['intentos']     : (is_object($prog['intentos'] ?? null)     ? (array)$prog['intentos']     : []);
 
     $newEval = array_replace($existingEval, $incomingEval);
+    foreach ($newEval as $mNum => &$eItem) {
+        if (is_array($eItem) && empty($eItem['fecha'])) {
+            $eItem['fecha'] = !empty($existingEval[$mNum]['fecha']) ? $existingEval[$mNum]['fecha'] : date('c');
+        }
+    }
+    unset($eItem);
+
     $newInt  = array_replace($existingInt, $incomingInt);
 
     $lec  = json_encode($newLec);
@@ -1416,7 +1423,7 @@ function db_upsert_progreso(mysqli $conn, string $userId, string $cursoId, array
             $calif   = floatval($eVal['calificacion'] ?? $eVal['nota'] ?? 0);
             $aprob   = !empty($eVal['aprobado']) ? 1 : 0;
             $manual  = !empty($eVal['marcadoManual']) ? 1 : 0;
-            $fecha   = $eVal['fecha'] ?? null;
+            $fecha   = !empty($eVal['fecha']) ? $eVal['fecha'] : date('Y-m-d H:i:s');
             $stmtEv->bind_param('sssdiis', $userId, $cursoId, $mNumStr, $calif, $aprob, $manual, $fecha);
             $stmtEv->execute();
         }
