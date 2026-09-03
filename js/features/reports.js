@@ -863,7 +863,10 @@ function actualizarKPIsEvaluaciones() {
     if (elProm)  elProm.textContent  = `${promedio} pts`;
     if (elTasa)  elTasa.textContent  = `${tasaAprob}%`;
     if (elPerf)  elPerf.textContent  = totalPerfectas.toLocaleString();
-    if (elBadge) elBadge.textContent = `${total} registro${total !== 1 ? 's' : ''}`;
+    if (elBadge) {
+        elBadge.textContent = `${total} registro${total !== 1 ? 's' : ''}`;
+        elBadge.className = 'badge bg-primary text-white fw-semibold';
+    }
 }
 
 /**
@@ -895,29 +898,32 @@ function renderTablaEvaluacionesPaginada() {
         const globalIdx = startIdx + idx + 1;
         const iniciales = (e.usuarioNombre || 'U').split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
 
-        // Badge de calificación y barra de progreso
-        let scoreBadgeClass = 'bg-danger text-danger bg-opacity-10';
+        // Formato numérico de calificación
+        const califFormatted = (e.calificacion % 1 === 0 ? e.calificacion : e.calificacion.toFixed(1)) + ' pts';
+        let califBadgeHtml = '';
         let barColor = 'bg-danger';
-        if (e.calificacion >= 90) {
-            scoreBadgeClass = 'bg-success text-success bg-opacity-15';
+
+        if (e.calificacion >= 100) {
+            califBadgeHtml = `<span class="badge badge-score-perfect px-2 py-1"><i class="bi bi-star-fill text-warning me-1"></i>100 pts</span>`;
+            barColor = 'bg-success';
+        } else if (e.calificacion >= 90) {
+            califBadgeHtml = `<span class="badge badge-score-high px-2 py-1">${califFormatted}</span>`;
             barColor = 'bg-success';
         } else if (e.calificacion >= 70) {
-            scoreBadgeClass = 'bg-primary text-primary bg-opacity-15';
+            califBadgeHtml = `<span class="badge badge-score-pass px-2 py-1">${califFormatted}</span>`;
             barColor = 'bg-primary';
+        } else {
+            califBadgeHtml = `<span class="badge badge-score-fail px-2 py-1">${califFormatted}</span>`;
+            barColor = 'bg-danger';
         }
 
-        const is100 = e.calificacion >= 100;
-        const califBadgeHtml = is100
-            ? `<span class="badge bg-success shadow-sm px-2 py-1"><i class="bi bi-star-fill text-warning me-1"></i>100 pts</span>`
-            : `<span class="badge ${scoreBadgeClass} fw-bold px-2 py-1">${e.calificacion.toFixed(1)} pts</span>`;
-
         const estadoBadgeHtml = e.aprobado
-            ? `<span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-2 py-1"><i class="bi bi-check-circle-fill me-1"></i>Aprobado</span>`
-            : `<span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25 px-2 py-1"><i class="bi bi-x-circle-fill me-1"></i>Reprobado</span>`;
+            ? `<span class="badge bg-success text-white shadow-sm px-2 py-1"><i class="bi bi-check-circle-fill me-1"></i>Aprobado</span>`
+            : `<span class="badge bg-danger text-white shadow-sm px-2 py-1"><i class="bi bi-x-circle-fill me-1"></i>Reprobado</span>`;
 
         const origenBadgeHtml = e.marcadoManual
-            ? `<span class="badge bg-warning bg-opacity-15 text-dark"><i class="bi bi-pencil-square me-1"></i>Manual (Rectoría)</span>`
-            : `<span class="badge bg-light text-muted border"><i class="bi bi-laptop me-1"></i>Examen Online</span>`;
+            ? `<span class="badge bg-warning text-dark border px-2 py-1"><i class="bi bi-pencil-square me-1"></i>Manual (Rectoría)</span>`
+            : `<span class="badge bg-light text-dark border px-2 py-1"><i class="bi bi-laptop me-1 text-primary"></i>Examen Online</span>`;
 
         // Formato de fecha
         let fechaFormat = '—';
@@ -958,12 +964,12 @@ function renderTablaEvaluacionesPaginada() {
                 <div class="small fw-semibold text-dark">${e.moduloTitulo}</div>
             </td>
             <td>
-                <div class="d-flex flex-column" style="width: 130px;">
+                <div class="d-flex flex-column" style="width: 140px;">
                     <div class="d-flex justify-content-between align-items-center mb-1">
                         ${califBadgeHtml}
-                        <span class="text-muted small" style="font-size: 0.7rem;">${e.calificacion}%</span>
+                        <span class="text-muted small fw-semibold" style="font-size: 0.72rem;">${Math.round(e.calificacion)}%</span>
                     </div>
-                    <div class="progress" style="height: 4px;">
+                    <div class="progress" style="height: 5px; border-radius: 4px; background-color: #e2e8f0;">
                         <div class="progress-bar ${barColor}" style="width: ${Math.min(e.calificacion, 100)}%;"></div>
                     </div>
                 </div>

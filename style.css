@@ -1446,6 +1446,31 @@ details[open] .brecha-summary-icon { transform: rotate(90deg); }
 /* ============================================================
    ESTILOS PARA EL REPORTE DE EVALUACIONES
    ============================================================ */
+.badge-score-perfect {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    box-shadow: 0 2px 6px rgba(16, 185, 129, 0.35);
+}
+
+.badge-score-high {
+    background-color: #10b981 !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+}
+
+.badge-score-pass {
+    background-color: #0284c7 !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+}
+
+.badge-score-fail {
+    background-color: #ef4444 !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+}
+
 #tabla-reporte-evaluaciones tbody tr {
     transition: background-color 0.15s ease;
 }
