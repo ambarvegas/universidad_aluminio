@@ -3554,23 +3554,37 @@ document.addEventListener('DOMContentLoaded', async () => {
 // REPORTES — Cambio de Vista
 // ============================================================
 window.cambiarVistaReporte = (vista) => {
+    const vistaEval     = document.getElementById('vista-evaluaciones');
     const vistaLearners = document.getElementById('vista-learners');
     const vistaBrechas  = document.getElementById('vista-brechas');
+    const btnE = document.getElementById('btn-vista-evaluaciones');
     const btnL = document.getElementById('btn-vista-learners');
     const btnB = document.getElementById('btn-vista-brechas');
 
-    if (vista === 'learners') {
+    if (vista === 'evaluaciones') {
+        if (vistaEval)     vistaEval.style.display     = '';
+        if (vistaLearners) vistaLearners.style.display = 'none';
+        if (vistaBrechas)  vistaBrechas.style.display  = 'none';
+        if (btnE) btnE.className = 'btn btn-sm btn-primary';
+        if (btnL) btnL.className = 'btn btn-sm btn-outline-primary';
+        if (btnB) btnB.className = 'btn btn-sm btn-outline-primary';
+        if (typeof renderReporteEvaluaciones === 'function') renderReporteEvaluaciones();
+    } else if (vista === 'learners') {
+        if (vistaEval)     vistaEval.style.display     = 'none';
         if (vistaLearners) vistaLearners.style.display = '';
         if (vistaBrechas)  vistaBrechas.style.display  = 'none';
-        if (btnL) { btnL.className = 'btn btn-sm btn-primary'; }
-        if (btnB) { btnB.className = 'btn btn-sm btn-outline-primary'; }
+        if (btnE) btnE.className = 'btn btn-sm btn-outline-primary';
+        if (btnL) btnL.className = 'btn btn-sm btn-primary';
+        if (btnB) btnB.className = 'btn btn-sm btn-outline-primary';
         if (typeof renderTopLearners === 'function') renderTopLearners();
         if (typeof renderCumplimientoCargo === 'function') renderCumplimientoCargo();
     } else {
+        if (vistaEval)     vistaEval.style.display     = 'none';
         if (vistaLearners) vistaLearners.style.display = 'none';
         if (vistaBrechas)  vistaBrechas.style.display  = '';
-        if (btnL) { btnL.className = 'btn btn-sm btn-outline-primary'; }
-        if (btnB) { btnB.className = 'btn btn-sm btn-primary'; }
+        if (btnE) btnE.className = 'btn btn-sm btn-outline-primary';
+        if (btnL) btnL.className = 'btn btn-sm btn-outline-primary';
+        if (btnB) btnB.className = 'btn btn-sm btn-primary';
         if (typeof renderBrechasAprendizaje === 'function') {
             if (typeof inicializarFiltroUsuariosBrechas === 'function') inicializarFiltroUsuariosBrechas();
             renderBrechasAprendizaje();

@@ -121,6 +121,16 @@ function db_create_tables(mysqli $conn): void {
             PRIMARY KEY (`id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
+        // Carreras - Cursos (Relación normalizada)
+        "CREATE TABLE IF NOT EXISTS `carrera_cursos` (
+            `carrera_id` VARCHAR(100) NOT NULL,
+            `curso_id`   VARCHAR(100) NOT NULL,
+            `orden`      INT          NOT NULL DEFAULT 0,
+            PRIMARY KEY (`carrera_id`, `curso_id`),
+            INDEX `idx_cc_curso` (`curso_id`),
+            FOREIGN KEY (`carrera_id`) REFERENCES `carreras`(`id`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
         // Configuración de roles
         "CREATE TABLE IF NOT EXISTS `roles_config` (
             `id`       VARCHAR(100) NOT NULL,
@@ -129,6 +139,95 @@ function db_create_tables(mysqli $conn): void {
             `cursos`   JSON,
             `carreras` JSON,
             PRIMARY KEY (`id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        // Roles - Permisos (Relación normalizada)
+        "CREATE TABLE IF NOT EXISTS `rol_permisos` (
+            `rol_id`  VARCHAR(100) NOT NULL,
+            `permiso` VARCHAR(100) NOT NULL,
+            PRIMARY KEY (`rol_id`, `permiso`),
+            FOREIGN KEY (`rol_id`) REFERENCES `roles_config`(`id`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        // Roles - Cursos asignados (Relación normalizada)
+        "CREATE TABLE IF NOT EXISTS `rol_cursos` (
+            `rol_id`   VARCHAR(100) NOT NULL,
+            `curso_id` VARCHAR(100) NOT NULL,
+            PRIMARY KEY (`rol_id`, `curso_id`),
+            INDEX `idx_rc_curso` (`curso_id`),
+            FOREIGN KEY (`rol_id`) REFERENCES `roles_config`(`id`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        // Roles - Carreras asignadas (Relación normalizada)
+        "CREATE TABLE IF NOT EXISTS `rol_carreras` (
+            `rol_id`     VARCHAR(100) NOT NULL,
+            `carrera_id` VARCHAR(100) NOT NULL,
+            PRIMARY KEY (`rol_id`, `carrera_id`),
+            INDEX `idx_rc_carrera` (`carrera_id`),
+            FOREIGN KEY (`rol_id`) REFERENCES `roles_config`(`id`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        // Progreso de Usuario: Lecciones completadas (Relación normalizada)
+        "CREATE TABLE IF NOT EXISTS `usuario_lecciones_completadas` (
+            `usuario_id`       VARCHAR(50)  NOT NULL,
+            `curso_id`         VARCHAR(100) NOT NULL,
+            `leccion_codigo`   VARCHAR(50)  NOT NULL,
+            `fecha_completado` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (`usuario_id`, `curso_id`, `leccion_codigo`),
+            INDEX `idx_ulc_curso` (`curso_id`),
+            INDEX `idx_ulc_user` (`usuario_id`),
+            FOREIGN KEY (`usuario_id`) REFERENCES `usuarios`(`id`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        // Progreso de Usuario: Módulos aprobados (Relación normalizada)
+        "CREATE TABLE IF NOT EXISTS `usuario_modulos_aprobados` (
+            `usuario_id`     VARCHAR(50)  NOT NULL,
+            `curso_id`       VARCHAR(100) NOT NULL,
+            `modulo_num`     VARCHAR(50)  NOT NULL,
+            `fecha_aprobado` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (`usuario_id`, `curso_id`, `modulo_num`),
+            INDEX `idx_uma_curso` (`curso_id`),
+            INDEX `idx_uma_user` (`usuario_id`),
+            FOREIGN KEY (`usuario_id`) REFERENCES `usuarios`(`id`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        // Progreso de Usuario: Medallas obtenidas (Relación normalizada)
+        "CREATE TABLE IF NOT EXISTS `usuario_medallas` (
+            `usuario_id`     VARCHAR(50)  NOT NULL,
+            `curso_id`       VARCHAR(100) NOT NULL,
+            `medalla_num`    VARCHAR(50)  NOT NULL,
+            `fecha_obtenida` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (`usuario_id`, `curso_id`, `medalla_num`),
+            INDEX `idx_um_curso` (`curso_id`),
+            INDEX `idx_um_user` (`usuario_id`),
+            FOREIGN KEY (`usuario_id`) REFERENCES `usuarios`(`id`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        // Progreso de Usuario: Evaluaciones rendidas (Relación normalizada)
+        "CREATE TABLE IF NOT EXISTS `usuario_evaluaciones` (
+            `usuario_id`      VARCHAR(50)    NOT NULL,
+            `curso_id`        VARCHAR(100)   NOT NULL,
+            `modulo_num`      VARCHAR(50)    NOT NULL,
+            `calificacion`    DECIMAL(5,2)   NOT NULL DEFAULT 0.00,
+            `aprobado`        TINYINT(1)     NOT NULL DEFAULT 1,
+            `marcado_manual`  TINYINT(1)     NOT NULL DEFAULT 0,
+            `fecha`           VARCHAR(50)    DEFAULT NULL,
+            PRIMARY KEY (`usuario_id`, `curso_id`, `modulo_num`),
+            INDEX `idx_ue_curso` (`curso_id`),
+            INDEX `idx_ue_user` (`usuario_id`),
+            FOREIGN KEY (`usuario_id`) REFERENCES `usuarios`(`id`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        // Progreso de Usuario: Intentos por módulo (Relación normalizada)
+        "CREATE TABLE IF NOT EXISTS `usuario_intentos` (
+            `usuario_id` VARCHAR(50)  NOT NULL,
+            `curso_id`   VARCHAR(100) NOT NULL,
+            `modulo_num` VARCHAR(50)  NOT NULL,
+            `intentos`   INT          NOT NULL DEFAULT 1,
+            PRIMARY KEY (`usuario_id`, `curso_id`, `modulo_num`),
+            INDEX `idx_ui_curso` (`curso_id`),
+            INDEX `idx_ui_user` (`usuario_id`),
+            FOREIGN KEY (`usuario_id`) REFERENCES `usuarios`(`id`) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
         // Solicitudes de registro (nuevos usuarios)
@@ -206,7 +305,8 @@ function db_create_tables(mysqli $conn): void {
 
 /**
  * Lee todos los datos de MySQL y los retorna como un array
- * con la misma estructura que tenía db.json.
+ * con la misma estructura que tenía db.json (compatibilidad con frontend).
+ * Lee directamente de las tablas relacionales normalizadas.
  */
 function db_read_all(mysqli $conn): array {
     $db = [
@@ -250,28 +350,118 @@ function db_read_all(mysqli $conn): array {
         }
     }
 
-    // Progreso
-    $res = $conn->query("SELECT usuario_id, curso_id, lecciones_completadas, modulos_aprobados, medallas, evaluaciones, intentos FROM `usuario_progreso`");
-    while ($row = $res->fetch_assoc()) {
-        $uid = $row['usuario_id'];
-        $cid = $row['curso_id'];
-        if (!isset($usuariosMap[$uid])) continue;
+    // --- Progreso desde tablas relacionales normalizadas ---
+    $normProgreso = [];
 
-        $evals = json_decode($row['evaluaciones'] ?? '{}', true);
-        if (!is_array($evals)) $evals = [];
-        $ints = json_decode($row['intentos'] ?? '{}', true);
-        if (!is_array($ints)) $ints = [];
-
-        $usuariosMap[$uid]['progreso'][$cid] = [
-            'leccionesCompletadas' => json_decode($row['lecciones_completadas'] ?? '[]', true) ?? [],
-            'modulosAprobados'     => json_decode($row['modulos_aprobados']     ?? '[]', true) ?? [],
-            'medallas'             => json_decode($row['medallas']              ?? '[]', true) ?? [],
-            'evaluaciones'         => empty($evals) ? (object)[] : $evals,
-            'intentos'             => empty($ints) ? (object)[] : $ints,
-        ];
+    // Lecciones completadas
+    $resLec = $conn->query("SELECT usuario_id, curso_id, leccion_codigo FROM `usuario_lecciones_completadas`");
+    if ($resLec) {
+        while ($r = $resLec->fetch_assoc()) {
+            $u = $r['usuario_id']; $c = $r['curso_id'];
+            if (!isset($normProgreso[$u][$c])) {
+                $normProgreso[$u][$c] = ['leccionesCompletadas' => [], 'modulosAprobados' => [], 'medallas' => [], 'evaluaciones' => (object)[], 'intentos' => (object)[]];
+            }
+            $normProgreso[$u][$c]['leccionesCompletadas'][] = $r['leccion_codigo'];
+        }
     }
 
-    // Format empty progreso as object for JSON
+    // Módulos aprobados
+    $resMod = $conn->query("SELECT usuario_id, curso_id, modulo_num FROM `usuario_modulos_aprobados`");
+    if ($resMod) {
+        while ($r = $resMod->fetch_assoc()) {
+            $u = $r['usuario_id']; $c = $r['curso_id'];
+            if (!isset($normProgreso[$u][$c])) {
+                $normProgreso[$u][$c] = ['leccionesCompletadas' => [], 'modulosAprobados' => [], 'medallas' => [], 'evaluaciones' => (object)[], 'intentos' => (object)[]];
+            }
+            $normProgreso[$u][$c]['modulosAprobados'][] = $r['modulo_num'];
+        }
+    }
+
+    // Medallas
+    $resMed = $conn->query("SELECT usuario_id, curso_id, medalla_num FROM `usuario_medallas`");
+    if ($resMed) {
+        while ($r = $resMed->fetch_assoc()) {
+            $u = $r['usuario_id']; $c = $r['curso_id'];
+            if (!isset($normProgreso[$u][$c])) {
+                $normProgreso[$u][$c] = ['leccionesCompletadas' => [], 'modulosAprobados' => [], 'medallas' => [], 'evaluaciones' => (object)[], 'intentos' => (object)[]];
+            }
+            $normProgreso[$u][$c]['medallas'][] = $r['medalla_num'];
+        }
+    }
+
+    // Evaluaciones
+    $resEval = $conn->query("SELECT usuario_id, curso_id, modulo_num, calificacion, aprobado, marcado_manual, fecha FROM `usuario_evaluaciones`");
+    if ($resEval) {
+        while ($r = $resEval->fetch_assoc()) {
+            $u = $r['usuario_id']; $c = $r['curso_id'];
+            if (!isset($normProgreso[$u][$c])) {
+                $normProgreso[$u][$c] = ['leccionesCompletadas' => [], 'modulosAprobados' => [], 'medallas' => [], 'evaluaciones' => [], 'intentos' => (object)[]];
+            }
+            if (is_object($normProgreso[$u][$c]['evaluaciones'])) {
+                $normProgreso[$u][$c]['evaluaciones'] = (array)$normProgreso[$u][$c]['evaluaciones'];
+            }
+            $eItem = [
+                'calificacion' => (float)$r['calificacion'],
+                'aprobado'     => (bool)$r['aprobado']
+            ];
+            if (!empty($r['marcado_manual'])) $eItem['marcadoManual'] = true;
+            if (!empty($r['fecha'])) $eItem['fecha'] = $r['fecha'];
+
+            $normProgreso[$u][$c]['evaluaciones'][$r['modulo_num']] = $eItem;
+        }
+    }
+
+    // Intentos
+    $resInt = $conn->query("SELECT usuario_id, curso_id, modulo_num, intentos FROM `usuario_intentos`");
+    if ($resInt) {
+        while ($r = $resInt->fetch_assoc()) {
+            $u = $r['usuario_id']; $c = $r['curso_id'];
+            if (!isset($normProgreso[$u][$c])) {
+                $normProgreso[$u][$c] = ['leccionesCompletadas' => [], 'modulosAprobados' => [], 'medallas' => [], 'evaluaciones' => (object)[], 'intentos' => []];
+            }
+            if (is_object($normProgreso[$u][$c]['intentos'])) {
+                $normProgreso[$u][$c]['intentos'] = (array)$normProgreso[$u][$c]['intentos'];
+            }
+            $normProgreso[$u][$c]['intentos'][$r['modulo_num']] = (int)$r['intentos'];
+        }
+    }
+
+    // Asignar progreso normalizado a usuarios
+    foreach ($normProgreso as $uId => $cMap) {
+        if (isset($usuariosMap[$uId])) {
+            foreach ($cMap as $cId => $pData) {
+                if (empty($pData['evaluaciones'])) $pData['evaluaciones'] = (object)[];
+                if (empty($pData['intentos'])) $pData['intentos'] = (object)[];
+                $usuariosMap[$uId]['progreso'][$cId] = $pData;
+            }
+        }
+    }
+
+    // Fallback: Si algún usuario no tiene progreso en tablas normalizadas pero sí en usuario_progreso legacy
+    $resLeg = $conn->query("SELECT usuario_id, curso_id, lecciones_completadas, modulos_aprobados, medallas, evaluaciones, intentos FROM `usuario_progreso`");
+    if ($resLeg) {
+        while ($row = $resLeg->fetch_assoc()) {
+            $uid = $row['usuario_id'];
+            $cid = $row['curso_id'];
+            if (!isset($usuariosMap[$uid])) continue;
+            if (!isset($usuariosMap[$uid]['progreso'][$cid])) {
+                $evals = json_decode($row['evaluaciones'] ?? '{}', true);
+                if (!is_array($evals)) $evals = [];
+                $ints = json_decode($row['intentos'] ?? '{}', true);
+                if (!is_array($ints)) $ints = [];
+
+                $usuariosMap[$uid]['progreso'][$cid] = [
+                    'leccionesCompletadas' => json_decode($row['lecciones_completadas'] ?? '[]', true) ?? [],
+                    'modulosAprobados'     => json_decode($row['modulos_aprobados']     ?? '[]', true) ?? [],
+                    'medallas'             => json_decode($row['medallas']              ?? '[]', true) ?? [],
+                    'evaluaciones'         => empty($evals) ? (object)[] : $evals,
+                    'intentos'             => empty($ints) ? (object)[] : $ints,
+                ];
+            }
+        }
+    }
+
+    // Formatear progreso vacío como objeto para JSON
     foreach ($usuariosMap as &$uRef) {
         if (empty($uRef['progreso'])) {
             $uRef['progreso'] = (object)[];
@@ -309,19 +499,50 @@ function db_read_all(mysqli $conn): array {
         }
     }
 
-    // --- Carreras ---
+    // --- Carreras (con carrera_cursos normalizado) ---
+    $carrerasCursosMap = [];
+    $resCC = $conn->query("SELECT carrera_id, curso_id FROM `carrera_cursos` ORDER BY orden ASC");
+    if ($resCC) {
+        while ($r = $resCC->fetch_assoc()) {
+            $carrerasCursosMap[$r['carrera_id']][] = $r['curso_id'];
+        }
+    }
+
     $res = $conn->query("SELECT id, nombre, cursos FROM `carreras`");
     while ($row = $res->fetch_assoc()) {
-        $row['cursos'] = json_decode($row['cursos'] ?? '[]', true) ?? [];
+        if (isset($carrerasCursosMap[$row['id']])) {
+            $row['cursos'] = $carrerasCursosMap[$row['id']];
+        } else {
+            $row['cursos'] = json_decode($row['cursos'] ?? '[]', true) ?? [];
+        }
         $db['carreras'][] = $row;
     }
 
-    // --- Roles Config ---
+    // --- Roles Config (con rol_permisos, rol_cursos, rol_carreras normalizados) ---
+    $rolPermisosMap = [];
+    $resRP = $conn->query("SELECT rol_id, permiso FROM `rol_permisos`");
+    if ($resRP) {
+        while ($r = $resRP->fetch_assoc()) $rolPermisosMap[$r['rol_id']][] = $r['permiso'];
+    }
+
+    $rolCursosMap = [];
+    $resRC = $conn->query("SELECT rol_id, curso_id FROM `rol_cursos`");
+    if ($resRC) {
+        while ($r = $resRC->fetch_assoc()) $rolCursosMap[$r['rol_id']][] = $r['curso_id'];
+    }
+
+    $rolCarrerasMap = [];
+    $resRCar = $conn->query("SELECT rol_id, carrera_id FROM `rol_carreras`");
+    if ($resRCar) {
+        while ($r = $resRCar->fetch_assoc()) $rolCarrerasMap[$r['rol_id']][] = $r['carrera_id'];
+    }
+
     $res = $conn->query("SELECT id, nombre, permisos, cursos, carreras FROM `roles_config`");
     while ($row = $res->fetch_assoc()) {
-        $row['permisos']  = json_decode($row['permisos']  ?? '[]', true) ?? [];
-        $row['cursos']    = json_decode($row['cursos']    ?? '[]', true) ?? [];
-        $row['carreras']  = json_decode($row['carreras']  ?? '[]', true) ?? [];
+        $rId = $row['id'];
+        $row['permisos']  = $rolPermisosMap[$rId] ?? (json_decode($row['permisos'] ?? '[]', true) ?? []);
+        $row['cursos']    = $rolCursosMap[$rId]   ?? (json_decode($row['cursos']   ?? '[]', true) ?? []);
+        $row['carreras']  = $rolCarrerasMap[$rId] ?? (json_decode($row['carreras'] ?? '[]', true) ?? []);
         $db['rolesConfig'][] = $row;
     }
 
@@ -440,8 +661,17 @@ function db_write_all(mysqli $conn, array $data): void {
         $conn->query("TRUNCATE TABLE `usuario_asignados`");
         $conn->query("TRUNCATE TABLE `usuario_carreras_asignadas`");
         $conn->query("TRUNCATE TABLE `usuario_progreso`");
+        $conn->query("TRUNCATE TABLE `usuario_lecciones_completadas`");
+        $conn->query("TRUNCATE TABLE `usuario_modulos_aprobados`");
+        $conn->query("TRUNCATE TABLE `usuario_medallas`");
+        $conn->query("TRUNCATE TABLE `usuario_evaluaciones`");
+        $conn->query("TRUNCATE TABLE `usuario_intentos`");
         $conn->query("TRUNCATE TABLE `usuario_certificados_curso`");
         $conn->query("TRUNCATE TABLE `usuario_certificados_carrera`");
+        $conn->query("TRUNCATE TABLE `carrera_cursos`");
+        $conn->query("TRUNCATE TABLE `rol_permisos`");
+        $conn->query("TRUNCATE TABLE `rol_cursos`");
+        $conn->query("TRUNCATE TABLE `rol_carreras`");
         $conn->query("TRUNCATE TABLE `solicitudes_registro`");
         $conn->query("TRUNCATE TABLE `solicitudes_cursos`");
 
@@ -449,6 +679,11 @@ function db_write_all(mysqli $conn, array $data): void {
         $asignadosRows         = [];
         $carrerasAsignadasRows = [];
         $progresoRows          = [];
+        $normLecRows           = [];
+        $normModRows           = [];
+        $normMedRows           = [];
+        $normEvalRows          = [];
+        $normIntRows           = [];
         $certCursoRows         = [];
         $certCarreraRows       = [];
 
@@ -545,6 +780,30 @@ function db_write_all(mysqli $conn, array $data): void {
                 $int  = empty($mergedInt)  ? '{}' : json_encode((object)$mergedInt,  JSON_FORCE_OBJECT);
 
                 $progresoRows[] = [$id, $cIdStr, $lec, $mod, $med, $eval, $int];
+
+                // Filas para tablas normalizadas
+                foreach ($mergedLec as $lCode) {
+                    if ($lCode !== '') $normLecRows[] = [$id, $cIdStr, (string)$lCode];
+                }
+                foreach ($mergedMod as $mNum) {
+                    if ($mNum !== '') $normModRows[] = [$id, $cIdStr, (string)$mNum];
+                }
+                foreach ($mergedMed as $medNum) {
+                    if ($medNum !== '') $normMedRows[] = [$id, $cIdStr, (string)$medNum];
+                }
+                foreach ($mergedEval as $mNum => $eVal) {
+                    if (is_array($eVal)) {
+                        $calif = floatval($eVal['calificacion'] ?? $eVal['nota'] ?? 0);
+                        $aprob = !empty($eVal['aprobado']) ? 1 : 0;
+                        $manual = !empty($eVal['marcadoManual']) ? 1 : 0;
+                        $fech = $eVal['fecha'] ?? null;
+                        $normEvalRows[] = [$id, $cIdStr, (string)$mNum, $calif, $aprob, $manual, $fech];
+                    }
+                }
+                foreach ($mergedInt as $mNum => $intVal) {
+                    $intNum = intval($intVal);
+                    if ($intNum > 0) $normIntRows[] = [$id, $cIdStr, (string)$mNum, $intNum];
+                }
             }
 
             // Certificados curso (fusionar BD + payload y deduplicar)
@@ -572,6 +831,14 @@ function db_write_all(mysqli $conn, array $data): void {
         db_bulk_insert($conn, 'usuario_carreras_asignadas', ['usuario_id', 'carrera_id', 'estado'], $carrerasAsignadasRows, 200, '', true);
         db_bulk_insert($conn, 'usuario_progreso', ['usuario_id', 'curso_id', 'lecciones_completadas', 'modulos_aprobados', 'medallas', 'evaluaciones', 'intentos'], $progresoRows, 100,
             "ON DUPLICATE KEY UPDATE lecciones_completadas=VALUES(lecciones_completadas), modulos_aprobados=VALUES(modulos_aprobados), medallas=VALUES(medallas), evaluaciones=VALUES(evaluaciones), intentos=VALUES(intentos)");
+        db_bulk_insert($conn, 'usuario_lecciones_completadas', ['usuario_id', 'curso_id', 'leccion_codigo'], $normLecRows, 200, '', true);
+        db_bulk_insert($conn, 'usuario_modulos_aprobados', ['usuario_id', 'curso_id', 'modulo_num'], $normModRows, 200, '', true);
+        db_bulk_insert($conn, 'usuario_medallas', ['usuario_id', 'curso_id', 'medalla_num'], $normMedRows, 200, '', true);
+        db_bulk_insert($conn, 'usuario_evaluaciones', ['usuario_id', 'curso_id', 'modulo_num', 'calificacion', 'aprobado', 'marcado_manual', 'fecha'], $normEvalRows, 100,
+            "ON DUPLICATE KEY UPDATE calificacion=VALUES(calificacion), aprobado=VALUES(aprobado), marcado_manual=VALUES(marcado_manual), fecha=VALUES(fecha)");
+        db_bulk_insert($conn, 'usuario_intentos', ['usuario_id', 'curso_id', 'modulo_num', 'intentos'], $normIntRows, 100,
+            "ON DUPLICATE KEY UPDATE intentos=VALUES(intentos)");
+
         db_bulk_insert($conn, 'usuario_certificados_curso', ['usuario_id', 'curso_id'], $certCursoRows, 200, '', true);
         db_bulk_insert($conn, 'usuario_certificados_carrera', ['usuario_id', 'carrera_id'], $certCarreraRows, 200, '', true);
 
@@ -603,15 +870,28 @@ function db_write_all(mysqli $conn, array $data): void {
 
         // --- Carreras ---
         $carrerasRows = [];
+        $carreraCursosRows = [];
         foreach (($data['carreras'] ?? []) as $c) {
             $cId    = $c['id']     ?? '';
             $nombre = $c['nombre'] ?? '';
-            $curs   = json_encode($c['cursos'] ?? []);
+            $rawCurs = $c['cursos'] ?? [];
+            $curs   = json_encode($rawCurs);
             if (!$cId) continue;
             $carrerasRows[] = [$cId, $nombre, $curs];
+
+            $ord = 0;
+            foreach ((array)$rawCurs as $cItem) {
+                $cItemStr = trim((string)$cItem);
+                if ($cItemStr) {
+                    $carreraCursosRows[] = [$cId, $cItemStr, $ord++];
+                }
+            }
         }
         db_bulk_insert($conn, 'carreras', ['id', 'nombre', 'cursos'], $carrerasRows, 50,
             "ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), cursos=VALUES(cursos)");
+        if (!empty($carreraCursosRows)) {
+            db_bulk_insert($conn, 'carrera_cursos', ['carrera_id', 'curso_id', 'orden'], $carreraCursosRows, 100, '', true);
+        }
 
         $idsCarreras = array_filter(array_column($data['carreras'] ?? [], 'id'));
         if (!empty($idsCarreras)) {
@@ -623,17 +903,45 @@ function db_write_all(mysqli $conn, array $data): void {
 
         // --- Roles Config ---
         $rolesRows = [];
+        $rolPermisosRows = [];
+        $rolCursosRows = [];
+        $rolCarrerasRows = [];
         foreach (($data['rolesConfig'] ?? []) as $r) {
             $rId      = $r['id']       ?? '';
             $nombre   = $r['nombre']   ?? '';
-            $permisos = json_encode($r['permisos']  ?? []);
-            $cursos   = json_encode($r['cursos']    ?? []);
-            $carreras = json_encode($r['carreras']  ?? []);
+            $rawPerm  = (array)($r['permisos']  ?? []);
+            $rawCur   = (array)($r['cursos']    ?? []);
+            $rawCar   = (array)($r['carreras']  ?? []);
+            $permisos = json_encode($rawPerm);
+            $cursos   = json_encode($rawCur);
+            $carreras = json_encode($rawCar);
             if (!$rId) continue;
             $rolesRows[] = [$rId, $nombre, $permisos, $cursos, $carreras];
+
+            foreach ($rawPerm as $p) {
+                $pStr = trim((string)$p);
+                if ($pStr) $rolPermisosRows[] = [$rId, $pStr];
+            }
+            foreach ($rawCur as $rc) {
+                $rcStr = trim((string)$rc);
+                if ($rcStr) $rolCursosRows[] = [$rId, $rcStr];
+            }
+            foreach ($rawCar as $rca) {
+                $rcaStr = trim((string)$rca);
+                if ($rcaStr) $rolCarrerasRows[] = [$rId, $rcaStr];
+            }
         }
         db_bulk_insert($conn, 'roles_config', ['id', 'nombre', 'permisos', 'cursos', 'carreras'], $rolesRows, 50,
             "ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), permisos=VALUES(permisos), cursos=VALUES(cursos), carreras=VALUES(carreras)");
+        if (!empty($rolPermisosRows)) {
+            db_bulk_insert($conn, 'rol_permisos', ['rol_id', 'permiso'], $rolPermisosRows, 100, '', true);
+        }
+        if (!empty($rolCursosRows)) {
+            db_bulk_insert($conn, 'rol_cursos', ['rol_id', 'curso_id'], $rolCursosRows, 100, '', true);
+        }
+        if (!empty($rolCarrerasRows)) {
+            db_bulk_insert($conn, 'rol_carreras', ['rol_id', 'carrera_id'], $rolCarrerasRows, 100, '', true);
+        }
 
         // --- Solicitudes de Registro ---
         $solRegRows = [];
@@ -743,22 +1051,94 @@ function db_verify_login(mysqli $conn, string $id, string $clave): ?array {
     $resCar = $stmtCar->get_result();
     while ($r = $resCar->fetch_assoc()) $usuario['carrerasAsignadas'][] = ['id' => $r['carrera_id'], 'estado' => $r['estado']];
 
-    // Progreso
+    // Progreso desde tablas normalizadas
+    $uProg = [];
+
+    // Lecciones
+    $stmtUL = $conn->prepare("SELECT curso_id, leccion_codigo FROM `usuario_lecciones_completadas` WHERE usuario_id = ?");
+    $stmtUL->bind_param('s', $id);
+    $stmtUL->execute();
+    $resUL = $stmtUL->get_result();
+    while ($r = $resUL->fetch_assoc()) {
+        $cid = $r['curso_id'];
+        if (!isset($uProg[$cid])) $uProg[$cid] = ['leccionesCompletadas' => [], 'modulosAprobados' => [], 'medallas' => [], 'evaluaciones' => (object)[], 'intentos' => (object)[]];
+        $uProg[$cid]['leccionesCompletadas'][] = $r['leccion_codigo'];
+    }
+
+    // Módulos
+    $stmtUM = $conn->prepare("SELECT curso_id, modulo_num FROM `usuario_modulos_aprobados` WHERE usuario_id = ?");
+    $stmtUM->bind_param('s', $id);
+    $stmtUM->execute();
+    $resUM = $stmtUM->get_result();
+    while ($r = $resUM->fetch_assoc()) {
+        $cid = $r['curso_id'];
+        if (!isset($uProg[$cid])) $uProg[$cid] = ['leccionesCompletadas' => [], 'modulosAprobados' => [], 'medallas' => [], 'evaluaciones' => (object)[], 'intentos' => (object)[]];
+        $uProg[$cid]['modulosAprobados'][] = $r['modulo_num'];
+    }
+
+    // Medallas
+    $stmtUMed = $conn->prepare("SELECT curso_id, medalla_num FROM `usuario_medallas` WHERE usuario_id = ?");
+    $stmtUMed->bind_param('s', $id);
+    $stmtUMed->execute();
+    $resUMed = $stmtUMed->get_result();
+    while ($r = $resUMed->fetch_assoc()) {
+        $cid = $r['curso_id'];
+        if (!isset($uProg[$cid])) $uProg[$cid] = ['leccionesCompletadas' => [], 'modulosAprobados' => [], 'medallas' => [], 'evaluaciones' => (object)[], 'intentos' => (object)[]];
+        $uProg[$cid]['medallas'][] = $r['medalla_num'];
+    }
+
+    // Evaluaciones
+    $stmtUE = $conn->prepare("SELECT curso_id, modulo_num, calificacion, aprobado, marcado_manual, fecha FROM `usuario_evaluaciones` WHERE usuario_id = ?");
+    $stmtUE->bind_param('s', $id);
+    $stmtUE->execute();
+    $resUE = $stmtUE->get_result();
+    while ($r = $resUE->fetch_assoc()) {
+        $cid = $r['curso_id'];
+        if (!isset($uProg[$cid])) $uProg[$cid] = ['leccionesCompletadas' => [], 'modulosAprobados' => [], 'medallas' => [], 'evaluaciones' => [], 'intentos' => (object)[]];
+        if (is_object($uProg[$cid]['evaluaciones'])) $uProg[$cid]['evaluaciones'] = (array)$uProg[$cid]['evaluaciones'];
+        $eItem = ['calificacion' => (float)$r['calificacion'], 'aprobado' => (bool)$r['aprobado']];
+        if (!empty($r['marcado_manual'])) $eItem['marcadoManual'] = true;
+        if (!empty($r['fecha'])) $eItem['fecha'] = $r['fecha'];
+        $uProg[$cid]['evaluaciones'][$r['modulo_num']] = $eItem;
+    }
+
+    // Intentos
+    $stmtUI = $conn->prepare("SELECT curso_id, modulo_num, intentos FROM `usuario_intentos` WHERE usuario_id = ?");
+    $stmtUI->bind_param('s', $id);
+    $stmtUI->execute();
+    $resUI = $stmtUI->get_result();
+    while ($r = $resUI->fetch_assoc()) {
+        $cid = $r['curso_id'];
+        if (!isset($uProg[$cid])) $uProg[$cid] = ['leccionesCompletadas' => [], 'modulosAprobados' => [], 'medallas' => [], 'evaluaciones' => (object)[], 'intentos' => []];
+        if (is_object($uProg[$cid]['intentos'])) $uProg[$cid]['intentos'] = (array)$uProg[$cid]['intentos'];
+        $uProg[$cid]['intentos'][$r['modulo_num']] = (int)$r['intentos'];
+    }
+
+    foreach ($uProg as $cid => &$pData) {
+        if (empty($pData['evaluaciones'])) $pData['evaluaciones'] = (object)[];
+        if (empty($pData['intentos'])) $pData['intentos'] = (object)[];
+        $usuario['progreso'][$cid] = $pData;
+    }
+    unset($pData);
+
+    // Fallback usuario_progreso legacy
     $stmtProg = $conn->prepare("SELECT curso_id, lecciones_completadas, modulos_aprobados, medallas, evaluaciones, intentos FROM `usuario_progreso` WHERE usuario_id = ?");
     $stmtProg->bind_param('s', $id);
     $stmtProg->execute();
     $resProg = $stmtProg->get_result();
     while ($r = $resProg->fetch_assoc()) {
         $cid = $r['curso_id'];
-        $evals = json_decode($r['evaluaciones'] ?? '{}', true) ?: [];
-        $ints = json_decode($r['intentos'] ?? '{}', true) ?: [];
-        $usuario['progreso'][$cid] = [
-            'leccionesCompletadas' => json_decode($r['lecciones_completadas'] ?? '[]', true) ?: [],
-            'modulosAprobados'     => json_decode($r['modulos_aprobados'] ?? '[]', true) ?: [],
-            'medallas'             => json_decode($r['medallas'] ?? '[]', true) ?: [],
-            'evaluaciones'         => empty($evals) ? (object)[] : $evals,
-            'intentos'             => empty($ints) ? (object)[] : $ints,
-        ];
+        if (!isset($usuario['progreso'][$cid])) {
+            $evals = json_decode($r['evaluaciones'] ?? '{}', true) ?: [];
+            $ints = json_decode($r['intentos'] ?? '{}', true) ?: [];
+            $usuario['progreso'][$cid] = [
+                'leccionesCompletadas' => json_decode($r['lecciones_completadas'] ?? '[]', true) ?: [],
+                'modulosAprobados'     => json_decode($r['modulos_aprobados'] ?? '[]', true) ?: [],
+                'medallas'             => json_decode($r['medallas'] ?? '[]', true) ?: [],
+                'evaluaciones'         => empty($evals) ? (object)[] : $evals,
+                'intentos'             => empty($ints) ? (object)[] : $ints,
+            ];
+        }
     }
     if (empty($usuario['progreso'])) $usuario['progreso'] = (object)[];
 
@@ -943,7 +1323,7 @@ function db_delete_usuario(mysqli $conn, string $id): void {
 
 /**
  * Guarda solo el progreso de un usuario en un curso específico.
- * El endpoint más llamado — payload mínimo.
+ * Actualiza la tabla legacy usuario_progreso y las tablas relacionales normalizadas.
  */
 function db_upsert_progreso(mysqli $conn, string $userId, string $cursoId, array $prog): void {
     // 1. Obtener datos existentes en la BD para este usuario y curso
@@ -996,6 +1376,65 @@ function db_upsert_progreso(mysqli $conn, string $userId, string $cursoId, array
     );
     $stmt->bind_param('sssssss', $userId, $cursoId, $lec, $mod, $med, $eval, $int);
     $stmt->execute();
+
+    // Actualizar tablas relacionales normalizadas
+    $stmtLec = $conn->prepare("INSERT IGNORE INTO `usuario_lecciones_completadas` (usuario_id, curso_id, leccion_codigo) VALUES (?,?,?)");
+    foreach ($newLec as $lCode) {
+        $lCodeStr = (string)$lCode;
+        if ($lCodeStr !== '') {
+            $stmtLec->bind_param('sss', $userId, $cursoId, $lCodeStr);
+            $stmtLec->execute();
+        }
+    }
+
+    $stmtMod = $conn->prepare("INSERT IGNORE INTO `usuario_modulos_aprobados` (usuario_id, curso_id, modulo_num) VALUES (?,?,?)");
+    foreach ($newMod as $mNum) {
+        $mNumStr = (string)$mNum;
+        if ($mNumStr !== '') {
+            $stmtMod->bind_param('sss', $userId, $cursoId, $mNumStr);
+            $stmtMod->execute();
+        }
+    }
+
+    $stmtMed = $conn->prepare("INSERT IGNORE INTO `usuario_medallas` (usuario_id, curso_id, medalla_num) VALUES (?,?,?)");
+    foreach ($newMed as $medNum) {
+        $medNumStr = (string)$medNum;
+        if ($medNumStr !== '') {
+            $stmtMed->bind_param('sss', $userId, $cursoId, $medNumStr);
+            $stmtMed->execute();
+        }
+    }
+
+    $stmtEv = $conn->prepare(
+        "INSERT INTO `usuario_evaluaciones` (usuario_id, curso_id, modulo_num, calificacion, aprobado, marcado_manual, fecha)
+         VALUES (?,?,?,?,?,?,?)
+         ON DUPLICATE KEY UPDATE calificacion=VALUES(calificacion), aprobado=VALUES(aprobado), marcado_manual=VALUES(marcado_manual), fecha=VALUES(fecha)"
+    );
+    foreach ($newEval as $mNum => $eVal) {
+        if (is_array($eVal)) {
+            $mNumStr = (string)$mNum;
+            $calif   = floatval($eVal['calificacion'] ?? $eVal['nota'] ?? 0);
+            $aprob   = !empty($eVal['aprobado']) ? 1 : 0;
+            $manual  = !empty($eVal['marcadoManual']) ? 1 : 0;
+            $fecha   = $eVal['fecha'] ?? null;
+            $stmtEv->bind_param('sssdiis', $userId, $cursoId, $mNumStr, $calif, $aprob, $manual, $fecha);
+            $stmtEv->execute();
+        }
+    }
+
+    $stmtIn = $conn->prepare(
+        "INSERT INTO `usuario_intentos` (usuario_id, curso_id, modulo_num, intentos)
+         VALUES (?,?,?,?)
+         ON DUPLICATE KEY UPDATE intentos=VALUES(intentos)"
+    );
+    foreach ($newInt as $mNum => $intVal) {
+        $mNumStr = (string)$mNum;
+        $intNum  = intval($intVal);
+        if ($intNum > 0) {
+            $stmtIn->bind_param('sssi', $userId, $cursoId, $mNumStr, $intNum);
+            $stmtIn->execute();
+        }
+    }
 }
 
 /**
@@ -1030,12 +1469,13 @@ function db_delete_curso(mysqli $conn, string $id): void {
 }
 
 /**
- * Inserta o actualiza una carrera.
+ * Inserta o actualiza una carrera y sincroniza carrera_cursos.
  */
 function db_upsert_carrera(mysqli $conn, array $c): void {
-    $id     = $c['id']     ?? '';
-    $nombre = $c['nombre'] ?? '';
-    $cursos = json_encode($c['cursos'] ?? []);
+    $id        = trim((string)($c['id']     ?? ''));
+    $nombre    = trim((string)($c['nombre'] ?? ''));
+    $rawCursos = $c['cursos'] ?? [];
+    $cursos    = json_encode($rawCursos);
     if (!$id) return;
 
     $stmt = $conn->prepare(
@@ -1044,6 +1484,20 @@ function db_upsert_carrera(mysqli $conn, array $c): void {
     );
     $stmt->bind_param('sss', $id, $nombre, $cursos);
     $stmt->execute();
+
+    // Actualizar tabla relacional carrera_cursos
+    $safeId = $conn->real_escape_string($id);
+    $conn->query("DELETE FROM `carrera_cursos` WHERE carrera_id = '$safeId'");
+    $stmtCC = $conn->prepare("INSERT INTO `carrera_cursos` (carrera_id, curso_id, orden) VALUES (?,?,?)");
+    $ord = 0;
+    foreach ((array)$rawCursos as $cItem) {
+        $cItemStr = trim((string)$cItem);
+        if ($cItemStr) {
+            $stmtCC->bind_param('ssi', $id, $cItemStr, $ord);
+            $stmtCC->execute();
+            $ord++;
+        }
+    }
 }
 
 /**
@@ -1056,14 +1510,17 @@ function db_delete_carrera(mysqli $conn, string $id): void {
 }
 
 /**
- * Inserta o actualiza un rol.
+ * Inserta o actualiza un rol y sincroniza rol_permisos, rol_cursos, rol_carreras.
  */
 function db_upsert_rol(mysqli $conn, array $r): void {
-    $id       = $r['id']       ?? '';
-    $nombre   = $r['nombre']   ?? '';
-    $permisos = json_encode($r['permisos']  ?? []);
-    $cursos   = json_encode($r['cursos']    ?? []);
-    $carreras = json_encode($r['carreras']  ?? []);
+    $id       = trim((string)($r['id']       ?? ''));
+    $nombre   = trim((string)($r['nombre']   ?? ''));
+    $rawPerm  = (array)($r['permisos']  ?? []);
+    $rawCur   = (array)($r['cursos']    ?? []);
+    $rawCar   = (array)($r['carreras']  ?? []);
+    $permisos = json_encode($rawPerm);
+    $cursos   = json_encode($rawCur);
+    $carreras = json_encode($rawCar);
     if (!$id) return;
 
     $stmt = $conn->prepare(
@@ -1072,6 +1529,39 @@ function db_upsert_rol(mysqli $conn, array $r): void {
     );
     $stmt->bind_param('sssss', $id, $nombre, $permisos, $cursos, $carreras);
     $stmt->execute();
+
+    // Actualizar tablas relacionales de roles
+    $safeId = $conn->real_escape_string($id);
+    $conn->query("DELETE FROM `rol_permisos` WHERE rol_id = '$safeId'");
+    $conn->query("DELETE FROM `rol_cursos`   WHERE rol_id = '$safeId'");
+    $conn->query("DELETE FROM `rol_carreras` WHERE rol_id = '$safeId'");
+
+    $stmtP = $conn->prepare("INSERT IGNORE INTO `rol_permisos` (rol_id, permiso) VALUES (?,?)");
+    foreach ($rawPerm as $p) {
+        $pStr = trim((string)$p);
+        if ($pStr) {
+            $stmtP->bind_param('ss', $id, $pStr);
+            $stmtP->execute();
+        }
+    }
+
+    $stmtC = $conn->prepare("INSERT IGNORE INTO `rol_cursos` (rol_id, curso_id) VALUES (?,?)");
+    foreach ($rawCur as $rc) {
+        $rcStr = trim((string)$rc);
+        if ($rcStr) {
+            $stmtC->bind_param('ss', $id, $rcStr);
+            $stmtC->execute();
+        }
+    }
+
+    $stmtCar = $conn->prepare("INSERT IGNORE INTO `rol_carreras` (rol_id, carrera_id) VALUES (?,?)");
+    foreach ($rawCar as $rca) {
+        $rcaStr = trim((string)$rca);
+        if ($rcaStr) {
+            $stmtCar->bind_param('ss', $id, $rcaStr);
+            $stmtCar->execute();
+        }
+    }
 }
 
 /**

@@ -3,6 +3,8 @@ db.json
 db.json.bak
 db.json.tmp
 db.json.migrated
+db_*.json
+*.sql
 db.lock
 backups/
 scratch/

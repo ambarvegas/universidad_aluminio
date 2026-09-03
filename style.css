@@ -1443,5 +1443,37 @@ details[open] .brecha-summary-icon { transform: rotate(90deg); }
     display: inline-block;
 }
 
+/* ============================================================
+   ESTILOS PARA EL REPORTE DE EVALUACIONES
+   ============================================================ */
+#tabla-reporte-evaluaciones tbody tr {
+    transition: background-color 0.15s ease;
+}
 
-
+#tabla-reporte-evaluaciones tbody tr:hover {
+    background-color: rgba(15, 43, 72, 0.03);
+}
+
+#vista-evaluaciones .card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+#vista-evaluaciones .card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px -4px rgba(15, 43, 72, 0.08) !important;
+}
+
+@media print {
+    body * {
+        visibility: hidden;
+    }
+    #vista-evaluaciones, #vista-evaluaciones * {
+        visibility: visible;
+    }
+    #vista-evaluaciones {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+    }
+}

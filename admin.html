@@ -308,16 +308,16 @@
                 <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4 pb-3 border-bottom">
                     <div>
                         <h4 class="fw-bold text-primary mb-0">Reportes de Desempeño</h4>
-                        <p class="text-muted small mb-0">Análisis de avance, brechas de aprendizaje y cumplimiento por cargo.</p>
+                        <p class="text-muted small mb-0">Análisis de avance, brechas de aprendizaje, calificaciones y evaluaciones.</p>
                     </div>
                     <div class="d-flex flex-wrap gap-2">
                         <button class="btn btn-sm btn-outline-secondary shadow-sm" onclick="refrescarDatosAdmin(this)" title="Refrescar reportes">
                             <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
                         </button>
-                        <button class="btn btn-sm btn-success shadow-sm" onclick="exportarReporteXLSX()">
-                            <i class="bi bi-file-earmark-excel-fill me-1"></i>Exportar XLSX
+                        <button class="btn btn-sm btn-primary" id="btn-vista-evaluaciones" onclick="cambiarVistaReporte('evaluaciones')">
+                            <i class="bi bi-card-checklist me-1"></i>Registro de Evaluaciones
                         </button>
-                        <button class="btn btn-sm btn-primary" id="btn-vista-learners" onclick="cambiarVistaReporte('learners')">
+                        <button class="btn btn-sm btn-outline-primary" id="btn-vista-learners" onclick="cambiarVistaReporte('learners')">
                             <i class="bi bi-trophy-fill me-1"></i>Top Learners
                         </button>
                         <button class="btn btn-sm btn-outline-primary" id="btn-vista-brechas" onclick="cambiarVistaReporte('brechas')">
@@ -326,8 +326,170 @@
                     </div>
                 </div>
 
+                <!-- Vista 3: Reporte Detallado de Evaluaciones -->
+                <div id="vista-evaluaciones">
+                    <!-- KPIs Resumen de Evaluaciones -->
+                    <div class="row g-3 mb-4">
+                        <div class="col-6 col-md-3">
+                            <div class="card border-0 shadow-sm p-3 bg-light rounded-3 h-100">
+                                <div class="d-flex align-items-center gap-3">
+                                    <div class="rounded-circle p-2 bg-primary bg-opacity-10 text-primary">
+                                        <i class="bi bi-card-checklist fs-4"></i>
+                                    </div>
+                                    <div>
+                                        <div class="fs-4 fw-bold text-primary" id="kpi-eval-total">0</div>
+                                        <div class="text-muted small">Total Evaluaciones</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="card border-0 shadow-sm p-3 bg-light rounded-3 h-100">
+                                <div class="d-flex align-items-center gap-3">
+                                    <div class="rounded-circle p-2 bg-success bg-opacity-10 text-success">
+                                        <i class="bi bi-graph-up-arrow fs-4"></i>
+                                    </div>
+                                    <div>
+                                        <div class="fs-4 fw-bold text-success" id="kpi-eval-promedio">0.0</div>
+                                        <div class="text-muted small">Promedio General</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="card border-0 shadow-sm p-3 bg-light rounded-3 h-100">
+                                <div class="d-flex align-items-center gap-3">
+                                    <div class="rounded-circle p-2 bg-info bg-opacity-10 text-info">
+                                        <i class="bi bi-patch-check-fill fs-4"></i>
+                                    </div>
+                                    <div>
+                                        <div class="fs-4 fw-bold text-info" id="kpi-eval-tasa-aprob">0%</div>
+                                        <div class="text-muted small">Tasa de Aprobación</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="card border-0 shadow-sm p-3 bg-light rounded-3 h-100">
+                                <div class="d-flex align-items-center gap-3">
+                                    <div class="rounded-circle p-2 bg-warning bg-opacity-10 text-warning">
+                                        <i class="bi bi-star-fill fs-4"></i>
+                                    </div>
+                                    <div>
+                                        <div class="fs-4 fw-bold text-warning" id="kpi-eval-perfectas">0</div>
+                                        <div class="text-muted small">Puntaje Perfecto (100)</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Barra de Filtros y Controles -->
+                    <div class="p-3 bg-light rounded-3 border mb-4">
+                        <div class="row g-2 align-items-center">
+                            <div class="col-12 col-md-4">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                                    <input type="text" id="filtro-eval-search" class="form-control" placeholder="Buscar colaborador, cédula, curso..." oninput="filtrarTablaEvaluaciones()">
+                                </div>
+                            </div>
+                            <div class="col-6 col-md-2">
+                                <select id="filtro-eval-usuario" class="form-select form-select-sm" onchange="filtrarTablaEvaluaciones()">
+                                    <option value="">— Colaborador —</option>
+                                </select>
+                            </div>
+                            <div class="col-6 col-md-2">
+                                <select id="filtro-eval-curso" class="form-select form-select-sm" onchange="filtrarTablaEvaluaciones()">
+                                    <option value="">— Curso —</option>
+                                </select>
+                            </div>
+                            <div class="col-6 col-md-2">
+                                <select id="filtro-eval-estado" class="form-select form-select-sm" onchange="filtrarTablaEvaluaciones()">
+                                    <option value="">— Todos los Estados —</option>
+                                    <option value="aprobado">Aprobados</option>
+                                    <option value="reprobado">Reprobados</option>
+                                    <option value="manual">Marcados Manualmente</option>
+                                </select>
+                            </div>
+                            <div class="col-6 col-md-2">
+                                <select id="filtro-eval-orden" class="form-select form-select-sm" onchange="filtrarTablaEvaluaciones()">
+                                    <option value="calif_desc">Mayor Calificación</option>
+                                    <option value="calif_asc">Menor Calificación</option>
+                                    <option value="fecha_desc">Más Recientes</option>
+                                    <option value="nombre_asc">Colaborador (A-Z)</option>
+                                    <option value="curso_asc">Curso (A-Z)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cabecera de Tabla y Exportación -->
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                        <div class="d-flex align-items-center gap-2">
+                            <h5 class="fw-bold text-primary mb-0"><i class="bi bi-table me-2"></i>Resultados de Evaluaciones</h5>
+                            <span class="badge bg-primary bg-opacity-15 text-primary fw-semibold" id="evaluaciones-count-badge">0 registros</span>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-sm btn-success shadow-sm" onclick="exportarEvaluacionesXLSX()" title="Exportar reporte detallado a Excel">
+                                <i class="bi bi-file-earmark-excel-fill me-1"></i>Exportar XLSX
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary shadow-sm" onclick="exportarEvaluacionesCSV()" title="Descargar archivo CSV">
+                                <i class="bi bi-filetype-csv me-1"></i>CSV
+                            </button>
+                            <button class="btn btn-sm btn-outline-dark shadow-sm" onclick="imprimirReporteEvaluaciones()" title="Imprimir o guardar como PDF">
+                                <i class="bi bi-printer-fill me-1"></i>Imprimir / PDF
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Tabla de Evaluaciones -->
+                    <div class="table-responsive rounded-3 border">
+                        <table class="table table-hover align-middle mb-0" id="tabla-reporte-evaluaciones">
+                            <thead class="table-custom-header">
+                                <tr>
+                                    <th style="width: 45px;">#</th>
+                                    <th>Colaborador</th>
+                                    <th>Curso</th>
+                                    <th>Módulo</th>
+                                    <th style="width: 170px;">Calificación</th>
+                                    <th style="width: 110px;">Estado</th>
+                                    <th style="width: 95px;">Intentos</th>
+                                    <th>Modalidad</th>
+                                    <th>Fecha</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabla-evaluaciones-body">
+                                <tr>
+                                    <td colspan="9" class="text-center py-4 text-muted">
+                                        <div class="spinner-border spinner-border-sm text-primary me-2"></div>Cargando registro de evaluaciones...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Paginación y Controles Inferiores -->
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mt-3 px-1">
+                        <div class="text-muted small" id="evaluaciones-paginacion-info">Mostrando 0 de 0 registros</div>
+                        <div class="d-flex align-items-center gap-2">
+                            <label class="small text-muted mb-0">Mostrar:</label>
+                            <select id="filtro-eval-per-page" class="form-select form-select-sm" style="width: 85px;" onchange="cambiarFilasPorPaginaEval(this.value)">
+                                <option value="15" selected>15</option>
+                                <option value="30">30</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                                <option value="all">Todas</option>
+                            </select>
+                            <div class="btn-group btn-group-sm" id="eval-pagination-buttons">
+                                <button class="btn btn-outline-secondary" id="btn-eval-prev" onclick="paginaAnteriorEval()" disabled><i class="bi bi-chevron-left"></i></button>
+                                <button class="btn btn-outline-secondary" id="btn-eval-next" onclick="paginaSiguienteEval()"><i class="bi bi-chevron-right"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Vista 1: Top Learners -->
-                <div id="vista-learners">
+                <div id="vista-learners" style="display: none;">
                     <div class="row g-4">
                         <div class="col-lg-8">
                             <div class="d-flex justify-content-between align-items-center mb-3">
