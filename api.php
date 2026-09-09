@@ -177,6 +177,35 @@ switch ($action) {
         echo json_encode(['url' => $url, 'message' => 'Imagen subida correctamente']);
         break;
 
+    // ------ CATALOGO LIGERO (carga inicial ultra-rápida) ----------
+    case 'catalogo':
+        if ($method !== 'GET') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        require_session();
+        try {
+            $data = db_read_catalogo($conn, $_SESSION['user_id'], $_SESSION['user_rol']);
+            echo json_encode($data, JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $e) {
+            http_response_code(500); echo json_encode(['error' => $e->getMessage()]);
+        }
+        break;
+
+    // ------ DETALLE DE CURSO BAJO DEMANDA -------------------------
+    case 'curso':
+        if ($method !== 'GET') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        require_session();
+        $cursoId = trim($_GET['id'] ?? '');
+        if (!$cursoId) { http_response_code(400); echo json_encode(['error' => 'Se requiere el parametro id']); break; }
+        try {
+            $curso = db_read_curso_detalle($conn, $cursoId, is_admin());
+            if (!$curso) {
+                http_response_code(404); echo json_encode(['error' => 'Curso no encontrado']); break;
+            }
+            echo json_encode(['curso' => $curso], JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $e) {
+            http_response_code(500); echo json_encode(['error' => $e->getMessage()]);
+        }
+        break;
+
     // ------ DB COMPLETA (con filtrado por rol) -------------------
     case 'db':
         if ($method === 'GET') {

@@ -102,6 +102,15 @@ window.API = (() => {
             return _post('solicitar_registro', payload);
         },
 
+        // ---- CATALOGO Y CURSOS (Carga bajo demanda) ----
+        async cargarCatalogo() {
+            return _get('catalogo');
+        },
+
+        async cargarCurso(id) {
+            return _get('curso&id=' + encodeURIComponent(id));
+        },
+
         // ---- DB COMPLETA ----
         async cargarDB() {
             return _get(null);

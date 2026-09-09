@@ -2619,13 +2619,44 @@ function renderizarCursoTeachlr(curso) {
 // FUNCIÓN PARA MOSTRAR DETALLE DEL CURSO
 // ============================================================
 
-function mostrarDetalleCurso(cursoId) {
-    const curso = cursos.find(c => c.id === cursoId);
+async function mostrarDetalleCurso(cursoId) {
     const contenidoCursoDiv = document.getElementById('contenido-curso');
 
     if (!contenidoCursoDiv) {
         console.error('Elemento contenido-curso no encontrado');
         return;
+    }
+
+    let curso = cursos.find(c => c.id === cursoId);
+
+    // Carga bajo demanda si el curso es un resumen del catálogo o no tiene lecciones completas
+    const necesitaCargar = !curso || curso._esResumen || (curso.modulos && curso.modulos.length > 0 && (!curso.modulos[0].lecciones || curso.modulos[0].lecciones[0] === null));
+
+    if (necesitaCargar) {
+        contenidoCursoDiv.innerHTML = `
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;" role="status">
+                    <span class="visually-hidden">Cargando curso...</span>
+                </div>
+                <h4 class="fw-bold text-primary mb-1">Cargando contenido del curso...</h4>
+                <p class="text-muted small mb-0"><i class="bi bi-cloud-arrow-down me-1"></i>Sincronizando lecciones y multimedia...</p>
+            </div>`;
+
+        try {
+            const res = await window.API.cargarCurso(cursoId);
+            if (res && res.curso) {
+                curso = res.curso;
+                const idx = cursos.findIndex(c => c.id === cursoId);
+                if (idx !== -1) {
+                    cursos[idx] = curso;
+                } else {
+                    cursos.push(curso);
+                }
+            }
+        } catch (loadErr) {
+            console.error('Error al cargar detalle del curso bajo demanda:', loadErr);
+            showToast('Error al descargar el contenido del curso.', 'danger');
+        }
     }
 
     if (curso) {
@@ -2725,7 +2756,18 @@ async function cargarDatosDelServidor() {
     }
 
     try {
-        const data = await window.API.cargarDB();
+        const isAdminPage = window.location.pathname.includes('admin.html');
+        let data;
+        if (isAdminPage) {
+            data = await window.API.cargarDB();
+        } else {
+            try {
+                data = await window.API.cargarCatalogo();
+            } catch (catErr) {
+                console.warn('Fallback a cargarDB por error en catalogo:', catErr.message);
+                data = await window.API.cargarDB();
+            }
+        }
 
         if (data && typeof data === 'object' && !Array.isArray(data)) {
             db = data;
@@ -3442,7 +3484,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const urlParams = new URLSearchParams(window.location.search);
     const cursoId = urlParams.get('id');
     if (document.getElementById('contenido-curso') && cursoId) {
-        mostrarDetalleCurso(cursoId);
+        await mostrarDetalleCurso(cursoId);
     }
 
     actualizarTablas();
