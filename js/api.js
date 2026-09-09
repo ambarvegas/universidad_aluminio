@@ -2,9 +2,10 @@
  * js/api.js
  * Módulo centralizado de llamadas al servidor.
  * Todas las interacciones con api.php pasan por aquí.
- * 
- * USO: importar este archivo con <script src="js/api.js"></script>
- * Las funciones se exponen globalmente vía window.API
+ *
+ * - Incluye credenciales (cookie de sesión PHP) en cada request
+ * - Intercepta 401 → redirige a login.html automáticamente
+ * - Intercepta 403 → muestra toast de error
  */
 
 window.API = (() => {
@@ -28,22 +29,53 @@ window.API = (() => {
         }
     }
 
+    /**
+     * Maneja respuestas de error comunes (401, 403).
+     * Retorna true si la respuesta fue manejada (y el caller debe abortar).
+     */
+    function _handleAuthError(res, data) {
+        if (res.status === 401) {
+            // Sesión expirada o no autenticado → redirigir a login
+            sessionStorage.removeItem('aluSesion');
+            const isAlreadyOnLogin = window.location.pathname.includes('login.html');
+            if (!isAlreadyOnLogin) {
+                window.location.href = 'login.html?expired=1';
+            }
+            return true;
+        }
+        if (res.status === 403) {
+            const msg = data?.error || 'Acceso denegado';
+            if (typeof window.showToast === 'function') {
+                window.showToast(msg, 'danger');
+            } else {
+                console.error('Acceso denegado:', msg);
+            }
+            return true;
+        }
+        return false;
+    }
+
     async function _post(action, body) {
         const url = action ? `${BASE}?action=${action}` : BASE;
         const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',   // ← Enviar cookie de sesión PHP
             body: JSON.stringify(body)
         });
         const data = await res.json().catch(() => ({}));
+        if (_handleAuthError(res, data)) throw new Error(data?.error || `HTTP ${res.status}`);
         if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
         return data;
     }
 
     async function _get(action) {
         const url = action ? `${BASE}?action=${action}` : BASE;
-        const res = await fetch(url);
+        const res = await fetch(url, {
+            credentials: 'same-origin',   // ← Enviar cookie de sesión PHP
+        });
         const data = await res.json().catch(() => ({}));
+        if (_handleAuthError(res, data)) throw new Error(data?.error || `HTTP ${res.status}`);
         if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
         return data;
     }
@@ -52,6 +84,18 @@ window.API = (() => {
         // ---- AUTH ----
         async login(id, clave) {
             return _post('login', { id, clave });
+        },
+
+        async logout() {
+            try {
+                await _post('logout', {});
+            } catch (_) {
+                // Ignorar errores de red en logout — limpiar sesión de todos modos
+            }
+        },
+
+        async me() {
+            return _get('me');
         },
 
         async solicitarRegistro(payload) {

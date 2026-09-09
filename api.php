@@ -1,17 +1,29 @@
 <?php
 /**
  * api.php - Universidad del Aluminio
- * API REST completa con:
- *  - Autenticacion server-side (bcrypt) con rate limiting
- *  - Endpoints granulares por entidad
+ * API REST con:
+ *  - Sesiones PHP server-side (autenticación persistente)
+ *  - Filtrado de datos por rol (admin = todo, participante = solo sus datos)
+ *  - Endpoints granulares protegidos con require_session / require_admin
+ *  - Rate limiting en login
  *  - Log de actividad
  *  - Headers de seguridad HTTP
- *  - Compatibilidad total con frontend existente (GET/POST sin ?action)
  */
 
 // ============================================================
-// HEADERS DE SEGURIDAD + CORS
+// SESIÓN + HEADERS DE SEGURIDAD + CORS
 // ============================================================
+if (session_status() === PHP_SESSION_NONE) {
+    session_set_cookie_params([
+        'lifetime' => 0,             // Cookie de sesión (dura hasta cerrar el browser)
+        'path'     => '/',
+        'secure'   => false,         // Cambiar a true en producción HTTPS
+        'httponly' => true,          // No accesible desde JS
+        'samesite' => 'Lax',
+    ]);
+    session_start();
+}
+
 if (!headers_sent()) {
     if (extension_loaded('zlib') && !in_array('ob_gzhandler', ob_list_handlers())) {
         ob_start('ob_gzhandler');
@@ -23,6 +35,9 @@ if (!headers_sent()) {
     header("X-Content-Type-Options: nosniff");
     header("X-Frame-Options: SAMEORIGIN");
     header("Referrer-Policy: strict-origin-when-cross-origin");
+    // Sin Cache en respuestas autenticadas
+    header("Cache-Control: no-store, no-cache, must-revalidate");
+    header("Pragma: no-cache");
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -40,12 +55,110 @@ try {
     exit;
 }
 
+// ============================================================
+// HELPERS
+// ============================================================
+
 function jsonBody(): array {
     $json = file_get_contents('php://input');
     if (empty($json)) return [];
     $decoded = json_decode($json, true);
     return (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) ? $decoded : [];
 }
+
+/**
+ * Verifica que haya sesión activa. Si no, responde 401 y termina.
+ */
+function require_session(): void {
+    if (empty($_SESSION['user_id'])) {
+        http_response_code(401);
+        echo json_encode(['error' => 'No autenticado. Inicia sesión.', 'code' => 'UNAUTHENTICATED']);
+        exit;
+    }
+}
+
+/**
+ * Verifica que el usuario autenticado sea admin o supervisor.
+ * Si no, responde 403 y termina.
+ */
+function require_admin(): void {
+    require_session();
+    $adminRoles = ['admin', 'supervisor'];
+    if (!in_array($_SESSION['user_rol'] ?? '', $adminRoles, true)) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Acceso denegado. Se requiere rol de administrador.', 'code' => 'FORBIDDEN']);
+        exit;
+    }
+}
+
+/**
+ * Devuelve true si el usuario en sesión es admin/supervisor.
+ */
+function is_admin(): bool {
+    return in_array($_SESSION['user_rol'] ?? '', ['admin', 'supervisor'], true);
+}
+
+/**
+ * Construye la DB filtrada para un participante.
+ * Solo recibe: sus propios datos + cursos y carreras accesibles + su rol config.
+ */
+function db_read_for_participant(mysqli $conn, string $userId, string $userRol): array {
+    // Leer datos completos (es eficiente desde tablas relacionales)
+    $full = db_read_all($conn);
+
+    // Solo su usuario (sin clave)
+    $miUsuario = null;
+    foreach ($full['usuarios'] as $u) {
+        if ($u['id'] === $userId) {
+            $miUsuario = $u;
+            unset($miUsuario['clave']);
+            break;
+        }
+    }
+
+    // Cursos accesibles: los asignados directamente + los del rol
+    $asignados = $miUsuario['asignados'] ?? [];
+    $rolConfig  = null;
+    foreach ($full['rolesConfig'] as $r) {
+        if ($r['id'] === $userRol) {
+            $rolConfig = $r;
+            break;
+        }
+    }
+    $cursosRol = $rolConfig ? ($rolConfig['cursos'] ?? []) : [];
+    $cursosIds = array_unique(array_merge($asignados, $cursosRol));
+
+    // Cursos del catálogo que puede ver (incluir todos los cursos no en construcción del rol + asignados)
+    $cursosFiltrados = [];
+    foreach ($full['cursos'] as $c) {
+        if (in_array($c['id'], $cursosIds, true) || ($rolConfig && ($rolConfig['permisos'][0] ?? '') === '*')) {
+            $cursosFiltrados[] = $c;
+        }
+    }
+
+    // Carreras accesibles por el rol
+    $carrerasRol = $rolConfig ? ($rolConfig['carreras'] ?? []) : [];
+    $carrerasFiltradas = [];
+    foreach ($full['carreras'] as $c) {
+        if (in_array($c['id'], $carrerasRol, true)) {
+            $carrerasFiltradas[] = $c;
+        }
+    }
+
+    return [
+        'usuarios'            => $miUsuario ? [$miUsuario] : [],
+        'cursos'              => $cursosFiltrados,
+        'carreras'            => $carrerasFiltradas,
+        'rolesConfig'         => $rolConfig ? [$rolConfig] : [],
+        'solicitudesRegistro' => [],
+        'solicitudesCursos'   => [],
+        'configuracion'       => $full['configuracion'],
+    ];
+}
+
+// ============================================================
+// ROUTER
+// ============================================================
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $action = $_GET['action'] ?? 'db';
@@ -54,6 +167,7 @@ switch ($action) {
 
     // ------ SUBIDA DE IMAGENES (multipart/form-data) -------------
     case 'upload_image':
+        require_session();
         if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
 
         $uploadDir = __DIR__ . '/uploads/';
@@ -76,14 +190,13 @@ switch ($action) {
             http_response_code(400); echo json_encode(['error' => 'Tipo de archivo no permitido: ' . $mime]); break;
         }
 
-        $type    = trim($_POST['type'] ?? 'portada');   // logo | portada
+        $type    = trim($_POST['type'] ?? 'portada');
         $entidad = trim($_POST['id'] ?? 'gen');
         $entidad = preg_replace('/[^a-zA-Z0-9_\-]/', '', $entidad);
         $ext     = 'jpg';
         $nombre  = $type . '_' . $entidad . '_' . time() . '.' . $ext;
         $destino = $uploadDir . $nombre;
 
-        // Comprimir con GD
         $maxWidth = ($type === 'logo') ? 400 : 1200;
         $quality  = 82;
 
@@ -101,7 +214,6 @@ switch ($action) {
         if ($w > $maxWidth) { $h = (int)round($h * $maxWidth / $w); $w = $maxWidth; }
 
         $dst = imagecreatetruecolor($w, $h);
-        // Preservar fondo blanco para PNG transparentes
         imagefilledrectangle($dst, 0, 0, $w, $h, imagecolorallocate($dst, 255, 255, 255));
         imagecopyresampled($dst, $src, 0, 0, 0, 0, $w, $h, imagesx($src), imagesy($src));
         imagedestroy($src);
@@ -112,7 +224,6 @@ switch ($action) {
         }
         imagedestroy($dst);
 
-        // Eliminar imagen anterior del mismo tipo/entidad (limpieza automática)
         $prevFile = trim($_POST['prev'] ?? '');
         if ($prevFile && strpos($prevFile, 'uploads/') === 0) {
             $prevPath = __DIR__ . '/' . $prevFile;
@@ -123,14 +234,26 @@ switch ($action) {
         echo json_encode(['url' => $url, 'message' => 'Imagen subida correctamente']);
         break;
 
-    // ------ COMPATIBILIDAD TOTAL: GET/POST sin ?action ----------
+    // ------ DB COMPLETA (con filtrado por rol) -------------------
     case 'db':
         if ($method === 'GET') {
-            try { echo json_encode(db_read_safe($conn), JSON_UNESCAPED_UNICODE); }
-            catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+            require_session();
+            try {
+                if (is_admin()) {
+                    // Admin: recibe todos los datos (sin claves)
+                    echo json_encode(db_read_safe($conn), JSON_UNESCAPED_UNICODE);
+                } else {
+                    // Participante: solo sus datos
+                    $data = db_read_for_participant($conn, $_SESSION['user_id'], $_SESSION['user_rol']);
+                    echo json_encode($data, JSON_UNESCAPED_UNICODE);
+                }
+            } catch (Throwable $e) {
+                http_response_code(500); echo json_encode(['error' => $e->getMessage()]);
+            }
             break;
         }
         if ($method === 'POST') {
+            require_admin(); // Solo admins pueden guardar el DB completo
             $body = jsonBody();
             if (empty($body)) { http_response_code(400); echo json_encode(['error' => 'Datos invalidos o vacios']); break; }
             foreach (['usuarios','cursos','carreras','rolesConfig','solicitudesRegistro','solicitudesCursos'] as $k) {
@@ -168,11 +291,51 @@ switch ($action) {
         }
         db_clear_login_attempts($conn, $ip);
         db_log_activity($conn, $id, 'LOGIN_EXITOSO', '', $ip);
+
+        // Crear sesión PHP server-side
+        session_regenerate_id(true); // Prevenir session fixation
+        $_SESSION['user_id']  = $usuario['id'];
+        $_SESSION['user_rol'] = $usuario['rol'];
+        $_SESSION['login_at'] = time();
+
         echo json_encode(['usuario' => $usuario], JSON_UNESCAPED_UNICODE);
+        break;
+
+    // ------ LOGOUT -----------------------------------------------
+    case 'logout':
+        if (!empty($_SESSION['user_id'])) {
+            db_log_activity($conn, $_SESSION['user_id'], 'LOGOUT', '', $_SERVER['REMOTE_ADDR'] ?? '');
+        }
+        $_SESSION = [];
+        if (ini_get('session.use_cookies')) {
+            $params = session_get_cookie_params();
+            setcookie(
+                session_name(), '', time() - 42000,
+                $params['path'], $params['domain'],
+                $params['secure'], $params['httponly']
+            );
+        }
+        session_destroy();
+        echo json_encode(['message' => 'Sesion cerrada']);
+        break;
+
+    // ------ SESION ACTUAL (para verificar desde JS) ---------------
+    case 'me':
+        if (empty($_SESSION['user_id'])) {
+            http_response_code(401);
+            echo json_encode(['error' => 'No autenticado', 'code' => 'UNAUTHENTICATED']);
+            break;
+        }
+        echo json_encode([
+            'user_id'  => $_SESSION['user_id'],
+            'user_rol' => $_SESSION['user_rol'],
+            'login_at' => $_SESSION['login_at'] ?? null,
+        ]);
         break;
 
     // ------ MIGRACION CONTRASENAS --------------------------------
     case 'hash_passwords':
+        require_admin();
         if (($_GET['key'] ?? '') !== 'HASH2026') { http_response_code(403); echo json_encode(['error' => 'Acceso denegado']); break; }
         try { $n = db_hash_all_passwords($conn); echo json_encode(['message' => "Hasheadas: $n contrasenas"]); }
         catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
@@ -180,6 +343,7 @@ switch ($action) {
 
     // ------ SOLICITUD DE REGISTRO --------------------------------
     case 'solicitar_registro':
+        // Público: no requiere sesión (para que puedan registrarse)
         if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
         $body = jsonBody();
         $sol = [
@@ -199,6 +363,7 @@ switch ($action) {
 
     // ------ USUARIOS ---------------------------------------------
     case 'guardar_usuario':
+        require_admin();
         if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
         $body = jsonBody();
         if (empty($body['id'])) { http_response_code(400); echo json_encode(['error' => 'Campo requerido: id']); break; }
@@ -207,6 +372,7 @@ switch ($action) {
         break;
 
     case 'eliminar_usuario':
+        require_admin();
         if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
         $body = jsonBody(); $id = trim($body['id'] ?? '');
         if (!$id) { http_response_code(400); echo json_encode(['error' => 'Campo requerido: id']); break; }
@@ -217,6 +383,7 @@ switch ($action) {
 
     // ------ CURSOS -----------------------------------------------
     case 'guardar_curso':
+        require_admin();
         if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
         $body = jsonBody();
         if (empty($body['id'])) { http_response_code(400); echo json_encode(['error' => 'Campo requerido: id']); break; }
@@ -225,6 +392,7 @@ switch ($action) {
         break;
 
     case 'eliminar_curso':
+        require_admin();
         if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
         $body = jsonBody(); $id = trim($body['id'] ?? '');
         if (!$id) { http_response_code(400); echo json_encode(['error' => 'Campo requerido: id']); break; }
@@ -234,6 +402,7 @@ switch ($action) {
 
     // ------ CARRERAS ---------------------------------------------
     case 'guardar_carrera':
+        require_admin();
         if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
         $body = jsonBody();
         if (empty($body['id'])) { http_response_code(400); echo json_encode(['error' => 'Campo requerido: id']); break; }
@@ -242,6 +411,7 @@ switch ($action) {
         break;
 
     case 'eliminar_carrera':
+        require_admin();
         if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
         $body = jsonBody(); $id = trim($body['id'] ?? '');
         if (!$id) { http_response_code(400); echo json_encode(['error' => 'Campo requerido: id']); break; }
@@ -251,6 +421,7 @@ switch ($action) {
 
     // ------ ROLES ------------------------------------------------
     case 'guardar_rol':
+        require_admin();
         if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
         $body = jsonBody();
         if (empty($body['id'])) { http_response_code(400); echo json_encode(['error' => 'Campo requerido: id']); break; }
@@ -259,6 +430,7 @@ switch ($action) {
         break;
 
     case 'eliminar_rol':
+        require_admin();
         if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
         $body = jsonBody(); $id = trim($body['id'] ?? '');
         if (!$id) { http_response_code(400); echo json_encode(['error' => 'Campo requerido: id']); break; }
@@ -268,11 +440,20 @@ switch ($action) {
 
     // ------ PROGRESO (el endpoint mas llamado) -------------------
     case 'guardar_progreso':
+        require_session();
         if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
         $body = jsonBody();
-        $uid = trim($body['usuario_id'] ?? '');
-        $cid = trim($body['curso_id']   ?? '');
+        $uid  = trim($body['usuario_id'] ?? '');
+        $cid  = trim($body['curso_id']   ?? '');
         if (!$uid || !$cid) { http_response_code(400); echo json_encode(['error' => 'Se requieren usuario_id y curso_id']); break; }
+
+        // Solo puede guardar su propio progreso (a menos que sea admin)
+        if (!is_admin() && $uid !== $_SESSION['user_id']) {
+            http_response_code(403);
+            echo json_encode(['error' => 'No puedes guardar el progreso de otro usuario']);
+            break;
+        }
+
         $prog = [
             'leccionesCompletadas' => $body['leccionesCompletadas'] ?? [],
             'modulosAprobados'     => $body['modulosAprobados']     ?? [],
@@ -294,6 +475,7 @@ switch ($action) {
 
     // ------ SOLICITUDES ------------------------------------------
     case 'solicitar_acceso_curso':
+        require_session();
         if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
         $body = jsonBody();
         try { db_add_solicitud_curso($conn, $body); echo json_encode(['message' => 'Solicitud enviada']); }
@@ -301,6 +483,7 @@ switch ($action) {
         break;
 
     case 'eliminar_solicitud_registro':
+        require_admin();
         if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
         $body = jsonBody(); $id = trim($body['id'] ?? '');
         if (!$id) { http_response_code(400); echo json_encode(['error' => 'Campo requerido: id']); break; }
@@ -309,6 +492,7 @@ switch ($action) {
         break;
 
     case 'eliminar_solicitud_curso':
+        require_admin();
         if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
         $body = jsonBody();
         $uid = trim($body['usuario_id'] ?? ''); $cid = trim($body['curso_id'] ?? '');
@@ -319,6 +503,7 @@ switch ($action) {
 
     // ------ CONFIGURACION ----------------------------------------
     case 'guardar_config':
+        require_admin();
         if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
         $body = jsonBody(); $clave = trim($body['clave'] ?? '');
         if (!$clave || !array_key_exists('valor', $body)) {
@@ -330,24 +515,28 @@ switch ($action) {
 
     // ------ LECTURA INDIVIDUAL -----------------------------------
     case 'usuarios':
+        require_admin();
         if ($method !== 'GET') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
         try { $d = db_read_safe($conn); echo json_encode(['usuarios' => $d['usuarios']], JSON_UNESCAPED_UNICODE); }
         catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 
     case 'cursos':
+        require_session();
         if ($method !== 'GET') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
         try { $d = db_read_safe($conn); echo json_encode(['cursos' => $d['cursos']], JSON_UNESCAPED_UNICODE); }
         catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 
     case 'carreras':
+        require_session();
         if ($method !== 'GET') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
         try { $d = db_read_safe($conn); echo json_encode(['carreras' => $d['carreras']], JSON_UNESCAPED_UNICODE); }
         catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 
     case 'config':
+        require_session();
         if ($method !== 'GET') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
         try { $d = db_read_safe($conn); echo json_encode(['configuracion' => $d['configuracion']], JSON_UNESCAPED_UNICODE); }
         catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
@@ -355,9 +544,10 @@ switch ($action) {
 
     // ------ REPORTE DIRECTO DE EVALUACIONES ----------------------
     case 'reporte_evaluaciones':
+        require_admin();
         if ($method !== 'GET') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
         try {
-            $sql = "SELECT 
+            $sql = "SELECT
                         e.usuario_id,
                         u.nombre AS usuario_nombre,
                         u.rol AS usuario_rol,
@@ -392,7 +582,15 @@ switch ($action) {
 
     // ------ HEALTH CHECK -----------------------------------------
     case 'ping':
-        echo json_encode(['status' => 'ok', 'db' => MYSQL_DB, 'host' => MYSQL_HOST, 'time' => date('c')]);
+        echo json_encode([
+            'status'       => 'ok',
+            'db'           => MYSQL_DB,
+            'host'         => MYSQL_HOST,
+            'time'         => date('c'),
+            'authenticated'=> !empty($_SESSION['user_id']),
+            'user_id'      => $_SESSION['user_id'] ?? null,
+            'user_rol'     => $_SESSION['user_rol'] ?? null,
+        ]);
         break;
 
     default:

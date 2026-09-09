@@ -298,19 +298,9 @@ const guardarTodo = async () => {
     db.solicitudesCursos = solicitudesCursos;
 
     try {
-        const response = await fetch('api.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(db)
-        });
-        if (!response.ok) {
-            const errData = await response.json().catch(() => ({ error: 'Error desconocido en servidor' }));
-            console.error("Error al guardar en el servidor:", response.status, errData);
-            throw new Error(errData.error || response.statusText);
-        } else {
-            console.log("Sincronizado correctamente con la base de datos del servidor (api.php)");
-            return true;
-        }
+        await window.API.guardarDB(db);
+        console.log("Sincronizado correctamente con la base de datos del servidor (api.php)");
+        return true;
     } catch (err) {
         console.error("Error de conexión al guardar en el servidor:", err);
         throw new Error("Error de conexión: " + err.message);
@@ -337,22 +327,16 @@ async function guardarProgresoUsuario() {
     const prog = sesion.progreso?.[cursoId] || {};
 
     try {
-        // Endpoint granular: solo envía el progreso del curso actual (~500 bytes)
-        const res = await fetch('api.php?action=guardar_progreso', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                usuario_id:            sesion.id,
-                curso_id:              cursoId,
-                leccionesCompletadas:  prog.leccionesCompletadas  || [],
-                modulosAprobados:      prog.modulosAprobados      || [],
-                medallas:              prog.medallas              || [],
-                evaluaciones:          prog.evaluaciones          || {},
-                intentos:              prog.intentos              || {},
-                certificadosCurso:     sesion.certificadosCurso   || []
-            })
+        await window.API.guardarProgreso({
+            usuario_id:            sesion.id,
+            curso_id:              cursoId,
+            leccionesCompletadas:  prog.leccionesCompletadas  || [],
+            modulosAprobados:      prog.modulosAprobados      || [],
+            medallas:              prog.medallas              || [],
+            evaluaciones:          prog.evaluaciones          || {},
+            intentos:              prog.intentos              || {},
+            certificadosCurso:     sesion.certificadosCurso   || []
         });
-        if (!res.ok) throw new Error('Error del servidor al guardar progreso');
         return true;
     } catch (err) {
         console.warn('Fallback a guardarTodo por error en guardar_progreso:', err.message);
@@ -361,39 +345,7 @@ async function guardarProgresoUsuario() {
     }
 }
 
-// ============================================================
-// 5. FUNCIONES DE AUTENTICACIÓN Y LOGIN
-// ============================================================
-
-/**
- * Login server-side (bcrypt). Llama a api.php?action=login.
- * Retorna Promise<boolean>.
- */
-window.login = async (id, clave) => {
-    try {
-        const res = await fetch('api.php?action=login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id, clave })
-        });
-        if (!res.ok) return false;
-        const data = await res.json();
-        if (data.usuario) {
-            sessionStorage.setItem('aluSesion', JSON.stringify(data.usuario));
-            sesion = data.usuario;
-            return true;
-        }
-        return false;
-    } catch (err) {
-        console.error('Error de login:', err);
-        return false;
-    }
-};
-
-window.logout = () => {
-    sessionStorage.removeItem('aluSesion');
-    window.location.href = 'login.html';
-};
+// Las funciones login y logout ahora están centralizadas en js/auth.js
 
 window.solicitarRegistro = async (id, nombre, clave, perfilDeseado) => {
     const autoAssignCareerMap = {
@@ -404,19 +356,10 @@ window.solicitarRegistro = async (id, nombre, clave, perfilDeseado) => {
         "cristalero": "CAR-CRISTALERO"
     };
     try {
-        const res = await fetch('api.php?action=solicitar_registro', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                id, nombre, clave, perfilDeseado,
-                autoAssignCareerId: autoAssignCareerMap[perfilDeseado] || null
-            })
+        await window.API.solicitarRegistro({
+            id, nombre, clave, perfilDeseado,
+            autoAssignCareerId: autoAssignCareerMap[perfilDeseado] || null
         });
-        const data = await res.json();
-        if (!res.ok) {
-            showToast(data.error || 'Error al enviar solicitud', 'danger');
-            return;
-        }
         showToast("Solicitud enviada. Un administrador revisará su acceso pronto.", "success");
         setTimeout(() => location.reload(), 1500);
     } catch (err) {
@@ -2801,8 +2744,7 @@ async function cargarDatosDelServidor() {
     }
 
     try {
-        const response = await fetch('api.php');
-        const data = await response.json();
+        const data = await window.API.cargarDB();
 
         if (data && typeof data === 'object' && !Array.isArray(data)) {
             db = data;

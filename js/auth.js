@@ -26,7 +26,10 @@ async function login(id, clave) {
 /**
  * Cierre de sesión seguro
  */
-function logout() {
+async function logout() {
+    if (window.API && typeof window.API.logout === 'function') {
+        await window.API.logout();
+    }
     sessionStorage.removeItem('aluSesion');
     window.sesion = null;
     window.location.href = 'login.html';
