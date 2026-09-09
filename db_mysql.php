@@ -100,7 +100,7 @@ function db_create_tables(mysqli $conn): void {
             FOREIGN KEY (`usuario_id`) REFERENCES `usuarios`(`id`) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
-        // Cursos (imagen y módulos se guardan como texto/JSON por compatibilidad)
+        // Cursos (imagen en LONGTEXT por base64, módulos normalizados en tablas relacionales)
         "CREATE TABLE IF NOT EXISTS `cursos` (
             `id`              VARCHAR(100) NOT NULL,
             `titulo`          VARCHAR(255) NOT NULL DEFAULT '',
@@ -108,16 +108,56 @@ function db_create_tables(mysqli $conn): void {
             `tipo`            VARCHAR(50)  NOT NULL DEFAULT 'especializado',
             `imagen`          LONGTEXT,
             `prelacion`       VARCHAR(100) DEFAULT NULL,
-            `modulos`         LONGTEXT,
             `en_construccion` TINYINT(1)   NOT NULL DEFAULT 0,
             PRIMARY KEY (`id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
-        // Carreras
+        // Módulos de un curso (relación normalizada)
+        "CREATE TABLE IF NOT EXISTS `curso_modulos` (
+            `id`       INT          NOT NULL AUTO_INCREMENT,
+            `curso_id` VARCHAR(100) NOT NULL,
+            `orden`    INT          NOT NULL DEFAULT 0,
+            `titulo`   VARCHAR(500) NOT NULL DEFAULT '',
+            PRIMARY KEY (`id`),
+            INDEX `idx_cm_curso` (`curso_id`),
+            FOREIGN KEY (`curso_id`) REFERENCES `cursos`(`id`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        // Lecciones de un módulo (relación normalizada)
+        "CREATE TABLE IF NOT EXISTS `curso_lecciones` (
+            `id`        INT          NOT NULL AUTO_INCREMENT,
+            `modulo_id` INT          NOT NULL,
+            `curso_id`  VARCHAR(100) NOT NULL,
+            `orden`     INT          NOT NULL DEFAULT 0,
+            `titulo`    VARCHAR(500) NOT NULL DEFAULT '',
+            `video_id`  VARCHAR(200) DEFAULT NULL,
+            `contenido` MEDIUMTEXT,
+            `adjunto`   TEXT         DEFAULT NULL,
+            PRIMARY KEY (`id`),
+            INDEX `idx_cl_modulo` (`modulo_id`),
+            INDEX `idx_cl_curso`  (`curso_id`),
+            FOREIGN KEY (`modulo_id`) REFERENCES `curso_modulos`(`id`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        // Preguntas de evaluación de un módulo (relación normalizada)
+        "CREATE TABLE IF NOT EXISTS `curso_preguntas` (
+            `id`        INT          NOT NULL AUTO_INCREMENT,
+            `modulo_id` INT          NOT NULL,
+            `curso_id`  VARCHAR(100) NOT NULL,
+            `orden`     INT          NOT NULL DEFAULT 0,
+            `enunciado` TEXT         NOT NULL,
+            `opciones`  JSON         NOT NULL,
+            `correcta`  TINYINT      NOT NULL DEFAULT 0,
+            PRIMARY KEY (`id`),
+            INDEX `idx_cp_modulo` (`modulo_id`),
+            INDEX `idx_cp_curso`  (`curso_id`),
+            FOREIGN KEY (`modulo_id`) REFERENCES `curso_modulos`(`id`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        // Carreras (sin columna cursos JSON — normalizado en carrera_cursos)
         "CREATE TABLE IF NOT EXISTS `carreras` (
             `id`     VARCHAR(100) NOT NULL,
             `nombre` VARCHAR(255) NOT NULL DEFAULT '',
-            `cursos` JSON,
             PRIMARY KEY (`id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
@@ -131,15 +171,13 @@ function db_create_tables(mysqli $conn): void {
             FOREIGN KEY (`carrera_id`) REFERENCES `carreras`(`id`) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
-        // Configuración de roles
+        // Configuración de roles (sin columnas JSON — normalizadas en rol_permisos, rol_cursos, rol_carreras)
         "CREATE TABLE IF NOT EXISTS `roles_config` (
             `id`       VARCHAR(100) NOT NULL,
             `nombre`   VARCHAR(255) NOT NULL DEFAULT '',
-            `permisos` JSON,
-            `cursos`   JSON,
-            `carreras` JSON,
             PRIMARY KEY (`id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
 
         // Roles - Permisos (Relación normalizada)
         "CREATE TABLE IF NOT EXISTS `rol_permisos` (
@@ -288,14 +326,36 @@ function db_create_tables(mysqli $conn): void {
     }
 
     // Migración automática para base de datos existente
+    // Agregar en_construccion si no existe
     $colCheck = $conn->query("SHOW COLUMNS FROM `cursos` LIKE 'en_construccion'");
     if ($colCheck && $colCheck->num_rows === 0) {
         $conn->query("ALTER TABLE `cursos` ADD COLUMN `en_construccion` TINYINT(1) NOT NULL DEFAULT 0");
     }
 
+    // Agregar descripcion si no existe
     $colDescCheck = $conn->query("SHOW COLUMNS FROM `cursos` LIKE 'descripcion'");
     if ($colDescCheck && $colDescCheck->num_rows === 0) {
         $conn->query("ALTER TABLE `cursos` ADD COLUMN `descripcion` MEDIUMTEXT AFTER `titulo`");
+    }
+
+    // Eliminar columna modulos JSON de cursos si aún existe (reemplazada por tablas relacionales)
+    $colModulos = $conn->query("SHOW COLUMNS FROM `cursos` LIKE 'modulos'");
+    if ($colModulos && $colModulos->num_rows > 0) {
+        $conn->query("ALTER TABLE `cursos` DROP COLUMN `modulos`");
+    }
+
+    // Eliminar columna cursos JSON de carreras si aún existe
+    $colCarCursos = $conn->query("SHOW COLUMNS FROM `carreras` LIKE 'cursos'");
+    if ($colCarCursos && $colCarCursos->num_rows > 0) {
+        $conn->query("ALTER TABLE `carreras` DROP COLUMN `cursos`");
+    }
+
+    // Eliminar columnas JSON de roles_config si aún existen
+    foreach (['permisos', 'cursos', 'carreras'] as $colName) {
+        $colRol = $conn->query("SHOW COLUMNS FROM `roles_config` LIKE '$colName'");
+        if ($colRol && $colRol->num_rows > 0) {
+            $conn->query("ALTER TABLE `roles_config` DROP COLUMN `$colName`");
+        }
     }
 }
 
@@ -487,19 +547,81 @@ function db_read_all(mysqli $conn): array {
 
     $db['usuarios'] = array_values($usuariosMap);
 
-    // --- Cursos ---
-    $res = $conn->query("SELECT * FROM `cursos`");
-    if ($res) {
-        while ($row = $res->fetch_assoc()) {
-            $row['modulos'] = json_decode($row['modulos'] ?? '[]', true) ?? [];
+    // --- Cursos (desde tablas relacionales normalizadas) ---
+    // Pre-cargar módulos
+    $cursosModulosMap = [];
+    $resCM = $conn->query("SELECT id, curso_id, orden, titulo FROM `curso_modulos` ORDER BY curso_id, orden ASC");
+    if ($resCM) {
+        while ($r = $resCM->fetch_assoc()) {
+            $cursosModulosMap[$r['curso_id']][$r['id']] = [
+                '_orden'     => (int)$r['orden'],
+                'titulo'     => $r['titulo'],
+                'lecciones'  => [],
+                'evaluacion' => ['preguntas' => []],
+            ];
+        }
+    }
+
+    // Pre-cargar lecciones
+    $resCL = $conn->query("SELECT modulo_id, orden, titulo, video_id, contenido, adjunto FROM `curso_lecciones` ORDER BY modulo_id, orden ASC");
+    if ($resCL) {
+        while ($r = $resCL->fetch_assoc()) {
+            $mid = (int)$r['modulo_id'];
+            foreach ($cursosModulosMap as $cid => &$modsRef) {
+                if (isset($modsRef[$mid])) {
+                    $lec = ['titulo' => $r['titulo'], 'videoID' => $r['video_id'] ?? ''];
+                    if (!empty($r['contenido'])) $lec['contenido'] = $r['contenido'];
+                    if (!empty($r['adjunto']))   $lec['adjunto']   = $r['adjunto'];
+                    $modsRef[$mid]['lecciones'][] = $lec;
+                    break;
+                }
+            }
+            unset($modsRef);
+        }
+    }
+
+    // Pre-cargar preguntas
+    $resCP = $conn->query("SELECT modulo_id, orden, enunciado, opciones, correcta FROM `curso_preguntas` ORDER BY modulo_id, orden ASC");
+    if ($resCP) {
+        while ($r = $resCP->fetch_assoc()) {
+            $mid = (int)$r['modulo_id'];
+            foreach ($cursosModulosMap as $cid => &$modsRef) {
+                if (isset($modsRef[$mid])) {
+                    $modsRef[$mid]['evaluacion']['preguntas'][] = [
+                        'enunciado' => $r['enunciado'],
+                        'opciones'  => json_decode($r['opciones'] ?? '[]', true) ?? [],
+                        'correcta'  => (int)$r['correcta'],
+                    ];
+                    break;
+                }
+            }
+            unset($modsRef);
+        }
+    }
+
+    // Leer cursos y armar el objeto final
+    $resCursos = $conn->query("SELECT id, titulo, descripcion, tipo, imagen, prelacion, en_construccion FROM `cursos`");
+    if ($resCursos) {
+        while ($row = $resCursos->fetch_assoc()) {
+            $cid = $row['id'];
+            // Reconstruir array modulos en orden
+            $modsRaw = $cursosModulosMap[$cid] ?? [];
+            ksort($modsRaw);
+            $modulosArr = [];
+            foreach ($modsRaw as $mod) {
+                unset($mod['_orden']);
+                $modulosArr[] = $mod;
+            }
+            $row['modulos']       = $modulosArr;
+            $row['enConstruccion'] = !empty($row['en_construccion']);
+            $row['descripcion']    = $row['descripcion'] ?? '';
             if (!$row['prelacion']) unset($row['prelacion']);
-            $row['enConstruccion'] = !empty($row['en_construccion']) ? true : false;
-            $row['descripcion'] = $row['descripcion'] ?? '';
+            unset($row['en_construccion']);
             $db['cursos'][] = $row;
         }
     }
 
-    // --- Carreras (con carrera_cursos normalizado) ---
+    // --- Carreras (desde carrera_cursos normalizado) ---
     $carrerasCursosMap = [];
     $resCC = $conn->query("SELECT carrera_id, curso_id FROM `carrera_cursos` ORDER BY orden ASC");
     if ($resCC) {
@@ -508,13 +630,9 @@ function db_read_all(mysqli $conn): array {
         }
     }
 
-    $res = $conn->query("SELECT id, nombre, cursos FROM `carreras`");
+    $res = $conn->query("SELECT id, nombre FROM `carreras`");
     while ($row = $res->fetch_assoc()) {
-        if (isset($carrerasCursosMap[$row['id']])) {
-            $row['cursos'] = $carrerasCursosMap[$row['id']];
-        } else {
-            $row['cursos'] = json_decode($row['cursos'] ?? '[]', true) ?? [];
-        }
+        $row['cursos'] = $carrerasCursosMap[$row['id']] ?? [];
         $db['carreras'][] = $row;
     }
 
@@ -537,12 +655,12 @@ function db_read_all(mysqli $conn): array {
         while ($r = $resRCar->fetch_assoc()) $rolCarrerasMap[$r['rol_id']][] = $r['carrera_id'];
     }
 
-    $res = $conn->query("SELECT id, nombre, permisos, cursos, carreras FROM `roles_config`");
+    $res = $conn->query("SELECT id, nombre FROM `roles_config`");
     while ($row = $res->fetch_assoc()) {
         $rId = $row['id'];
-        $row['permisos']  = $rolPermisosMap[$rId] ?? (json_decode($row['permisos'] ?? '[]', true) ?? []);
-        $row['cursos']    = $rolCursosMap[$rId]   ?? (json_decode($row['cursos']   ?? '[]', true) ?? []);
-        $row['carreras']  = $rolCarrerasMap[$rId] ?? (json_decode($row['carreras'] ?? '[]', true) ?? []);
+        $row['permisos']  = $rolPermisosMap[$rId]  ?? [];
+        $row['cursos']    = $rolCursosMap[$rId]    ?? [];
+        $row['carreras']  = $rolCarrerasMap[$rId]  ?? [];
         $db['rolesConfig'][] = $row;
     }
 
@@ -842,24 +960,28 @@ function db_write_all(mysqli $conn, array $data): void {
         db_bulk_insert($conn, 'usuario_certificados_curso', ['usuario_id', 'curso_id'], $certCursoRows, 200, '', true);
         db_bulk_insert($conn, 'usuario_certificados_carrera', ['usuario_id', 'carrera_id'], $certCarreraRows, 200, '', true);
 
-        // --- Cursos ---
-        $cursosRows = [];
+        // --- Cursos (con módulos en tablas relacionales) ---
+        $cursosRows       = [];
+        $cursoModulosRows = [];
+        $cursoLeccionesData  = []; // arrays to bulk insert after getting module IDs
+        $cursoPreguntasData  = [];
+
         foreach (($data['cursos'] ?? []) as $c) {
-            $cId            = $c['id']             ?? '';
-            $titulo         = $c['titulo']         ?? '';
-            $descripcion    = $c['descripcion']    ?? '';
-            $tipo           = $c['tipo']           ?? 'especializado';
-            $imagen         = $c['imagen']         ?? '';
-            $prel           = $c['prelacion']      ?? null;
-            $modulos        = json_encode($c['modulos'] ?? []);
+            $cId            = $c['id']          ?? '';
+            $titulo         = $c['titulo']       ?? '';
+            $descripcion    = $c['descripcion']  ?? '';
+            $tipo           = $c['tipo']         ?? 'especializado';
+            $imagen         = $c['imagen']       ?? '';
+            $prel           = !empty($c['prelacion']) ? $c['prelacion'] : null;
             $enConstruccion = !empty($c['enConstruccion']) ? 1 : 0;
             if (!$cId) continue;
-            $cursosRows[] = [$cId, $titulo, $descripcion, $tipo, $imagen, $prel, $modulos, $enConstruccion];
+            $cursosRows[] = [$cId, $titulo, $descripcion, $tipo, $imagen, $prel, $enConstruccion];
         }
-        db_bulk_insert($conn, 'cursos', ['id', 'titulo', 'descripcion', 'tipo', 'imagen', 'prelacion', 'modulos', 'en_construccion'], $cursosRows, 50,
-            "ON DUPLICATE KEY UPDATE titulo=VALUES(titulo), descripcion=VALUES(descripcion), tipo=VALUES(tipo), imagen=VALUES(imagen), prelacion=VALUES(prelacion), modulos=VALUES(modulos), en_construccion=VALUES(en_construccion)");
 
-        // Eliminar cursos que ya no existen
+        db_bulk_insert($conn, 'cursos', ['id', 'titulo', 'descripcion', 'tipo', 'imagen', 'prelacion', 'en_construccion'], $cursosRows, 50,
+            "ON DUPLICATE KEY UPDATE titulo=VALUES(titulo), descripcion=VALUES(descripcion), tipo=VALUES(tipo), imagen=VALUES(imagen), prelacion=VALUES(prelacion), en_construccion=VALUES(en_construccion)");
+
+        // Eliminar cursos que ya no existen (cascada borra módulos/lecciones/preguntas automáticamente)
         $idsActuales = array_filter(array_column($data['cursos'] ?? [], 'id'));
         if (!empty($idsActuales)) {
             $escapedIds = array_map(function($id) use ($conn) { return "'" . $conn->real_escape_string($id) . "'"; }, $idsActuales);
@@ -868,16 +990,55 @@ function db_write_all(mysqli $conn, array $data): void {
             $conn->query("DELETE FROM `cursos`");
         }
 
-        // --- Carreras ---
-        $carrerasRows = [];
+        // Remplazar módulos, lecciones y preguntas de cada curso
+        foreach (($data['cursos'] ?? []) as $c) {
+            $cId = $c['id'] ?? '';
+            if (!$cId) continue;
+            $safeCId = $conn->real_escape_string($cId);
+
+            // Borrar módulos existentes del curso (cascada borra lecciones y preguntas)
+            $conn->query("DELETE FROM `curso_modulos` WHERE curso_id = '$safeCId'");
+
+            $modOrd = 0;
+            foreach (($c['modulos'] ?? []) as $mod) {
+                $modTitulo = $conn->real_escape_string(trim((string)($mod['titulo'] ?? '')));
+                $conn->query("INSERT INTO `curso_modulos` (curso_id, orden, titulo) VALUES ('$safeCId', $modOrd, '$modTitulo')");
+                $modId = (int)$conn->insert_id;
+                $modOrd++;
+
+                // Lecciones
+                $lecOrd = 0;
+                foreach (($mod['lecciones'] ?? []) as $lec) {
+                    $lTit  = $conn->real_escape_string(trim((string)($lec['titulo']   ?? '')));
+                    $lVid  = $conn->real_escape_string(trim((string)($lec['videoID']  ?? '')));
+                    $lCont = $conn->real_escape_string((string)($lec['contenido'] ?? ''));
+                    $lAdj  = !empty($lec['adjunto']) ? "'" . $conn->real_escape_string($lec['adjunto']) . "'" : 'NULL';
+                    $conn->query("INSERT INTO `curso_lecciones` (modulo_id, curso_id, orden, titulo, video_id, contenido, adjunto) VALUES ($modId, '$safeCId', $lecOrd, '$lTit', '$lVid', '$lCont', $lAdj)");
+                    $lecOrd++;
+                }
+
+                // Preguntas de evaluación
+                $preOrd = 0;
+                $preguntas = $mod['evaluacion']['preguntas'] ?? [];
+                foreach ($preguntas as $preg) {
+                    $pEnun = $conn->real_escape_string((string)($preg['enunciado'] ?? ''));
+                    $pOpc  = $conn->real_escape_string(json_encode($preg['opciones'] ?? []));
+                    $pCorr = (int)($preg['correcta'] ?? 0);
+                    $conn->query("INSERT INTO `curso_preguntas` (modulo_id, curso_id, orden, enunciado, opciones, correcta) VALUES ($modId, '$safeCId', $preOrd, '$pEnun', '$pOpc', $pCorr)");
+                    $preOrd++;
+                }
+            }
+        }
+
+        // --- Carreras (sin columna JSON cursos) ---
+        $carrerasRows      = [];
         $carreraCursosRows = [];
         foreach (($data['carreras'] ?? []) as $c) {
-            $cId    = $c['id']     ?? '';
-            $nombre = $c['nombre'] ?? '';
+            $cId     = $c['id']     ?? '';
+            $nombre  = $c['nombre'] ?? '';
             $rawCurs = $c['cursos'] ?? [];
-            $curs   = json_encode($rawCurs);
             if (!$cId) continue;
-            $carrerasRows[] = [$cId, $nombre, $curs];
+            $carrerasRows[] = [$cId, $nombre];
 
             $ord = 0;
             foreach ((array)$rawCurs as $cItem) {
@@ -887,8 +1048,8 @@ function db_write_all(mysqli $conn, array $data): void {
                 }
             }
         }
-        db_bulk_insert($conn, 'carreras', ['id', 'nombre', 'cursos'], $carrerasRows, 50,
-            "ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), cursos=VALUES(cursos)");
+        db_bulk_insert($conn, 'carreras', ['id', 'nombre'], $carrerasRows, 50,
+            "ON DUPLICATE KEY UPDATE nombre=VALUES(nombre)");
         if (!empty($carreraCursosRows)) {
             db_bulk_insert($conn, 'carrera_cursos', ['carrera_id', 'curso_id', 'orden'], $carreraCursosRows, 100, '', true);
         }
@@ -901,22 +1062,19 @@ function db_write_all(mysqli $conn, array $data): void {
             $conn->query("DELETE FROM `carreras`");
         }
 
-        // --- Roles Config ---
-        $rolesRows = [];
+        // --- Roles Config (sin columnas JSON permisos/cursos/carreras) ---
+        $rolesRows       = [];
         $rolPermisosRows = [];
-        $rolCursosRows = [];
+        $rolCursosRows   = [];
         $rolCarrerasRows = [];
         foreach (($data['rolesConfig'] ?? []) as $r) {
-            $rId      = $r['id']       ?? '';
-            $nombre   = $r['nombre']   ?? '';
-            $rawPerm  = (array)($r['permisos']  ?? []);
-            $rawCur   = (array)($r['cursos']    ?? []);
-            $rawCar   = (array)($r['carreras']  ?? []);
-            $permisos = json_encode($rawPerm);
-            $cursos   = json_encode($rawCur);
-            $carreras = json_encode($rawCar);
+            $rId    = $r['id']     ?? '';
+            $nombre = $r['nombre'] ?? '';
+            $rawPerm = (array)($r['permisos']  ?? []);
+            $rawCur  = (array)($r['cursos']    ?? []);
+            $rawCar  = (array)($r['carreras']  ?? []);
             if (!$rId) continue;
-            $rolesRows[] = [$rId, $nombre, $permisos, $cursos, $carreras];
+            $rolesRows[] = [$rId, $nombre];
 
             foreach ($rawPerm as $p) {
                 $pStr = trim((string)$p);
@@ -931,8 +1089,8 @@ function db_write_all(mysqli $conn, array $data): void {
                 if ($rcaStr) $rolCarrerasRows[] = [$rId, $rcaStr];
             }
         }
-        db_bulk_insert($conn, 'roles_config', ['id', 'nombre', 'permisos', 'cursos', 'carreras'], $rolesRows, 50,
-            "ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), permisos=VALUES(permisos), cursos=VALUES(cursos), carreras=VALUES(carreras)");
+        db_bulk_insert($conn, 'roles_config', ['id', 'nombre'], $rolesRows, 50,
+            "ON DUPLICATE KEY UPDATE nombre=VALUES(nombre)");
         if (!empty($rolPermisosRows)) {
             db_bulk_insert($conn, 'rol_permisos', ['rol_id', 'permiso'], $rolPermisosRows, 100, '', true);
         }
@@ -1445,25 +1603,59 @@ function db_upsert_progreso(mysqli $conn, string $userId, string $cursoId, array
 }
 
 /**
- * Inserta o actualiza un curso.
+ * Inserta o actualiza un curso y sincroniza sus módulos, lecciones y preguntas
+ * en las tablas relacionales normalizadas.
  */
 function db_upsert_curso(mysqli $conn, array $c): void {
-    $id             = trim((string)($c['id']             ?? ''));
-    $titulo         = trim((string)($c['titulo']         ?? ''));
-    $descripcion    = trim((string)($c['descripcion']    ?? ''));
-    $tipo           = trim((string)($c['tipo']           ?? 'especializado'));
-    $imagen         = $c['imagen']         ?? '';
+    $id             = trim((string)($c['id']          ?? ''));
+    $titulo         = trim((string)($c['titulo']       ?? ''));
+    $descripcion    = trim((string)($c['descripcion']  ?? ''));
+    $tipo           = trim((string)($c['tipo']         ?? 'especializado'));
+    $imagen         = $c['imagen']   ?? '';
     $prel           = !empty($c['prelacion']) ? trim((string)$c['prelacion']) : null;
-    $modulos        = json_encode($c['modulos'] ?? []);
     $enConstruccion = !empty($c['enConstruccion']) ? 1 : 0;
     if (!$id) return;
 
     $stmt = $conn->prepare(
-        "INSERT INTO `cursos` (id, titulo, descripcion, tipo, imagen, prelacion, modulos, en_construccion) VALUES (?,?,?,?,?,?,?,?)
-         ON DUPLICATE KEY UPDATE titulo=VALUES(titulo), descripcion=VALUES(descripcion), tipo=VALUES(tipo), imagen=VALUES(imagen), prelacion=VALUES(prelacion), modulos=VALUES(modulos), en_construccion=VALUES(en_construccion)"
+        "INSERT INTO `cursos` (id, titulo, descripcion, tipo, imagen, prelacion, en_construccion) VALUES (?,?,?,?,?,?,?)
+         ON DUPLICATE KEY UPDATE titulo=VALUES(titulo), descripcion=VALUES(descripcion), tipo=VALUES(tipo), imagen=VALUES(imagen), prelacion=VALUES(prelacion), en_construccion=VALUES(en_construccion)"
     );
-    $stmt->bind_param('sssssssi', $id, $titulo, $descripcion, $tipo, $imagen, $prel, $modulos, $enConstruccion);
+    $stmt->bind_param('ssssssi', $id, $titulo, $descripcion, $tipo, $imagen, $prel, $enConstruccion);
     $stmt->execute();
+
+    // Reemplazar módulos, lecciones y preguntas del curso
+    $safeId = $conn->real_escape_string($id);
+    $conn->query("DELETE FROM `curso_modulos` WHERE curso_id = '$safeId'"); // cascada borra lecciones y preguntas
+
+    $modOrd = 0;
+    foreach (($c['modulos'] ?? []) as $mod) {
+        $modTitulo = $conn->real_escape_string(trim((string)($mod['titulo'] ?? '')));
+        $conn->query("INSERT INTO `curso_modulos` (curso_id, orden, titulo) VALUES ('$safeId', $modOrd, '$modTitulo')");
+        $modId = (int)$conn->insert_id;
+        $modOrd++;
+
+        // Lecciones
+        $lecOrd = 0;
+        foreach (($mod['lecciones'] ?? []) as $lec) {
+            $lTit  = $conn->real_escape_string(trim((string)($lec['titulo']   ?? '')));
+            $lVid  = $conn->real_escape_string(trim((string)($lec['videoID']  ?? '')));
+            $lCont = $conn->real_escape_string((string)($lec['contenido'] ?? ''));
+            $lAdj  = !empty($lec['adjunto']) ? "'" . $conn->real_escape_string($lec['adjunto']) . "'" : 'NULL';
+            $conn->query("INSERT INTO `curso_lecciones` (modulo_id, curso_id, orden, titulo, video_id, contenido, adjunto) VALUES ($modId, '$safeId', $lecOrd, '$lTit', '$lVid', '$lCont', $lAdj)");
+            $lecOrd++;
+        }
+
+        // Preguntas de evaluación
+        $preOrd   = 0;
+        $preguntas = $mod['evaluacion']['preguntas'] ?? [];
+        foreach ($preguntas as $preg) {
+            $pEnun = $conn->real_escape_string((string)($preg['enunciado'] ?? ''));
+            $pOpc  = $conn->real_escape_string(json_encode($preg['opciones'] ?? []));
+            $pCorr = (int)($preg['correcta'] ?? 0);
+            $conn->query("INSERT INTO `curso_preguntas` (modulo_id, curso_id, orden, enunciado, opciones, correcta) VALUES ($modId, '$safeId', $preOrd, '$pEnun', '$pOpc', $pCorr)");
+            $preOrd++;
+        }
+    }
 }
 
 /**
@@ -1482,14 +1674,13 @@ function db_upsert_carrera(mysqli $conn, array $c): void {
     $id        = trim((string)($c['id']     ?? ''));
     $nombre    = trim((string)($c['nombre'] ?? ''));
     $rawCursos = $c['cursos'] ?? [];
-    $cursos    = json_encode($rawCursos);
     if (!$id) return;
 
     $stmt = $conn->prepare(
-        "INSERT INTO `carreras` (id, nombre, cursos) VALUES (?,?,?)
-         ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), cursos=VALUES(cursos)"
+        "INSERT INTO `carreras` (id, nombre) VALUES (?,?)
+         ON DUPLICATE KEY UPDATE nombre=VALUES(nombre)"
     );
-    $stmt->bind_param('sss', $id, $nombre, $cursos);
+    $stmt->bind_param('ss', $id, $nombre);
     $stmt->execute();
 
     // Actualizar tabla relacional carrera_cursos
@@ -1520,21 +1711,18 @@ function db_delete_carrera(mysqli $conn, string $id): void {
  * Inserta o actualiza un rol y sincroniza rol_permisos, rol_cursos, rol_carreras.
  */
 function db_upsert_rol(mysqli $conn, array $r): void {
-    $id       = trim((string)($r['id']       ?? ''));
-    $nombre   = trim((string)($r['nombre']   ?? ''));
-    $rawPerm  = (array)($r['permisos']  ?? []);
-    $rawCur   = (array)($r['cursos']    ?? []);
-    $rawCar   = (array)($r['carreras']  ?? []);
-    $permisos = json_encode($rawPerm);
-    $cursos   = json_encode($rawCur);
-    $carreras = json_encode($rawCar);
+    $id      = trim((string)($r['id']     ?? ''));
+    $nombre  = trim((string)($r['nombre'] ?? ''));
+    $rawPerm = (array)($r['permisos']  ?? []);
+    $rawCur  = (array)($r['cursos']    ?? []);
+    $rawCar  = (array)($r['carreras']  ?? []);
     if (!$id) return;
 
     $stmt = $conn->prepare(
-        "INSERT INTO `roles_config` (id, nombre, permisos, cursos, carreras) VALUES (?,?,?,?,?)
-         ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), permisos=VALUES(permisos), cursos=VALUES(cursos), carreras=VALUES(carreras)"
+        "INSERT INTO `roles_config` (id, nombre) VALUES (?,?)
+         ON DUPLICATE KEY UPDATE nombre=VALUES(nombre)"
     );
-    $stmt->bind_param('sssss', $id, $nombre, $permisos, $cursos, $carreras);
+    $stmt->bind_param('ss', $id, $nombre);
     $stmt->execute();
 
     // Actualizar tablas relacionales de roles
