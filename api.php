@@ -305,6 +305,32 @@ switch ($action) {
         ]);
         break;
 
+    // ------ CAMBIO AUTONOMO DE CONTRASEÑA ------------------------
+    case 'cambiar_clave':
+        require_session();
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body = jsonBody();
+        $claveActual = (string)($body['claveActual'] ?? '');
+        $claveNueva  = (string)($body['claveNueva']  ?? '');
+
+        if (!$claveActual || !$claveNueva) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Se requieren la contraseña actual y la nueva contraseña.']);
+            break;
+        }
+
+        try {
+            $resultado = db_cambiar_clave($conn, $_SESSION['user_id'], $claveActual, $claveNueva);
+            echo json_encode($resultado, JSON_UNESCAPED_UNICODE);
+        } catch (InvalidArgumentException $e) {
+            http_response_code(400);
+            echo json_encode(['error' => $e->getMessage()]);
+        } catch (Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Error al cambiar contraseña: ' . $e->getMessage()]);
+        }
+        break;
+
     // ------ MIGRACION CONTRASENAS --------------------------------
     case 'hash_passwords':
         require_admin();
@@ -624,6 +650,27 @@ switch ($action) {
         } catch (Throwable $e) {
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
+        }
+        break;
+
+    // ------ VERIFICACION PUBLICA DE CERTIFICADO / DIPLOMA ---------
+    case 'verificar_certificado':
+        $codigo = trim($_GET['codigo'] ?? $_POST['codigo'] ?? '');
+        if (!$codigo) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Se requiere el parámetro codigo', 'valido' => false]);
+            break;
+        }
+        $resultado = db_verificar_certificado($conn, $codigo);
+        if ($resultado) {
+            echo json_encode($resultado, JSON_UNESCAPED_UNICODE);
+        } else {
+            http_response_code(404);
+            echo json_encode([
+                'valido'  => false,
+                'codigo'  => $codigo,
+                'mensaje' => 'El código de verificación no corresponde a ningún certificado oficial o ha sido revocado.'
+            ], JSON_UNESCAPED_UNICODE);
         }
         break;
 

@@ -449,6 +449,20 @@ function db_read_all(mysqli $conn): array {
         }
     }
 
+    // Auto-normalización estricta: Si un módulo está APROBADO por el usuario pero carece de evaluación,
+    // cargar dicha evaluación faltante con 100%. Si el usuario tiene módulos por cursar (no aprobados),
+    // dejarlos sin calificación. Si ya tiene una evaluación cargada, preservarla intacta (INSERT IGNORE).
+    $conn->query("
+        INSERT IGNORE INTO `usuario_evaluaciones` (`usuario_id`, `curso_id`, `modulo_num`, `calificacion`, `aprobado`, `marcado_manual`, `fecha`)
+        SELECT uma.usuario_id, uma.curso_id, uma.modulo_num, 100.00, 1, 1, NOW()
+        FROM `usuario_modulos_aprobados` uma
+    ");
+    $conn->query("
+        INSERT IGNORE INTO `usuario_intentos` (`usuario_id`, `curso_id`, `modulo_num`, `intentos`)
+        SELECT ue.usuario_id, ue.curso_id, ue.modulo_num, 1
+        FROM `usuario_evaluaciones` ue
+    ");
+
     // Evaluaciones
     $resEval = $conn->query("SELECT usuario_id, curso_id, modulo_num, calificacion, aprobado, marcado_manual, fecha FROM `usuario_evaluaciones`");
     if ($resEval) {
@@ -490,8 +504,8 @@ function db_read_all(mysqli $conn): array {
     foreach ($normProgreso as $uId => $cMap) {
         if (isset($usuariosMap[$uId])) {
             foreach ($cMap as $cId => $pData) {
-                if (empty($pData['evaluaciones'])) $pData['evaluaciones'] = (object)[];
-                if (empty($pData['intentos'])) $pData['intentos'] = (object)[];
+                $pData['evaluaciones'] = empty($pData['evaluaciones']) ? (object)[] : (object)$pData['evaluaciones'];
+                $pData['intentos']     = empty($pData['intentos'])     ? (object)[] : (object)$pData['intentos'];
                 $usuariosMap[$uId]['progreso'][$cId] = $pData;
             }
         }
@@ -1535,9 +1549,33 @@ function db_read_catalogo(mysqli $conn, string $userId, string $userRol): array 
         }
     }
 
+    // Carreras permitidas (por rol + asignadas directamente al usuario)
+    $carrerasRol = $miRolConfig ? ($miRolConfig['carreras'] ?? []) : [];
+    $carrerasUsuario = [];
+    foreach (($miUsuario['carrerasAsignadas'] ?? []) as $cu) {
+        if (!empty($cu['id'])) $carrerasUsuario[] = $cu['id'];
+    }
+    $carrerasPermitidas = array_unique(array_merge($carrerasRol, $carrerasUsuario));
+
+    // Mapeo carrera -> cursos
+    $carrerasCursosMap = [];
+    $resCC = $conn->query("SELECT carrera_id, curso_id FROM `carrera_cursos` ORDER BY carrera_id, orden ASC");
+    if ($resCC) {
+        while ($ccr = $resCC->fetch_assoc()) {
+            $carrerasCursosMap[$ccr['carrera_id']][] = $ccr['curso_id'];
+        }
+    }
+
+    $cursosDeCarreras = [];
+    foreach ($carrerasPermitidas as $carId) {
+        if (!empty($carrerasCursosMap[$carId])) {
+            $cursosDeCarreras = array_merge($cursosDeCarreras, $carrerasCursosMap[$carId]);
+        }
+    }
+
     $asignados = $miUsuario['asignados'] ?? [];
     $cursosRol = $miRolConfig ? ($miRolConfig['cursos'] ?? []) : [];
-    $cursosIds = array_unique(array_merge($asignados, $cursosRol));
+    $cursosIds = array_unique(array_merge($asignados, $cursosRol, $cursosDeCarreras));
     $esSuperRol = ($miRolConfig && in_array('*', $miRolConfig['permisos'] ?? [], true));
 
     // 3. Módulos agregados (con conteo de lecciones y preguntas)
@@ -1593,21 +1631,12 @@ function db_read_catalogo(mysqli $conn, string $userId, string $userRol): array 
     }
 
     // 5. Carreras
-    $carrerasRol = $miRolConfig ? ($miRolConfig['carreras'] ?? []) : [];
     $resCar = $conn->query("SELECT id, nombre FROM `carreras`");
-    $carrerasCursosMap = [];
-    $resCC = $conn->query("SELECT carrera_id, curso_id FROM `carrera_cursos` ORDER BY carrera_id, orden ASC");
-    if ($resCC) {
-        while ($ccr = $resCC->fetch_assoc()) {
-            $carrerasCursosMap[$ccr['carrera_id']][] = $ccr['curso_id'];
-        }
-    }
-
     $carrerasFiltradas = [];
     if ($resCar) {
         while ($car = $resCar->fetch_assoc()) {
             $carId = $car['id'];
-            if ($esSuperRol || in_array($carId, $carrerasRol, true)) {
+            if ($esSuperRol || in_array($carId, $carrerasPermitidas, true)) {
                 $carrerasFiltradas[] = [
                     'id'     => $car['id'],
                     'nombre' => $car['nombre'],
@@ -1622,6 +1651,26 @@ function db_read_catalogo(mysqli $conn, string $userId, string $userRol): array 
     $configuracion = [];
     while ($row = $resCfg->fetch_assoc()) {
         $configuracion[$row['clave']] = $row['valor'];
+    }
+
+    // 7. Credenciales y Códigos de Verificación para el usuario
+    if ($miUsuario) {
+        $credenciales = [];
+        foreach (($miUsuario['certificadosCurso'] ?? []) as $cid) {
+            $credenciales[] = [
+                'tipo'   => 'curso',
+                'id'     => $cid,
+                'codigo' => db_generar_codigo_certificado($userId, $cid, 'curso'),
+            ];
+        }
+        foreach (($miUsuario['certificadosCarrera'] ?? []) as $carId) {
+            $credenciales[] = [
+                'tipo'   => 'carrera',
+                'id'     => $carId,
+                'codigo' => db_generar_codigo_certificado($userId, $carId, 'carrera'),
+            ];
+        }
+        $miUsuario['credenciales'] = $credenciales;
     }
 
     return [
@@ -2640,3 +2689,142 @@ function db_clear_login_attempts(mysqli $conn, string $ip): void {
     $stmt->bind_param('s', $ip);
     $stmt->execute();
 }
+
+// ============================================================
+// CERTIFICADOS Y VERIFICACIÓN PÚBLICA
+// ============================================================
+
+if (!defined('CERT_SALT')) {
+    define('CERT_SALT', 'ALU_CERT_SECRET_SALT_2026');
+}
+
+/**
+ * Genera un código de verificación alfanumérico único y determinista.
+ * Formato: ALU-CUR-XXXXXXXXXX (Curso) o ALU-CAR-XXXXXXXXXX (Carrera)
+ */
+function db_generar_codigo_certificado(string $userId, string $itemId, string $tipo = 'curso'): string {
+    $tipo = strtolower(trim($tipo));
+    $prefix = ($tipo === 'carrera') ? 'ALU-CAR' : 'ALU-CUR';
+    $raw = CERT_SALT . '_' . $tipo . '_' . trim($userId) . '_' . trim($itemId);
+    $hash = strtoupper(substr(hash('sha256', $raw), 0, 10));
+    return "{$prefix}-{$hash}";
+}
+
+/**
+ * Verifica la autenticidad de un código de certificado o diploma consultando la base de datos.
+ * Retorna un array con los datos del titular y programa, o null si no es válido.
+ */
+function db_verificar_certificado(mysqli $conn, string $codigo): ?array {
+    $codigo = strtoupper(trim($codigo));
+    if (!preg_match('/^ALU-(CUR|CAR)-([A-F0-9]{10})$/', $codigo, $matches)) {
+        return null;
+    }
+
+    $tipoStr = $matches[1];
+    $tipo = ($tipoStr === 'CAR') ? 'carrera' : 'curso';
+
+    if ($tipo === 'curso') {
+        $sql = "SELECT c.usuario_id, c.curso_id, u.nombre AS usuario_nombre, cur.titulo AS programa_nombre,
+                       cur.descripcion AS programa_desc, cur.tipo AS programa_tipo,
+                       (SELECT fecha FROM `usuario_evaluaciones` WHERE usuario_id = c.usuario_id AND curso_id = c.curso_id ORDER BY fecha DESC LIMIT 1) AS fecha_eval
+                FROM `usuario_certificados_curso` c
+                JOIN `usuarios` u ON u.id = c.usuario_id
+                JOIN `cursos` cur ON cur.id = c.curso_id";
+        $res = $conn->query($sql);
+        if ($res) {
+            while ($row = $res->fetch_assoc()) {
+                $codeCalculado = db_generar_codigo_certificado($row['usuario_id'], $row['curso_id'], 'curso');
+                if ($codeCalculado === $codigo) {
+                    $fechaEmision = !empty($row['fecha_eval']) ? date('d/m/Y', strtotime($row['fecha_eval'])) : date('d/m/Y');
+                    return [
+                        'valido'          => true,
+                        'codigo'          => $codeCalculado,
+                        'tipo'            => 'curso',
+                        'tipo_label'      => 'Certificación Técnica de Curso',
+                        'usuario_id'      => $row['usuario_id'],
+                        'usuario_nombre'  => $row['usuario_nombre'],
+                        'programa_id'     => $row['curso_id'],
+                        'programa_nombre' => $row['programa_nombre'],
+                        'programa_desc'   => $row['programa_desc'] ?? '',
+                        'fecha_emision'   => $fechaEmision,
+                        'institucion'     => 'Universidad del Aluminio',
+                        'estado'          => 'OFICIALMENTE REGISTRADO'
+                    ];
+                }
+            }
+        }
+    } else {
+        $sql = "SELECT c.usuario_id, c.carrera_id, u.nombre AS usuario_nombre, car.nombre AS programa_nombre
+                FROM `usuario_certificados_carrera` c
+                JOIN `usuarios` u ON u.id = c.usuario_id
+                JOIN `carreras` car ON car.id = c.carrera_id";
+        $res = $conn->query($sql);
+        if ($res) {
+            while ($row = $res->fetch_assoc()) {
+                $codeCalculado = db_generar_codigo_certificado($row['usuario_id'], $row['carrera_id'], 'carrera');
+                if ($codeCalculado === $codigo) {
+                    return [
+                        'valido'          => true,
+                        'codigo'          => $codeCalculado,
+                        'tipo'            => 'carrera',
+                        'tipo_label'      => 'Diploma de Graduación de Carrera Profesional',
+                        'usuario_id'      => $row['usuario_id'],
+                        'usuario_nombre'  => $row['usuario_nombre'],
+                        'programa_id'     => $row['carrera_id'],
+                        'programa_nombre' => $row['programa_nombre'],
+                        'programa_desc'   => 'Programa Integral de Capacitación y Competencia Profesional',
+                        'fecha_emision'   => date('d/m/Y'),
+                        'institucion'     => 'Universidad del Aluminio',
+                        'estado'          => 'OFICIALMENTE REGISTRADO'
+                    ];
+                }
+            }
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Cambia la contraseña de un usuario validando su contraseña actual.
+ * Guarda la nueva clave siempre con bcrypt.
+ */
+function db_cambiar_clave(mysqli $conn, string $userId, string $claveActual, string $claveNueva): array {
+    $claveActual = trim($claveActual);
+    $claveNueva  = trim($claveNueva);
+
+    if (strlen($claveNueva) < 4) {
+        throw new InvalidArgumentException('La nueva contraseña debe tener al menos 4 caracteres.');
+    }
+
+    $stmt = $conn->prepare("SELECT id, clave FROM `usuarios` WHERE id = ?");
+    $stmt->bind_param('s', $userId);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    if (!$row) {
+        throw new RuntimeException('Usuario no encontrado.');
+    }
+
+    $hash = $row['clave'];
+    $valid = false;
+    if (str_starts_with($hash, '$2y$')) {
+        $valid = password_verify($claveActual, $hash);
+    } else {
+        $valid = ($claveActual === $hash);
+    }
+
+    if (!$valid) {
+        throw new InvalidArgumentException('La contraseña actual ingresada es incorrecta.');
+    }
+
+    $nuevoHash = password_hash($claveNueva, PASSWORD_BCRYPT);
+    $stmtUpd = $conn->prepare("UPDATE `usuarios` SET clave = ? WHERE id = ?");
+    $stmtUpd->bind_param('ss', $nuevoHash, $userId);
+    $stmtUpd->execute();
+
+    db_log_activity($conn, $userId, 'CAMBIO_CLAVE', 'Contraseña actualizada por el colaborador');
+
+    return ['success' => true, 'message' => 'Contraseña actualizada exitosamente.'];
+}
+
+

@@ -1488,6 +1488,54 @@ details[open] .brecha-summary-icon { transform: rotate(90deg); }
     box-shadow: 0 8px 16px -4px rgba(15, 43, 72, 0.08) !important;
 }
 
+/* Tarjetas de Evaluación Agrupadas por Colaborador */
+.user-eval-card {
+    border-radius: var(--radius-md) !important;
+    border: 1px solid var(--aluminum-border) !important;
+    overflow: hidden;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease !important;
+}
+
+.user-eval-card:hover {
+    border-color: #cbd5e1 !important;
+    box-shadow: 0 6px 18px -3px rgba(15, 43, 72, 0.09) !important;
+}
+
+.user-eval-header {
+    cursor: pointer;
+    user-select: none;
+    background-color: #ffffff;
+    transition: background-color 0.15s ease;
+    border-bottom: 1px solid transparent;
+}
+
+.user-eval-header:hover {
+    background-color: #f8fafc;
+}
+
+.user-eval-header .chevron-icon {
+    transition: transform 0.25s ease-in-out;
+}
+
+.user-eval-header.collapsed .chevron-icon {
+    transform: rotate(-90deg);
+}
+
+.user-eval-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, rgba(15, 43, 72, 0.1) 0%, rgba(2, 132, 199, 0.15) 100%);
+    color: var(--primary-color);
+    font-weight: 700;
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    border: 1px solid rgba(15, 43, 72, 0.1);
+}
+
 @media print {
     body * {
         visibility: hidden;
@@ -1502,3 +1550,206 @@ details[open] .brecha-summary-icon { transform: rotate(90deg); }
         width: 100%;
     }
 }
+
+/* ============================================================
+   PESTAÑAS Y VISTAS DEL CAMPUS (Cursos / Carreras / Certificados)
+   ============================================================ */
+
+.campus-tabs-container {
+    background: #ffffff;
+    border-radius: var(--radius-md);
+    padding: 8px 16px;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--aluminum-border);
+}
+
+.campus-tab-btn {
+    background: transparent;
+    border: none;
+    padding: 10px 20px;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--text-muted);
+    transition: var(--transition);
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.campus-tab-btn:hover {
+    color: var(--primary-color);
+    background: rgba(15, 43, 72, 0.05);
+}
+
+.campus-tab-btn.active {
+    color: #ffffff;
+    background: var(--primary-color);
+    box-shadow: 0 4px 12px rgba(15, 43, 72, 0.25);
+}
+
+/* Tarjetas de Carreras */
+.career-card {
+    background: #ffffff;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--aluminum-border);
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition);
+    overflow: hidden;
+}
+
+.career-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-3px);
+}
+
+.career-card-header {
+    background: linear-gradient(135deg, #0f2b48 0%, #1e3a8a 100%);
+    color: #ffffff;
+    padding: 24px;
+    position: relative;
+}
+
+.career-card-header.completed {
+    background: linear-gradient(135deg, #0f2b48 0%, #173b61 60%, #b8860b 100%);
+}
+
+.career-progress-wrapper {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 9999px;
+    height: 10px;
+    overflow: hidden;
+    margin-top: 12px;
+}
+
+.career-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #38bdf8 0%, #10b981 100%);
+    border-radius: 9999px;
+    transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.career-progress-fill.gold {
+    background: linear-gradient(90deg, #f59e0b 0%, #d4af37 100%);
+}
+
+.career-course-item {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--aluminum-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: background 0.15s ease;
+}
+
+.career-course-item:last-child {
+    border-bottom: none;
+}
+
+.career-course-item:hover {
+    background: #f8fafc;
+}
+
+.career-graduation-banner {
+    background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+    border: 1.5px solid #fde68a;
+    border-radius: var(--radius-md);
+    padding: 20px;
+    text-align: center;
+}
+
+/* Vitrina de Credenciales y Diplomas */
+.credential-card {
+    background: #ffffff;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--aluminum-border);
+    box-shadow: var(--shadow-sm);
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transition: var(--transition);
+    position: relative;
+    overflow: hidden;
+    height: 100%;
+}
+
+.credential-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-3px);
+}
+
+.credential-card.career-diploma {
+    border-top: 4px solid #d4af37;
+    background: linear-gradient(180deg, #fffdfa 0%, #ffffff 100%);
+}
+
+.credential-card.course-cert {
+    border-top: 4px solid var(--accent-color);
+}
+
+.credential-icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.6rem;
+}
+
+.credential-icon.gold {
+    background: rgba(245, 158, 11, 0.15);
+    color: #d97706;
+}
+
+.credential-icon.blue {
+    background: rgba(2, 132, 199, 0.12);
+    color: var(--accent-color);
+}
+
+/* Modal Mi Perfil */
+.profile-avatar-lg {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--accent-color) 100%);
+    color: #ffffff;
+    font-size: 1.8rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 8px 16px rgba(15, 43, 72, 0.2);
+    border: 3px solid #ffffff;
+}
+
+.profile-metric-box {
+    background: #f8fafc;
+    border: 1px solid var(--aluminum-border);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    text-align: center;
+    transition: var(--transition);
+}
+
+.profile-metric-box:hover {
+    background: #ffffff;
+    box-shadow: var(--shadow-sm);
+    transform: translateY(-2px);
+}
+
+.profile-metric-box .metric-val {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--primary-color);
+    line-height: 1.2;
+}
+
+.profile-metric-box .metric-lbl {
+    font-size: 0.775rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+

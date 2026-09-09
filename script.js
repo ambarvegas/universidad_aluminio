@@ -2021,6 +2021,20 @@ window.cargarModulosParaMarcar = () => {
     if (container) container.style.display = 'block';
     body.innerHTML = '';
 
+    // Inicializar input de nota con mínimo de aprobación configurado
+    const minAprob = (typeof db !== 'undefined' && db.configuracion && db.configuracion.minAprobacion != null)
+        ? Number(db.configuracion.minAprobacion) : 70;
+    const inputNota = document.getElementById('marcar-nota-input');
+    const badgeMin = document.getElementById('marcar-min-aprob-badge');
+    const badgeRango = document.getElementById('marcar-rango-badge');
+    if (inputNota) {
+        inputNota.min = minAprob;
+        inputNota.max = 100;
+        inputNota.value = 100;
+    }
+    if (badgeMin) badgeMin.textContent = `${minAprob}`;
+    if (badgeRango) badgeRango.textContent = `${minAprob} - 100`;
+
     let tieneModulos = false;
 
     if (curso.modulos && curso.modulos.length > 0) {
@@ -2144,15 +2158,30 @@ window.confirmarMarcarCompletado = async () => {
         return `<li>${curso.modulos[mIdx]?.titulo || `Módulo ${mIdx + 1}`}</li>`;
     }).join('');
 
+    const inputNota = document.getElementById('marcar-nota-input');
+    const minAprobacion = (typeof db !== 'undefined' && db.configuracion && db.configuracion.minAprobacion != null)
+        ? Number(db.configuracion.minAprobacion) : 70;
+    let notaCargar = inputNota ? parseFloat(inputNota.value) : 100;
+
+    if (isNaN(notaCargar) || notaCargar < minAprobacion || notaCargar > 100) {
+        showToast(`La calificación a asignar debe estar entre el mínimo institucional (${minAprobacion} pts) y 100 pts.`, "warning");
+        if (inputNota) inputNota.focus();
+        return;
+    }
+
     const ok = await showConfirmModal({
         title: '¿Marcar Módulos como Completados?',
         message: `
             <p>¿Estás seguro de marcar como <strong>COMPLETADOS</strong> los siguientes módulos del curso <em>"${curso.titulo}"</em> para el usuario <strong>${usuario.nombre}</strong>?</p>
             <ul class="mb-3">${moduloListaHtml}</ul>
+            <div class="p-2 mb-3 bg-light rounded border">
+                <small class="text-muted d-block">Calificación que se registrará:</small>
+                <span class="badge bg-success fs-6">${notaCargar} pts</span>
+            </div>
             <div class="alert alert-info py-2 px-3 small mb-0">
                 <strong>Efectos automáticos:</strong>
                 <ul class="mb-0 ps-3">
-                    <li>Aprobará automáticamente las evaluaciones</li>
+                    <li>Aprobará automáticamente las evaluaciones con <strong>${notaCargar} pts</strong></li>
                     <li>Otorgará las medallas correspondientes</li>
                     <li>Marcará todas las lecciones como completadas</li>
                 </ul>
@@ -2179,7 +2208,6 @@ window.confirmarMarcarCompletado = async () => {
         }
 
         const progreso = usuario.progreso[cursoId];
-        const minAprobacion = (db.configuracion && db.configuracion.minAprobacion) || 70;
 
         let marcadosExitosos = 0;
         let errores = [];
@@ -2201,17 +2229,14 @@ window.confirmarMarcarCompletado = async () => {
                 progreso.medallas.push(String(mIdx));
             }
 
-            if (modulo.evaluacion && modulo.evaluacion.preguntas && modulo.evaluacion.preguntas.length > 0) {
-                if (!progreso.evaluaciones) progreso.evaluaciones = {};
-                if (!progreso.evaluaciones[mIdx]) {
-                    progreso.evaluaciones[mIdx] = {
-                        calificacion: minAprobacion,
-                        aprobado: true,
-                        marcadoManual: true,
-                        fecha: new Date().toISOString()
-                    };
-                }
-            }
+            // Registrar la evaluación con la calificación elegida por el administrador
+            if (!progreso.evaluaciones) progreso.evaluaciones = {};
+            progreso.evaluaciones[mIdx] = {
+                calificacion: notaCargar,
+                aprobado: true,
+                marcadoManual: true,
+                fecha: new Date().toISOString()
+            };
 
             if (!progreso.leccionesCompletadas) progreso.leccionesCompletadas = [];
             if (modulo.lecciones && modulo.lecciones.length > 0) {
@@ -2704,45 +2729,293 @@ async function mostrarDetalleCurso(cursoId) {
     }
 }
 
-window.descargarCertificado = (nombre, cedula, curso) => {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-    const logo = localStorage.getItem('aluLogo');
+// ============================================================
+// GENERADOR INSTITUCIONAL DE CERTIFICADOS Y DIPLOMAS (jsPDF + QR)
+// ============================================================
 
-    doc.setDrawColor(43, 61, 79);
-    doc.setLineWidth(2);
-    doc.rect(10, 10, 277, 190);
-    doc.setDrawColor(255, 215, 0);
-    doc.rect(12, 12, 273, 186);
+async function generarCodigoCertificadoAsync(userId, itemId, tipo = 'curso') {
+    tipo = String(tipo || 'curso').toLowerCase().trim();
+    const raw = `ALU_CERT_SECRET_SALT_2026_${tipo}_${String(userId).trim()}_${String(itemId).trim()}`;
+    try {
+        if (window.crypto && window.crypto.subtle) {
+            const msgBuffer = new TextEncoder().encode(raw);
+            const hashBuffer = await window.crypto.subtle.digest('SHA-256', msgBuffer);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+            const prefix = (tipo === 'carrera') ? 'ALU-CAR' : 'ALU-CUR';
+            return `${prefix}-${hashHex.substring(0, 10)}`;
+        }
+    } catch (e) {
+        console.warn("Error en crypto.subtle, usando hash fallback:", e);
+    }
+    // Fallback matemático simple si crypto no estuviese disponible
+    let h = 0;
+    for (let i = 0; i < raw.length; i++) {
+        h = ((h << 5) - h) + raw.charCodeAt(i);
+        h |= 0;
+    }
+    const prefix = (tipo === 'carrera') ? 'ALU-CAR' : 'ALU-CUR';
+    return `${prefix}-${Math.abs(h).toString(16).toUpperCase().padStart(10, '0').slice(0, 10)}`;
+}
 
-    if (logo) {
-        try { doc.addImage(logo, 'PNG', 20, 20, 40, 40); } catch (e) { console.error("Error al cargar logo", e); }
+async function generarPDFDocumentoAcademico({
+    tipo = 'curso',
+    nombre = '',
+    cedula = '',
+    tituloPrograma = '',
+    itemId = '',
+    codigoVerificacion = null,
+    fechaEmision = null
+}) {
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+        if (typeof showToast === 'function') showToast('Cargando librería PDF, por favor intenta en unos momentos...', 'warning');
+        return;
     }
 
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(30);
-    doc.text("UNIVERSIDAD DEL ALUMINIO", 148, 45, { align: "center" });
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
 
-    doc.setFontSize(20);
+    const pageWidth = 297;
+    const pageHeight = 210;
+    const centerX = pageWidth / 2;
+
+    // 1. Fondo marfil pulido
+    doc.setFillColor(254, 254, 255);
+    doc.rect(0, 0, pageWidth, pageHeight, 'F');
+
+    // Marco exterior grueso: Azul Noche (#0f2b48)
+    doc.setDrawColor(15, 43, 72);
+    doc.setLineWidth(3);
+    doc.rect(10, 10, 277, 190);
+
+    // Marco interior fino: Oro Imperial (#d4af37)
+    doc.setDrawColor(212, 175, 55);
+    doc.setLineWidth(1.2);
+    doc.rect(13, 13, 271, 184);
+
+    // Esquinas ornamentales en oro
+    const corners = [
+        [15, 15], [pageWidth - 15, 15],
+        [15, pageHeight - 15], [pageWidth - 15, pageHeight - 15]
+    ];
+    doc.setDrawColor(212, 175, 55);
+    doc.setLineWidth(0.6);
+    corners.forEach(([cx, cy]) => {
+        doc.circle(cx, cy, 3, 'S');
+    });
+
+    // 2. Logotipo Institucional
+    let logoData = (typeof db !== 'undefined' && db.configuracion && db.configuracion.logo) ? db.configuracion.logo : '';
+    if (!logoData || !logoData.startsWith('data:image')) {
+        logoData = localStorage.getItem('aluLogo') || '';
+    }
+    if (logoData && logoData.startsWith('data:image')) {
+        try {
+            doc.addImage(logoData, 'PNG', 20, 18, 30, 30);
+        } catch (e) {
+            console.warn("Logo en formato no compatible con jsPDF:", e);
+        }
+    }
+
+    // 3. Encabezado Institucional
+    doc.setTextColor(15, 43, 72);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(26);
+    doc.text("UNIVERSIDAD DEL ALUMINIO", centerX, 30, { align: "center" });
+
+    doc.setFontSize(9.5);
     doc.setFont("helvetica", "normal");
-    doc.text("Otorga el presente certificado a:", 148, 80, { align: "center" });
+    doc.setTextColor(100, 116, 139);
+    doc.text("CAMPUS DE FORMACIÓN TÉCNICA E INNOVACIÓN INDUSTRIAL", centerX, 36.5, { align: "center" });
 
-    doc.setFontSize(35);
-    doc.text(nombre.toUpperCase(), 148, 100, { align: "center" });
-    doc.setFontSize(16);
-    doc.text(`Cédula de Identidad: ${cedula}`, 148, 110, { align: "center" });
+    // Filete divisorio central en oro
+    doc.setDrawColor(212, 175, 55);
+    doc.setLineWidth(0.8);
+    doc.line(centerX - 60, 41, centerX + 60, 41);
 
-    doc.setFontSize(18);
-    doc.text("Por haber cumplido con los requisitos académicos del curso:", 148, 135, { align: "center" });
+    // 4. Tipo de Diploma / Certificado
+    const esCarrera = (tipo === 'carrera');
     doc.setFont("helvetica", "bold");
-    doc.text(curso, 148, 150, { align: "center" });
+    doc.setFontSize(13);
+    if (esCarrera) {
+        doc.setTextColor(180, 130, 20); // Oro rico
+        doc.text("DIPLOMA DE GRADUACIÓN PROFESIONAL", centerX, 53, { align: "center" });
+    } else {
+        doc.setTextColor(2, 132, 199); // Cobalto institucional
+        doc.text("CERTIFICACIÓN DE COMPETENCIA TÉCNICA", centerX, 53, { align: "center" });
+    }
 
-    doc.setFont("helvetica", "italic");
-    doc.setFontSize(12);
-    doc.text(`Fecha de emisión: ${new Date().toLocaleDateString()}`, 148, 180, { align: "center" });
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    doc.setTextColor(71, 85, 105);
+    doc.text("Otorga el presente reconocimiento oficial a:", centerX, 66, { align: "center" });
 
-    doc.save(`Certificado_${curso}_${nombre}.pdf`);
-    showToast('Certificado descargado con éxito.', 'success');
+    // 5. Nombre del Alumno
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(24);
+    doc.setTextColor(15, 43, 72);
+    doc.text((nombre || 'COLABORADOR').toUpperCase(), centerX, 81, { align: "center" });
+
+    // Cédula
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Documento de Identidad: ${cedula || 'N/A'}`, centerX, 90, { align: "center" });
+
+    // 6. Texto de Concesión y Programa
+    doc.setFontSize(11);
+    doc.setTextColor(51, 65, 85);
+    const textoAcreditacion = esCarrera 
+        ? "Por haber culminado con distinción la totalidad del plan curricular de la Carrera Profesional de:"
+        : "Por haber cursado y aprobado satisfactoriamente todas las lecciones y evaluaciones técnicas del Curso:";
+    doc.text(textoAcreditacion, centerX, 108, { align: "center" });
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    if (esCarrera) {
+        doc.setTextColor(180, 130, 20);
+    } else {
+        doc.setTextColor(15, 43, 72);
+    }
+    doc.text(`« ${tituloPrograma} »`, centerX, 122, { align: "center" });
+
+    // 7. Código de Verificación Único
+    let codigo = codigoVerificacion;
+    if (!codigo) {
+        codigo = await generarCodigoCertificadoAsync(cedula, itemId || tituloPrograma, tipo);
+    }
+
+    const fechaTxt = fechaEmision || new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+    // 8. Código QR de Verificación
+    const host = window.location.origin;
+    const path = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+    const verifyUrl = `${host}${path}/verificar.php?codigo=${codigo}`;
+
+    if (window.QRious) {
+        try {
+            const qrCanvas = document.createElement('canvas');
+            const qr = new window.QRious({
+                element: qrCanvas,
+                value: verifyUrl,
+                size: 160,
+                level: 'M'
+            });
+            const qrData = qr.toDataURL('image/png');
+            doc.addImage(qrData, 'PNG', 24, 138, 28, 28);
+        } catch (e) {
+            console.warn("Error generando código QR con QRious:", e);
+        }
+    }
+
+    doc.setFontSize(7.5);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(100, 116, 139);
+    doc.text("Escanear para verificar validez", 38, 171, { align: "center" });
+    doc.setFont("courier", "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(15, 43, 72);
+    doc.text(codigo, 38, 176, { align: "center" });
+
+    // 9. Sello institucional de Rectoría al centro
+    doc.setDrawColor(212, 175, 55);
+    doc.setLineWidth(1.4);
+    doc.circle(centerX, 153, 12, 'S');
+    doc.setLineWidth(0.5);
+    doc.circle(centerX, 153, 10, 'S');
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6.5);
+    doc.setTextColor(212, 175, 55);
+    doc.text("VALIDEZ OFICIAL", centerX, 152, { align: "center" });
+    doc.text("RECTORÍA ACADÉMICA", centerX, 156, { align: "center" });
+
+    // 10. Firma de Rectoría Académica a la derecha
+    doc.setDrawColor(100, 116, 139);
+    doc.setLineWidth(0.6);
+    doc.line(pageWidth - 75, 158, pageWidth - 25, 158);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(15, 43, 72);
+    doc.text("Rectoría Académica", pageWidth - 50, 164, { align: "center" });
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text("Universidad del Aluminio", pageWidth - 50, 169, { align: "center" });
+    doc.text(`Fecha: ${fechaTxt}`, pageWidth - 50, 174, { align: "center" });
+
+    // 11. Descargar documento
+    const safeTitle = tituloPrograma.replace(/[^a-zA-Z0-9_\-]/g, '_');
+    const safeName  = nombre.replace(/[^a-zA-Z0-9_\-]/g, '_');
+    const nombreArchivo = `${esCarrera ? 'Diploma_Carrera' : 'Certificado_Curso'}_${safeTitle}_${safeName}.pdf`;
+    doc.save(nombreArchivo);
+
+    if (typeof showToast === 'function') {
+        showToast(`🎓 ${esCarrera ? 'Diploma de Carrera' : 'Certificado de Curso'} descargado con éxito.`, 'success');
+    }
+}
+
+window.descargarCertificado = async (nombre, cedula, curso, cursoId = '') => {
+    if (!cursoId && typeof cursoActualData !== 'undefined' && cursoActualData && cursoActualData.id) {
+        cursoId = cursoActualData.id;
+    }
+    if (!cursoId && Array.isArray(cursos)) {
+        const found = cursos.find(c => c.titulo === curso || c.id === curso);
+        if (found) cursoId = found.id;
+    }
+
+    let codigo = null;
+    if (sesion && Array.isArray(sesion.credenciales)) {
+        const cred = sesion.credenciales.find(c => c.id === cursoId && c.tipo === 'curso');
+        if (cred) codigo = cred.codigo;
+    }
+
+    await generarPDFDocumentoAcademico({
+        tipo: 'curso',
+        nombre: nombre || (sesion ? sesion.nombre : 'Participante'),
+        cedula: cedula || (sesion ? sesion.id : ''),
+        tituloPrograma: curso,
+        itemId: cursoId,
+        codigoVerificacion: codigo
+    });
+};
+
+window.descargarDiplomaCarrera = async (carreraId, nombre = null, cedula = null) => {
+    const carObj = (carreras || []).find(c => c.id === carreraId);
+    const titulo = carObj ? carObj.nombre : carreraId;
+    const userName = nombre || (sesion ? sesion.nombre : 'Participante');
+    const userCedula = cedula || (sesion ? sesion.id : '');
+
+    let codigo = null;
+    if (sesion && Array.isArray(sesion.credenciales)) {
+        const cred = sesion.credenciales.find(c => c.id === carreraId && c.tipo === 'carrera');
+        if (cred) codigo = cred.codigo;
+    }
+
+    await generarPDFDocumentoAcademico({
+        tipo: 'carrera',
+        nombre: userName,
+        cedula: userCedula,
+        tituloPrograma: titulo,
+        itemId: carreraId,
+        codigoVerificacion: codigo
+    });
+};
+
+window.copiarEnlaceVerificacion = (codigo) => {
+    const host = window.location.origin;
+    const path = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+    const url = `${host}${path}/verificar.php?codigo=${encodeURIComponent(codigo)}`;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(() => {
+            if (typeof showToast === 'function') showToast('📋 Enlace de verificación copiado al portapapeles.', 'success');
+        }).catch(() => {
+            prompt('Copia este enlace de verificación:', url);
+        });
+    } else {
+        prompt('Copia este enlace de verificación:', url);
+    }
 };
 
 // ============================================================
@@ -2803,8 +3076,25 @@ async function cargarDatosDelServidor() {
                     u.progreso[cursoId].leccionesCompletadas = Array.isArray(u.progreso[cursoId].leccionesCompletadas) ? u.progreso[cursoId].leccionesCompletadas : [];
                     u.progreso[cursoId].modulosAprobados = Array.isArray(u.progreso[cursoId].modulosAprobados) ? u.progreso[cursoId].modulosAprobados : [];
                     u.progreso[cursoId].medallas = Array.isArray(u.progreso[cursoId].medallas) ? u.progreso[cursoId].medallas : [];
-                    u.progreso[cursoId].evaluaciones = (u.progreso[cursoId].evaluaciones && typeof u.progreso[cursoId].evaluaciones === 'object' && !Array.isArray(u.progreso[cursoId].evaluaciones)) ? u.progreso[cursoId].evaluaciones : {};
-                    u.progreso[cursoId].intentos = (u.progreso[cursoId].intentos && typeof u.progreso[cursoId].intentos === 'object' && !Array.isArray(u.progreso[cursoId].intentos)) ? u.progreso[cursoId].intentos : {};
+                    if (Array.isArray(u.progreso[cursoId].evaluaciones)) {
+                        const evObj = {};
+                        u.progreso[cursoId].evaluaciones.forEach((ev, idx) => {
+                            if (ev) evObj[idx] = ev;
+                        });
+                        u.progreso[cursoId].evaluaciones = evObj;
+                    } else if (!u.progreso[cursoId].evaluaciones || typeof u.progreso[cursoId].evaluaciones !== 'object') {
+                        u.progreso[cursoId].evaluaciones = {};
+                    }
+
+                    if (Array.isArray(u.progreso[cursoId].intentos)) {
+                        const intObj = {};
+                        u.progreso[cursoId].intentos.forEach((val, idx) => {
+                            if (val != null) intObj[idx] = val;
+                        });
+                        u.progreso[cursoId].intentos = intObj;
+                    } else if (!u.progreso[cursoId].intentos || typeof u.progreso[cursoId].intentos !== 'object') {
+                        u.progreso[cursoId].intentos = {};
+                    }
                 }
             }
 
@@ -2910,11 +3200,13 @@ function renderizarGaleria() {
         const navUserInfo = document.getElementById('nav-user-info');
         if (navUserInfo) {
             navUserInfo.innerHTML = `
-                <div class="user-avatar" style="width: 32px; height: 32px; font-size: 0.8rem;">${obtenerIniciales(sesion.nombre)}</div>
-                <div class="d-none d-sm-block text-start lh-1">
-                    <div class="text-white small fw-bold">${sesion.nombre}</div>
-                    <small class="text-white-50" style="font-size: 0.725rem;">${(sesion.rol || 'Estudiante').replace('_', ' ')}</small>
-                </div>
+                <button type="button" class="btn btn-link text-decoration-none p-0 d-flex align-items-center gap-2" onclick="abrirModalPerfil()" title="Ver Mi Perfil">
+                    <div class="user-avatar" style="width: 32px; height: 32px; font-size: 0.8rem; cursor: pointer; border: 1.5px solid rgba(255,255,255,0.4);">${obtenerIniciales(sesion.nombre)}</div>
+                    <div class="d-none d-sm-block text-start lh-1 text-white">
+                        <div class="text-white small fw-bold">${sesion.nombre} <i class="bi bi-gear-fill text-white-50 ms-1" style="font-size: 0.7rem;"></i></div>
+                        <small class="text-white-50" style="font-size: 0.725rem;">${(sesion.rol || 'Estudiante').replace('_', ' ')}</small>
+                    </div>
+                </button>
             `;
         }
 
@@ -3126,7 +3418,405 @@ function renderizarGaleria() {
     });
 
     galeria.innerHTML = galeriaHTML;
+
+    // Actualizar conteos en badges de las pestañas del Campus
+    if (sesion) {
+        const misCarreras = obtenerCarrerasDelUsuario(sesion);
+        const certsCarreraIds = Array.isArray(sesion.certificadosCarrera) ? sesion.certificadosCarrera : [];
+        const certsCursoIds = Array.isArray(sesion.certificadosCurso) ? sesion.certificadosCurso : [];
+
+        let carrerasCompletas = 0;
+        misCarreras.forEach(c => {
+            const inf = calcularProgresoCarrera(sesion, c);
+            if (inf.completada || certsCarreraIds.includes(c.id)) carrerasCompletas++;
+        });
+
+        const totalCerts = certsCursoIds.length + carrerasCompletas;
+
+        const bCarTab = document.getElementById('tab-badge-carreras');
+        if (bCarTab) {
+            bCarTab.textContent = misCarreras.length;
+            bCarTab.style.display = misCarreras.length > 0 ? 'inline-block' : 'none';
+        }
+        const bCarNav = document.getElementById('nav-badge-carreras');
+        if (bCarNav) {
+            bCarNav.textContent = misCarreras.length;
+            bCarNav.style.display = misCarreras.length > 0 ? 'inline-block' : 'none';
+        }
+
+        const bCertTab = document.getElementById('tab-badge-certificados');
+        if (bCertTab) {
+            bCertTab.textContent = totalCerts;
+            bCertTab.style.display = totalCerts > 0 ? 'inline-block' : 'none';
+        }
+        const bCertNav = document.getElementById('nav-badge-certificados');
+        if (bCertNav) {
+            bCertNav.textContent = totalCerts;
+            bCertNav.style.display = totalCerts > 0 ? 'inline-block' : 'none';
+        }
+    }
 }
+
+// ============================================================
+// GESTIÓN DE RUTAS DE CARRERAS Y VITRINA DE CERTIFICADOS
+// ============================================================
+
+function obtenerCarrerasDelUsuario(usuario) {
+    if (!usuario) return [];
+    const carrerasIds = new Set();
+    
+    // De su rol
+    const configRol = (rolesConfig || []).find(r => r.id === usuario.rol);
+    if (configRol && Array.isArray(configRol.carreras)) {
+        configRol.carreras.forEach(cid => { if (cid) carrerasIds.add(cid); });
+    }
+    
+    // De asignaciones expresas
+    if (Array.isArray(usuario.carrerasAsignadas)) {
+        usuario.carrerasAsignadas.forEach(ca => {
+            const cid = (typeof ca === 'string') ? ca : (ca.id || '');
+            if (cid) carrerasIds.add(cid);
+        });
+    }
+
+    const lista = [];
+    carrerasIds.forEach(id => {
+        const car = (carreras || []).find(c => c.id === id);
+        if (car) lista.push(car);
+    });
+
+    return lista;
+}
+
+function calcularProgresoCarrera(usuario, carrera) {
+    if (!carrera || !Array.isArray(carrera.cursos) || carrera.cursos.length === 0) {
+        return { total: 0, completados: 0, porcentaje: 0, completada: false, detalleCursos: [] };
+    }
+    
+    const userProg = (usuario && usuario.progreso) ? usuario.progreso : {};
+    const certsCurso = (usuario && Array.isArray(usuario.certificadosCurso)) ? usuario.certificadosCurso : [];
+    const certsCarrera = (usuario && Array.isArray(usuario.certificadosCarrera)) ? usuario.certificadosCarrera : [];
+    
+    let completadosCount = 0;
+    const detalleCursos = [];
+
+    carrera.cursos.forEach(cursoId => {
+        const cursoObj = (cursos || []).find(c => c.id === cursoId);
+        const prog = userProg[cursoId] || {};
+        const modulosAprobados = Array.isArray(prog.modulosAprobados) ? prog.modulosAprobados : [];
+        const tieneCertificado = certsCurso.includes(cursoId);
+        
+        let totalModulos = 0;
+        if (cursoObj && Array.isArray(cursoObj.modulos)) {
+            totalModulos = cursoObj.modulos.length;
+        }
+
+        const cursoAprobado = tieneCertificado || (totalModulos > 0 && modulosAprobados.length >= totalModulos);
+        if (cursoAprobado) completadosCount++;
+
+        let pctCurso = 0;
+        if (cursoAprobado) {
+            pctCurso = 100;
+        } else if (totalModulos > 0) {
+            pctCurso = Math.round((modulosAprobados.length / totalModulos) * 100);
+        }
+
+        detalleCursos.push({
+            id: cursoId,
+            titulo: cursoObj ? cursoObj.titulo : cursoId,
+            descripcion: cursoObj ? (cursoObj.descripcion || '') : '',
+            imagen: cursoObj ? (cursoObj.imagen || '') : '',
+            aprobado: cursoAprobado,
+            porcentaje: pctCurso,
+            totalModulos: totalModulos,
+            modulosAprobados: modulosAprobados.length
+        });
+    });
+
+    const total = carrera.cursos.length;
+    const porcentaje = total > 0 ? Math.round((completadosCount / total) * 100) : 0;
+    const completada = certsCarrera.includes(carrera.id) || (total > 0 && completadosCount >= total);
+
+    return {
+        total,
+        completados: completadosCount,
+        porcentaje: completada ? 100 : porcentaje,
+        completada,
+        detalleCursos
+    };
+}
+
+window.cambiarVistaCampus = function(vista) {
+    const vCursos = document.getElementById('vista-campus-cursos');
+    const vCarreras = document.getElementById('vista-campus-carreras');
+    const vCertificados = document.getElementById('vista-campus-certificados');
+
+    if (!vCursos || !vCarreras || !vCertificados) return;
+
+    vCursos.style.display = (vista === 'cursos') ? 'block' : 'none';
+    vCarreras.style.display = (vista === 'carreras') ? 'block' : 'none';
+    vCertificados.style.display = (vista === 'certificados') ? 'block' : 'none';
+
+    ['cursos', 'carreras', 'certificados'].forEach(v => {
+        const btn = document.getElementById(`tab-btn-${v}`);
+        if (btn) btn.classList.toggle('active', v === vista);
+        const navBtn = document.getElementById(`nav-btn-${v}`);
+        if (navBtn) navBtn.classList.toggle('active', v === vista);
+    });
+
+    if (vista === 'carreras') renderizarCarreras();
+    if (vista === 'certificados') renderizarVitrinaCertificados();
+};
+
+window.renderizarCarreras = function() {
+    const contenedor = document.getElementById('galeria-carreras-row');
+    if (!contenedor) return;
+
+    if (!sesion) {
+        contenedor.innerHTML = `<div class="col-12 text-center py-4 text-muted">Inicia sesión para consultar tus carreras.</div>`;
+        return;
+    }
+
+    const misCarreras = obtenerCarrerasDelUsuario(sesion);
+
+    if (misCarreras.length === 0) {
+        contenedor.innerHTML = `
+            <div class="col-12 text-center py-5">
+                <div class="py-4">
+                    <i class="bi bi-diagram-3 display-3 text-muted opacity-50 mb-3 d-block"></i>
+                    <h5 class="fw-bold text-secondary">No tienes carreras asignadas actualmente</h5>
+                    <p class="text-muted small">Las rutas de aprendizaje se asignan automáticamente según tu rol o por la Rectoría Académica.</p>
+                </div>
+            </div>`;
+        return;
+    }
+
+    let html = '';
+    misCarreras.forEach(car => {
+        const info = calcularProgresoCarrera(sesion, car);
+        const headerClass = info.completada ? 'career-card-header completed' : 'career-card-header';
+        const progressFillClass = info.completada ? 'career-progress-fill gold' : 'career-progress-fill';
+
+        let coursesListHtml = '';
+        info.detalleCursos.forEach((cd, idx) => {
+            let statusBadge = '';
+            let btnAction = '';
+
+            if (cd.aprobado) {
+                statusBadge = `<span class="badge bg-success bg-opacity-15 text-success border border-success border-opacity-25 px-2 py-1"><i class="bi bi-check-circle-fill me-1"></i>Aprobado</span>`;
+                btnAction = `<a href="detalle.html?id=${encodeURIComponent(cd.id)}" class="btn btn-sm btn-outline-success"><i class="bi bi-arrow-repeat me-1"></i>Repasar</a>`;
+            } else if (cd.porcentaje > 0) {
+                statusBadge = `<span class="badge bg-primary bg-opacity-15 text-primary border border-primary border-opacity-25 px-2 py-1"><i class="bi bi-hourglass-split me-1"></i>${cd.porcentaje}%</span>`;
+                btnAction = `<a href="detalle.html?id=${encodeURIComponent(cd.id)}" class="btn btn-sm btn-primary"><i class="bi bi-play-fill me-1"></i>Continuar</a>`;
+            } else {
+                statusBadge = `<span class="badge bg-secondary bg-opacity-15 text-secondary border px-2 py-1"><i class="bi bi-circle me-1"></i>Pendiente</span>`;
+                btnAction = `<a href="detalle.html?id=${encodeURIComponent(cd.id)}" class="btn btn-sm btn-outline-primary"><i class="bi bi-play-fill me-1"></i>Iniciar</a>`;
+            }
+
+            coursesListHtml += `
+                <div class="career-course-item">
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="rounded-circle d-flex align-items-center justify-content-center fw-bold ${cd.aprobado ? 'bg-success text-white' : 'bg-light text-muted'}" style="width: 32px; height: 32px; font-size: 0.85rem;">
+                            ${cd.aprobado ? '<i class="bi bi-check"></i>' : (idx + 1)}
+                        </div>
+                        <div>
+                            <div class="fw-semibold text-dark mb-0">${cd.titulo}</div>
+                            <small class="text-muted">${cd.totalModulos} módulos formativos</small>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        ${statusBadge}
+                        ${btnAction}
+                    </div>
+                </div>`;
+        });
+
+        const graduationBanner = info.completada ? `
+            <div class="career-graduation-banner mt-4">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+                    <div class="d-flex align-items-center gap-3 text-start">
+                        <div class="fs-1 text-warning"><i class="bi bi-patch-check-fill"></i></div>
+                        <div>
+                            <h6 class="fw-bold text-dark mb-1">¡Felicitaciones! Has completado esta Carrera Profesional</h6>
+                            <small class="text-muted">Cumpliste satisfactoriamente con la totalidad del plan de estudios.</small>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-warning fw-bold text-dark shadow-sm px-4 py-2 rounded-pill" onclick="descargarDiplomaCarrera('${car.id}', '${(sesion.nombre||'').replace(/'/g, "\\'")}', '${sesion.id}')">
+                        <i class="bi bi-award-fill me-2"></i>Descargar Diploma Oficial (PDF)
+                    </button>
+                </div>
+            </div>` : '';
+
+        html += `
+            <div class="col-lg-12">
+                <div class="career-card">
+                    <div class="${headerClass}">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <div>
+                                <span class="badge bg-white bg-opacity-20 text-white text-uppercase px-3 py-1 mb-2">
+                                    <i class="bi bi-mortarboard-fill me-1"></i>Ruta Profesional
+                                </span>
+                                <h4 class="fw-bold mb-1">${car.nombre}</h4>
+                                <small class="text-white-50">Especialización técnica acreditada por la Universidad del Aluminio</small>
+                            </div>
+                            <div class="text-end">
+                                <div class="fs-4 fw-bold">${info.porcentaje}%</div>
+                                <small class="text-white-50">${info.completados} de ${info.total} materias aprobadas</small>
+                            </div>
+                        </div>
+                        <div class="career-progress-wrapper">
+                            <div class="${progressFillClass}" style="width: ${info.porcentaje}%;"></div>
+                        </div>
+                    </div>
+
+                    <div class="p-4">
+                        <h6 class="fw-bold text-secondary mb-3"><i class="bi bi-list-check me-2"></i>Plan de Estudios y Materias Requeridas:</h6>
+                        <div class="border rounded-3 overflow-hidden bg-white mb-3">
+                            ${coursesListHtml}
+                        </div>
+                        ${graduationBanner}
+                    </div>
+                </div>
+            </div>`;
+    });
+
+    contenedor.innerHTML = html;
+};
+
+window.renderizarVitrinaCertificados = async function() {
+    const contenedor = document.getElementById('vitrina-certificados-row');
+    if (!contenedor) return;
+
+    if (!sesion) {
+        contenedor.innerHTML = `<div class="col-12 text-center py-4 text-muted">Inicia sesión para consultar tus credenciales.</div>`;
+        return;
+    }
+
+    const misCarreras = obtenerCarrerasDelUsuario(sesion);
+    const certsCarreraIds = Array.isArray(sesion.certificadosCarrera) ? sesion.certificadosCarrera : [];
+    const certsCursoIds = Array.isArray(sesion.certificadosCurso) ? sesion.certificadosCurso : [];
+
+    const diplomasCarrera = [];
+    misCarreras.forEach(car => {
+        const info = calcularProgresoCarrera(sesion, car);
+        if (info.completada || certsCarreraIds.includes(car.id)) {
+            diplomasCarrera.push({
+                tipo: 'carrera',
+                id: car.id,
+                titulo: car.nombre,
+                subtitulo: 'Diploma de Graduación Profesional'
+            });
+        }
+    });
+
+    const certificadosCurso = [];
+    (cursos || []).forEach(c => {
+        const prog = calcularProgresoCurso(c.id, c);
+        if (certsCursoIds.includes(c.id) || prog.completado) {
+            certificadosCurso.push({
+                tipo: 'curso',
+                id: c.id,
+                titulo: c.titulo,
+                subtitulo: 'Certificación Técnica de Curso'
+            });
+        }
+    });
+
+    const totalCredenciales = diplomasCarrera.length + certificadosCurso.length;
+
+    if (totalCredenciales === 0) {
+        contenedor.innerHTML = `
+            <div class="col-12 text-center py-5">
+                <div class="py-4">
+                    <div class="seal-watermark mb-3" style="width: 70px; height: 70px; font-size: 1.8rem; background: #e2e8f0; color: #64748b; box-shadow: none;">
+                        <i class="bi bi-award"></i>
+                    </div>
+                    <h5 class="fw-bold text-secondary">Aún no has obtenido certificados</h5>
+                    <p class="text-muted small max-w-500 mx-auto mb-4">Completa los módulos y evaluaciones de tus cursos o carreras para desbloquear tus credenciales oficiales con código QR y verificación pública.</p>
+                    <button type="button" class="btn btn-primary" onclick="cambiarVistaCampus('cursos')">
+                        <i class="bi bi-grid-fill me-1"></i>Explorar Mis Cursos
+                    </button>
+                </div>
+            </div>`;
+        return;
+    }
+
+    let html = '';
+
+    for (const cred of diplomasCarrera) {
+        let codigo = null;
+        if (sesion && Array.isArray(sesion.credenciales)) {
+            const cr = sesion.credenciales.find(x => x.id === cred.id && x.tipo === 'carrera');
+            if (cr) codigo = cr.codigo;
+        }
+        if (!codigo && typeof generarCodigoCertificadoAsync === 'function') {
+            codigo = await generarCodigoCertificadoAsync(sesion.id, cred.id, 'carrera');
+        }
+
+        html += `
+            <div class="col-md-6 col-xl-4">
+                <div class="credential-card career-diploma">
+                    <div>
+                        <div class="d-flex align-items-center justify-content-between mb-3">
+                            <div class="credential-icon gold"><i class="bi bi-mortarboard-fill"></i></div>
+                            <span class="badge bg-warning text-dark fw-bold px-2 py-1"><i class="bi bi-star-fill me-1"></i>CARRERA</span>
+                        </div>
+                        <h5 class="fw-bold text-primary mb-1">${cred.titulo}</h5>
+                        <p class="text-muted small mb-3">${cred.subtitulo}</p>
+                        
+                        <div class="p-2 bg-light rounded-2 mb-3 border">
+                            <small class="text-muted d-block" style="font-size: 0.725rem;">CÓDIGO DE AUTENTICIDAD:</small>
+                            <span class="code-pill text-primary" style="font-size: 0.85rem;">${codigo}</span>
+                        </div>
+                    </div>
+
+                    <div class="mt-3">
+                        <button type="button" class="btn btn-warning fw-bold text-dark w-100 shadow-sm" onclick="descargarDiplomaCarrera('${cred.id}', '${(sesion.nombre||'').replace(/'/g, "\\'")}', '${sesion.id}')">
+                            <i class="bi bi-download me-1"></i>Descargar Diploma PDF
+                        </button>
+                    </div>
+                </div>
+            </div>`;
+    }
+
+    for (const cred of certificadosCurso) {
+        let codigo = null;
+        if (sesion && Array.isArray(sesion.credenciales)) {
+            const cr = sesion.credenciales.find(x => x.id === cred.id && x.tipo === 'curso');
+            if (cr) codigo = cr.codigo;
+        }
+        if (!codigo && typeof generarCodigoCertificadoAsync === 'function') {
+            codigo = await generarCodigoCertificadoAsync(sesion.id, cred.id, 'curso');
+        }
+
+        html += `
+            <div class="col-md-6 col-xl-4">
+                <div class="credential-card course-cert">
+                    <div>
+                        <div class="d-flex align-items-center justify-content-between mb-3">
+                            <div class="credential-icon blue"><i class="bi bi-award-fill"></i></div>
+                            <span class="badge bg-primary bg-opacity-15 text-primary fw-bold px-2 py-1">CURSO</span>
+                        </div>
+                        <h5 class="fw-bold text-primary mb-1">${cred.titulo}</h5>
+                        <p class="text-muted small mb-3">${cred.subtitulo}</p>
+                        
+                        <div class="p-2 bg-light rounded-2 mb-3 border">
+                            <small class="text-muted d-block" style="font-size: 0.725rem;">CÓDIGO DE AUTENTICIDAD:</small>
+                            <span class="code-pill text-primary" style="font-size: 0.85rem;">${codigo}</span>
+                        </div>
+                    </div>
+
+                    <div class="mt-3">
+                        <button type="button" class="btn btn-primary w-100 shadow-sm" onclick="descargarCertificado('${(sesion.nombre||'').replace(/'/g, "\\'")}', '${sesion.id}', '${cred.titulo.replace(/'/g, "\\'")}', '${cred.id}')">
+                            <i class="bi bi-download me-1"></i>Descargar Certificado PDF
+                        </button>
+                    </div>
+                </div>
+            </div>`;
+    }
+
+    contenedor.innerHTML = html;
+};
 
 // verificarProteccion está centralizada en js/auth.js
 
@@ -3479,7 +4169,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         cargarConfiguracion();
     }
 
-    verificarProteccion();
+    if (typeof verificarProteccion === 'function') {
+        verificarProteccion();
+    } else if (typeof window.verificarProteccion === 'function') {
+        window.verificarProteccion();
+    }
 
     const urlParams = new URLSearchParams(window.location.search);
     const cursoId = urlParams.get('id');
@@ -3547,6 +4241,160 @@ window.cambiarVistaReporte = (vista) => {
             if (typeof inicializarFiltroUsuariosBrechas === 'function') inicializarFiltroUsuariosBrechas();
             renderBrechasAprendizaje();
         }
+    }
+};
+
+// ============================================================
+// MODAL MI PERFIL Y CAMBIO SEGURO DE CONTRASEÑA
+// ============================================================
+
+window.abrirModalPerfil = function() {
+    if (!sesion) {
+        if (typeof showToast === 'function') showToast('Inicia sesión para consultar tu perfil.', 'warning');
+        return;
+    }
+
+    const modalEl = document.getElementById('modal-mi-perfil');
+    if (!modalEl) return;
+
+    // 1. Datos personales
+    const elAvatar = document.getElementById('perfil-avatar-lg');
+    if (elAvatar) elAvatar.textContent = obtenerIniciales(sesion.nombre);
+
+    const elNombre = document.getElementById('perfil-nombre');
+    if (elNombre) elNombre.textContent = sesion.nombre;
+
+    const elCedula = document.getElementById('perfil-cedula');
+    if (elCedula) elCedula.textContent = sesion.id;
+
+    const elRol = document.getElementById('perfil-rol');
+    if (elRol) elRol.textContent = (sesion.rol === 'admin') ? 'Administrador' : (sesion.rol || 'Estudiante').replace('_', ' ');
+
+    // 2. Calcular métricas del colaborador
+    const userProg = sesion.progreso || {};
+    let countIniciados = 0;
+    let countModulosAprobados = 0;
+
+    Object.keys(userProg).forEach(cid => {
+        const p = userProg[cid];
+        if (p) {
+            const mods = Array.isArray(p.modulosAprobados) ? p.modulosAprobados : [];
+            const lecs = Array.isArray(p.leccionesCompletadas) ? p.leccionesCompletadas : [];
+            if (mods.length > 0 || lecs.length > 0) countIniciados++;
+            countModulosAprobados += mods.length;
+        }
+    });
+
+    const certsCurso = Array.isArray(sesion.certificadosCurso) ? sesion.certificadosCurso : [];
+    const certsCarrera = Array.isArray(sesion.certificadosCarrera) ? sesion.certificadosCarrera : [];
+    const totalCerts = certsCurso.length + certsCarrera.length;
+
+    const elDisp = document.getElementById('perfil-kpi-disponibles');
+    if (elDisp) elDisp.textContent = Array.isArray(cursos) ? cursos.length : 0;
+
+    const elProg = document.getElementById('perfil-kpi-progreso');
+    if (elProg) elProg.textContent = countIniciados;
+
+    const elMods = document.getElementById('perfil-kpi-modulos');
+    if (elMods) elMods.textContent = countModulosAprobados;
+
+    const elCert = document.getElementById('perfil-kpi-certificados');
+    if (elCert) elCert.textContent = totalCerts;
+
+    // Limpiar formulario de clave
+    const formClave = document.getElementById('form-cambiar-clave');
+    if (formClave) formClave.reset();
+
+    // Activar pestaña resumen por defecto
+    const tabResumenBtn = document.getElementById('tab-perfil-resumen-btn');
+    if (tabResumenBtn && window.bootstrap && window.bootstrap.Tab) {
+        new bootstrap.Tab(tabResumenBtn).show();
+    }
+
+    if (window.bootstrap && window.bootstrap.Modal) {
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+    }
+};
+
+window.guardarNuevaClave = async function(event) {
+    if (event) event.preventDefault();
+
+    const inputActual = document.getElementById('input-clave-actual');
+    const inputNueva = document.getElementById('input-clave-nueva');
+    const inputConfirm = document.getElementById('input-clave-confirmar');
+    const btnSubmit = document.getElementById('btn-guardar-clave');
+
+    const claveActual = (inputActual?.value || '').trim();
+    const claveNueva = (inputNueva?.value || '').trim();
+    const claveConfirmar = (inputConfirm?.value || '').trim();
+
+    if (!claveActual) {
+        if (typeof showToast === 'function') showToast('Por favor introduce tu contraseña actual.', 'warning');
+        if (inputActual) inputActual.focus();
+        return;
+    }
+
+    if (claveNueva.length < 4) {
+        if (typeof showToast === 'function') showToast('La nueva contraseña debe tener al menos 4 caracteres.', 'warning');
+        if (inputNueva) inputNueva.focus();
+        return;
+    }
+
+    if (claveNueva !== claveConfirmar) {
+        if (typeof showToast === 'function') showToast('Las nuevas contraseñas no coinciden. Por favor verifica.', 'warning');
+        if (inputConfirm) inputConfirm.focus();
+        return;
+    }
+
+    if (claveActual === claveNueva) {
+        if (typeof showToast === 'function') showToast('La nueva contraseña no puede ser idéntica a la anterior.', 'warning');
+        if (inputNueva) inputNueva.focus();
+        return;
+    }
+
+    try {
+        if (btnSubmit) {
+            btnSubmit.disabled = true;
+            btnSubmit.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Actualizando...';
+        }
+
+        const res = await window.API.cambiarClave(claveActual, claveNueva);
+
+        if (typeof showToast === 'function') {
+            showToast(res.message || 'Contraseña actualizada con éxito.', 'success');
+        }
+
+        if (inputActual) inputActual.value = '';
+        if (inputNueva) inputNueva.value = '';
+        if (inputConfirm) inputConfirm.value = '';
+
+        const modalEl = document.getElementById('modal-mi-perfil');
+        if (modalEl && window.bootstrap && window.bootstrap.Modal) {
+            const modalInstance = bootstrap.Modal.getInstance(modalEl);
+            if (modalInstance) modalInstance.hide();
+        }
+    } catch (err) {
+        console.error('Error al cambiar contraseña:', err);
+        if (typeof showToast === 'function') {
+            showToast(err.message || 'Error al cambiar contraseña', 'danger');
+        }
+    } finally {
+        if (btnSubmit) {
+            btnSubmit.disabled = false;
+            btnSubmit.innerHTML = '<i class="bi bi-check2 me-1"></i>Actualizar Contraseña';
+        }
+    }
+};
+
+window.toggleVerClave = function(inputId, btn) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const isPassword = input.type === 'password';
+    input.type = isPassword ? 'text' : 'password';
+    const icon = btn.querySelector('i');
+    if (icon) {
+        icon.className = isPassword ? 'bi bi-eye-slash' : 'bi bi-eye';
     }
 };
 

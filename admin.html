@@ -413,22 +413,43 @@
                             </div>
                             <div class="col-6 col-md-2">
                                 <select id="filtro-eval-orden" class="form-select form-select-sm" onchange="filtrarTablaEvaluaciones()">
+                                    <option value="nombre_asc" selected>Colaborador → Curso → Módulo</option>
                                     <option value="calif_desc">Mayor Calificación</option>
                                     <option value="calif_asc">Menor Calificación</option>
                                     <option value="fecha_desc">Más Recientes</option>
-                                    <option value="nombre_asc">Colaborador (A-Z)</option>
                                     <option value="curso_asc">Curso (A-Z)</option>
                                 </select>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Cabecera de Tabla y Exportación -->
+                    <!-- Cabecera de Tabla, Modos de Vista y Exportación -->
                     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-                        <div class="d-flex align-items-center gap-2">
-                            <h5 class="fw-bold text-primary mb-0"><i class="bi bi-table me-2"></i>Resultados de Evaluaciones</h5>
-                            <span class="badge bg-primary text-white fw-semibold" id="evaluaciones-count-badge">0 registros</span>
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                            <h5 class="fw-bold text-primary mb-0"><i class="bi bi-person-lines-fill me-2"></i>Calificaciones de Módulos</h5>
+                            <span class="badge bg-primary text-white fw-semibold" id="evaluaciones-count-badge">0 colaboradores</span>
+                            
+                            <!-- Selector de Modo de Vista -->
+                            <div class="btn-group btn-group-sm ms-sm-2 shadow-sm" role="group">
+                                <button type="button" class="btn btn-primary fw-semibold" id="btn-eval-vista-agrupada" onclick="cambiarModoVistaEvaluaciones('agrupada')" title="Agrupar módulos cursados por Colaborador">
+                                    <i class="bi bi-people-fill me-1"></i>Agrupado por Colaborador
+                                </button>
+                                <button type="button" class="btn btn-outline-primary fw-semibold" id="btn-eval-vista-plana" onclick="cambiarModoVistaEvaluaciones('plana')" title="Ver lista plana de evaluaciones">
+                                    <i class="bi bi-table me-1"></i>Lista Plana
+                                </button>
+                            </div>
+
+                            <!-- Botones de Colapso (Solo en vista agrupada) -->
+                            <div id="eval-collapse-controls" class="btn-group btn-group-sm ms-1">
+                                <button type="button" class="btn btn-outline-secondary" onclick="expandirTodosColaboradores(true)" title="Expandir todos los colaboradores">
+                                    <i class="bi bi-arrows-expand me-1"></i>Expandir
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary" onclick="expandirTodosColaboradores(false)" title="Colapsar todos los colaboradores">
+                                    <i class="bi bi-arrows-collapse me-1"></i>Colapsar
+                                </button>
+                            </div>
                         </div>
+
                         <div class="d-flex gap-2">
                             <button class="btn btn-sm btn-success shadow-sm" onclick="exportarEvaluacionesXLSX()" title="Exportar reporte detallado a Excel">
                                 <i class="bi bi-file-earmark-excel-fill me-1"></i>Exportar XLSX
@@ -442,8 +463,15 @@
                         </div>
                     </div>
 
-                    <!-- Tabla de Evaluaciones -->
-                    <div class="table-responsive rounded-3 border">
+                    <!-- Vista 1: Contenedor de Evaluaciones Agrupadas por Colaborador -->
+                    <div id="contenedor-evaluaciones-agrupadas" class="mb-3">
+                        <div class="text-center py-5 text-muted bg-white rounded-3 border">
+                            <div class="spinner-border spinner-border-sm text-primary me-2"></div>Cargando evaluaciones agrupadas por colaborador...
+                        </div>
+                    </div>
+
+                    <!-- Vista 2: Tabla Plana de Evaluaciones (Oculta en modo agrupado) -->
+                    <div class="table-responsive rounded-3 border mb-3" id="contenedor-tabla-evaluaciones" style="display: none;">
                         <table class="table table-hover align-middle mb-0" id="tabla-reporte-evaluaciones">
                             <thead class="table-custom-header">
                                 <tr>
@@ -1023,6 +1051,25 @@
                         </select>
                     </div>
                     <div id="marcar-modulos-container" style="display: none;">
+                        <!-- Selector de Calificación a Asignar -->
+                        <div class="row g-2 align-items-center mb-3 p-3 bg-light rounded-3 border">
+                            <div class="col-md-7">
+                                <label class="form-label fw-bold small text-dark mb-1">
+                                    <i class="bi bi-award-fill text-warning me-1"></i>Calificación a Asignar al Completar:
+                                </label>
+                                <div class="text-muted small" id="marcar-nota-ayuda" style="font-size: 0.775rem;">
+                                    Mínimo institucional: <strong id="marcar-min-aprob-badge">70</strong> pts (Rango válido: <span id="marcar-rango-badge" class="fw-bold">70 - 100</span> pts).
+                                </div>
+                            </div>
+                            <div class="col-md-5">
+                                <div class="input-group">
+                                    <span class="input-group-text bg-white fw-bold"><i class="bi bi-pencil-fill text-primary"></i></span>
+                                    <input type="number" id="marcar-nota-input" class="form-control text-center fw-bold fs-6" min="70" max="100" value="100" step="1">
+                                    <span class="input-group-text bg-white small">/ 100 pts</span>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="mb-3">
                             <div class="form-check">
                                 <input type="checkbox" class="form-check-input" id="marcar-select-all" onchange="seleccionarTodosModulosParaMarcar(this.checked)">
@@ -1030,7 +1077,7 @@
                             </div>
                         </div>
                         <div class="alert alert-info small">
-                            <i class="bi bi-info-circle me-1"></i> Marcar un módulo como completado también aprobará automáticamente su evaluación y otorgará la medalla correspondiente.
+                            <i class="bi bi-info-circle me-1"></i> Marcar un módulo como completado aprobará su evaluación con la nota elegida y otorgará la medalla correspondiente.
                         </div>
                         <table class="table table-bordered">
                             <thead class="table-light">
@@ -1066,8 +1113,8 @@
     <script src="js/api.js?v=4"></script>
     <script src="js/features/images.js"></script>
     <script src="js/features/config.js"></script>
-    <script src="js/features/reports.js"></script>
-    <script src="script.js?v=4"></script>
+    <script src="js/features/reports.js?v=5"></script>
+    <script src="script.js?v=5"></script>
 </body>
 
 </html>

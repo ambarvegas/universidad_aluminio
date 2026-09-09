@@ -710,6 +710,8 @@ function exportarReporteXLSX() {
 
 let _evaluacionesRaw = [];
 let _evaluacionesFiltradas = [];
+let _usuariosAgrupados = [];
+let _modoVistaEval = 'agrupada'; // 'agrupada' o 'plana'
 let _evalCurrentPage = 1;
 let _evalPerPage = 15;
 
@@ -723,53 +725,199 @@ function _obtenerTodasEvaluaciones() {
         const rolObj = (rolesConfig || []).find(r => r.id === u.rol);
         const rolNombre = rolObj ? rolObj.nombre : (u.rol || 'Participante');
 
+        // Iterar únicamente sobre los cursos en los que el colaborador tiene registro de progreso
         Object.keys(uProg).forEach(cursoId => {
             const progCurso = uProg[cursoId] || {};
             const cursoObj = (cursos || []).find(c => c.id === cursoId);
-            const cursoTitulo = cursoObj ? cursoObj.titulo : cursoId;
+            const cursoTitulo = cursoObj ? (cursoObj.titulo || cursoId) : cursoId;
 
-            const evals = progCurso.evaluaciones || {};
-            const intentosObj = progCurso.intentos || {};
-
-            if (typeof evals === 'object') {
-                Object.keys(evals).forEach(modNum => {
-                    const ev = evals[modNum];
-                    if (!ev || typeof ev !== 'object') return;
-
-                    const modIdx = parseInt(modNum);
-                    let modTitulo = `Módulo ${modIdx + 1}`;
-                    if (cursoObj && Array.isArray(cursoObj.modulos) && cursoObj.modulos[modIdx]) {
-                        modTitulo = `Módulo ${modIdx + 1}: ${cursoObj.modulos[modIdx].titulo}`;
-                    }
-
-                    const calif = typeof ev.calificacion === 'number' ? ev.calificacion : (typeof ev.nota === 'number' ? ev.nota : 0);
-                    const aprobado = typeof ev.aprobado === 'boolean' ? ev.aprobado : (calif >= 70);
-                    const marcadoManual = !!ev.marcadoManual;
-                    const intentos = parseInt(intentosObj[modNum]) || 1;
-                    const fecha = ev.fecha || '';
-                    const fechaTimestamp = fecha ? new Date(fecha).getTime() : 0;
-
-                    lista.push({
-                        usuarioId: u.id,
-                        usuarioNombre: u.nombre,
-                        usuarioRol: u.rol,
-                        rolNombre: rolNombre,
-                        cursoId: cursoId,
-                        cursoTitulo: cursoTitulo,
-                        moduloNum: modNum,
-                        moduloTitulo: modTitulo,
-                        calificacion: calif,
-                        aprobado: aprobado,
-                        marcadoManual: marcadoManual,
-                        intentos: intentos,
-                        fecha: fecha,
-                        fechaTimestamp: isNaN(fechaTimestamp) ? 0 : fechaTimestamp
-                    });
+            // Manejar evaluaciones e intentos de forma robusta (array u objeto)
+            const rawEvals = progCurso.evaluaciones || {};
+            const evals = {};
+            if (Array.isArray(rawEvals)) {
+                rawEvals.forEach((ev, idx) => {
+                    if (ev && typeof ev === 'object') evals[String(idx)] = { ...ev };
+                });
+            } else if (typeof rawEvals === 'object') {
+                Object.keys(rawEvals).forEach(k => {
+                    if (rawEvals[k] && typeof rawEvals[k] === 'object') evals[String(k)] = { ...rawEvals[k] };
                 });
             }
+
+            const rawIntentos = progCurso.intentos || {};
+            const intentosObj = {};
+            if (Array.isArray(rawIntentos)) {
+                rawIntentos.forEach((val, idx) => {
+                    if (val != null) intentosObj[String(idx)] = val;
+                });
+            } else if (typeof rawIntentos === 'object') {
+                Object.assign(intentosObj, rawIntentos);
+            }
+
+            const modsAprobados = Array.isArray(progCurso.modulosAprobados) ? progCurso.modulosAprobados : [];
+
+            // Normalización estricta:
+            // 1. SÓLO para módulos efectivamente APROBADOS por el usuario (en modsAprobados).
+            // 2. Si el módulo aprobado NO tiene evaluación en evals, se normaliza en 100%.
+            // 3. Si el módulo aprobado ya tiene evaluación cargada, se deja tal cual (no se modifica su nota).
+            // 4. Los módulos por cursar (no aprobados) NUNCA se cargan; quedan sin calificación.
+            modsAprobados.forEach(modRef => {
+                const modNumStr = String(modRef);
+                const modIdx = parseInt(modRef);
+                const yaTieneEval = !!(evals[modNumStr] || (!isNaN(modIdx) && evals[modIdx]));
+
+                if (!yaTieneEval) {
+                    evals[modNumStr] = {
+                        calificacion: 100,
+                        aprobado: true,
+                        marcadoManual: true,
+                        fecha: ''
+                    };
+                }
+            });
+
+            Object.keys(evals).forEach(modNum => {
+                const ev = evals[modNum];
+                if (!ev || typeof ev !== 'object') return;
+
+                const modIdx = parseInt(modNum);
+                const modNumStr = String(modNum);
+
+                // No incluir evaluaciones artificiales si el módulo no está aprobado (módulos por cursar)
+                const estaAprobado = modsAprobados.includes(modNumStr) || (!isNaN(modIdx) && modsAprobados.includes(String(modIdx))) || (!isNaN(modIdx) && modsAprobados.includes(modIdx));
+                if (!estaAprobado && ev.marcadoManual && ev.calificacion === 100) {
+                    return;
+                }
+
+                let modTitulo = `Módulo ${modIdx + 1}`;
+                if (cursoObj && Array.isArray(cursoObj.modulos) && cursoObj.modulos[modIdx]) {
+                    modTitulo = `Módulo ${modIdx + 1}: ${cursoObj.modulos[modIdx].titulo}`;
+                }
+
+                const calif = typeof ev.calificacion === 'number' ? ev.calificacion : (typeof ev.nota === 'number' ? ev.nota : 0);
+                const aprobado = typeof ev.aprobado === 'boolean' ? ev.aprobado : (calif >= 70);
+                const marcadoManual = !!ev.marcadoManual;
+                const intentos = parseInt(intentosObj[modNum]) || 1;
+                const fecha = ev.fecha || '';
+                const fechaTimestamp = fecha ? new Date(fecha).getTime() : 0;
+
+                lista.push({
+                    usuarioId: u.id,
+                    usuarioNombre: u.nombre,
+                    usuarioRol: u.rol,
+                    rolNombre: rolNombre,
+                    cursoId: cursoId,
+                    cursoTitulo: cursoTitulo,
+                    moduloNum: isNaN(modIdx) ? modNum : modIdx,
+                    moduloTitulo: modTitulo,
+                    calificacion: calif,
+                    aprobado: aprobado,
+                    marcadoManual: marcadoManual,
+                    intentos: intentos,
+                    fecha: fecha,
+                    fechaTimestamp: isNaN(fechaTimestamp) ? 0 : fechaTimestamp
+                });
+            });
         });
     });
     return lista;
+}
+
+/**
+ * Agrupa una lista plana de evaluaciones por cada colaborador
+ * y ordena los módulos de cada colaborador por curso y por módulo
+ */
+function _agruparEvaluacionesPorUsuario(evaluaciones) {
+    const map = new Map();
+    evaluaciones.forEach(ev => {
+        if (!map.has(ev.usuarioId)) {
+            map.set(ev.usuarioId, {
+                usuarioId: ev.usuarioId,
+                usuarioNombre: ev.usuarioNombre,
+                usuarioRol: ev.usuarioRol,
+                rolNombre: ev.rolNombre,
+                evaluaciones: [],
+                totalModulos: 0,
+                aprobados: 0,
+                reprobados: 0,
+                sumaNotas: 0,
+                promedio: 0,
+                tasaAprob: 0,
+                ultimaFecha: '',
+                ultimaFechaTimestamp: 0
+            });
+        }
+        const u = map.get(ev.usuarioId);
+        u.evaluaciones.push(ev);
+        u.totalModulos++;
+        if (ev.aprobado) u.aprobados++;
+        else u.reprobados++;
+        u.sumaNotas += ev.calificacion;
+        if (ev.fechaTimestamp > u.ultimaFechaTimestamp) {
+            u.ultimaFechaTimestamp = ev.fechaTimestamp;
+            u.ultimaFecha = ev.fecha;
+        }
+    });
+
+    const arr = Array.from(map.values());
+    arr.forEach(u => {
+        // Ordenar las calificaciones de cada usuario por curso y por módulo
+        u.evaluaciones.sort((a, b) => {
+            const cmpC = (a.cursoTitulo || '').localeCompare(b.cursoTitulo || '');
+            if (cmpC !== 0) return cmpC;
+            return (parseInt(a.moduloNum) || 0) - (parseInt(b.moduloNum) || 0);
+        });
+        u.promedio = u.totalModulos > 0 ? parseFloat((u.sumaNotas / u.totalModulos).toFixed(1)) : 0;
+        u.tasaAprob = u.totalModulos > 0 ? Math.round((u.aprobados / u.totalModulos) * 100) : 0;
+    });
+
+    return arr;
+}
+
+/**
+ * Ordena la lista de colaboradores agrupados según el filtro de orden activo
+ */
+function _ordenarUsuariosAgrupados(usuariosArr, ordenVal) {
+    usuariosArr.sort((a, b) => {
+        if (ordenVal === 'calif_desc') return b.promedio - a.promedio;
+        if (ordenVal === 'calif_asc')  return a.promedio - b.promedio;
+        if (ordenVal === 'fecha_desc') return b.ultimaFechaTimestamp - a.ultimaFechaTimestamp;
+        if (ordenVal === 'curso_asc')  return a.usuarioNombre.localeCompare(b.usuarioNombre);
+        // Default o nombre_asc: Por colaborador A-Z
+        return a.usuarioNombre.localeCompare(b.usuarioNombre);
+    });
+}
+
+/**
+ * Helper para formatear insignias y colores de calificación
+ */
+function _obtenerBadgeCalificacion(calificacion) {
+    const califFormatted = (calificacion % 1 === 0 ? calificacion : calificacion.toFixed(1)) + ' pts';
+    if (calificacion >= 100) {
+        return {
+            badge: `<span class="badge badge-score-perfect px-2 py-1"><i class="bi bi-star-fill text-warning me-1"></i>100 pts</span>`,
+            barColor: 'bg-success',
+            badgeClass: 'badge-score-perfect'
+        };
+    } else if (calificacion >= 90) {
+        return {
+            badge: `<span class="badge badge-score-high px-2 py-1">${califFormatted}</span>`,
+            barColor: 'bg-success',
+            badgeClass: 'badge-score-high'
+        };
+    } else if (calificacion >= 70) {
+        return {
+            badge: `<span class="badge badge-score-pass px-2 py-1">${califFormatted}</span>`,
+            barColor: 'bg-primary',
+            badgeClass: 'badge-score-pass'
+        };
+    } else {
+        return {
+            badge: `<span class="badge badge-score-fail px-2 py-1">${califFormatted}</span>`,
+            barColor: 'bg-danger',
+            badgeClass: 'badge-score-fail'
+        };
+    }
 }
 
 /**
@@ -793,14 +941,14 @@ function inicializarFiltrosEvaluaciones() {
 }
 
 /**
- * Aplica los filtros seleccionados en la UI y actualiza la tabla
+ * Aplica los filtros seleccionados en la UI y actualiza la vista
  */
 function filtrarTablaEvaluaciones() {
     const searchVal = (document.getElementById('filtro-eval-search')?.value || '').toLowerCase().trim();
     const userVal   = document.getElementById('filtro-eval-usuario')?.value || '';
     const cursoVal  = document.getElementById('filtro-eval-curso')?.value || '';
     const estadoVal = document.getElementById('filtro-eval-estado')?.value || '';
-    const ordenVal  = document.getElementById('filtro-eval-orden')?.value || 'calif_desc';
+    const ordenVal  = document.getElementById('filtro-eval-orden')?.value || 'nombre_asc';
 
     _evaluacionesFiltradas = _evaluacionesRaw.filter(item => {
         if (userVal && item.usuarioId !== userVal) return false;
@@ -820,18 +968,32 @@ function filtrarTablaEvaluaciones() {
         return true;
     });
 
-    // Ordenamiento
+    // Ordenamiento lista plana
     _evaluacionesFiltradas.sort((a, b) => {
         if (ordenVal === 'calif_desc') return b.calificacion - a.calificacion;
         if (ordenVal === 'calif_asc')  return a.calificacion - b.calificacion;
         if (ordenVal === 'fecha_desc') return b.fechaTimestamp - a.fechaTimestamp;
-        if (ordenVal === 'nombre_asc') return a.usuarioNombre.localeCompare(b.usuarioNombre);
-        if (ordenVal === 'curso_asc')  return a.cursoTitulo.localeCompare(b.cursoTitulo);
-        return b.calificacion - a.calificacion;
+        if (ordenVal === 'curso_asc') {
+            const cmpC = (a.cursoTitulo || '').localeCompare(b.cursoTitulo || '');
+            if (cmpC !== 0) return cmpC;
+            const cmpU = (a.usuarioNombre || '').localeCompare(b.usuarioNombre || '');
+            if (cmpU !== 0) return cmpU;
+            return (parseInt(a.moduloNum) || 0) - (parseInt(b.moduloNum) || 0);
+        }
+        // nombre_asc o por defecto: Colaborador -> Curso -> Módulo
+        const cmpU = (a.usuarioNombre || '').localeCompare(b.usuarioNombre || '');
+        if (cmpU !== 0) return cmpU;
+        const cmpC = (a.cursoTitulo || '').localeCompare(b.cursoTitulo || '');
+        if (cmpC !== 0) return cmpC;
+        return (parseInt(a.moduloNum) || 0) - (parseInt(b.moduloNum) || 0);
     });
 
+    // Agrupamiento estructurado por colaborador
+    _usuariosAgrupados = _agruparEvaluacionesPorUsuario(_evaluacionesFiltradas);
+    _ordenarUsuariosAgrupados(_usuariosAgrupados, ordenVal);
+
     _evalCurrentPage = 1;
-    renderTablaEvaluacionesPaginada();
+    renderVistaEvaluaciones();
     actualizarKPIsEvaluaciones();
 }
 
@@ -863,14 +1025,268 @@ function actualizarKPIsEvaluaciones() {
     if (elProm)  elProm.textContent  = `${promedio} pts`;
     if (elTasa)  elTasa.textContent  = `${tasaAprob}%`;
     if (elPerf)  elPerf.textContent  = totalPerfectas.toLocaleString();
+
     if (elBadge) {
-        elBadge.textContent = `${total} registro${total !== 1 ? 's' : ''}`;
+        if (_modoVistaEval === 'agrupada') {
+            const numU = _usuariosAgrupados.length;
+            elBadge.textContent = `${numU} colaborador${numU !== 1 ? 'es' : ''} (${total} calificaciones)`;
+        } else {
+            elBadge.textContent = `${total} calificación${total !== 1 ? 'es' : ''}`;
+        }
         elBadge.className = 'badge bg-primary text-white fw-semibold';
     }
 }
 
 /**
- * Dibuja las filas de la tabla con paginación
+ * Despacha el renderizado según el modo activo
+ */
+function renderVistaEvaluaciones() {
+    if (_modoVistaEval === 'agrupada') {
+        renderEvaluacionesAgrupadasPaginada();
+    } else {
+        renderTablaEvaluacionesPaginada();
+    }
+}
+
+/**
+ * Alterna entre la vista agrupada por colaborador y la vista de tabla plana
+ */
+function cambiarModoVistaEvaluaciones(modo) {
+    _modoVistaEval = modo;
+    const btnAgrupada = document.getElementById('btn-eval-vista-agrupada');
+    const btnPlana    = document.getElementById('btn-eval-vista-plana');
+    const contAgrupada = document.getElementById('contenedor-evaluaciones-agrupadas');
+    const contPlana    = document.getElementById('contenedor-tabla-evaluaciones');
+    const collapseControls = document.getElementById('eval-collapse-controls');
+
+    if (modo === 'agrupada') {
+        if (btnAgrupada) btnAgrupada.className = 'btn btn-primary fw-semibold';
+        if (btnPlana)    btnPlana.className    = 'btn btn-outline-primary fw-semibold';
+        if (contAgrupada) contAgrupada.style.display = 'block';
+        if (contPlana)    contPlana.style.display    = 'none';
+        if (collapseControls) collapseControls.style.display = 'inline-flex';
+    } else {
+        if (btnAgrupada) btnAgrupada.className = 'btn btn-outline-primary fw-semibold';
+        if (btnPlana)    btnPlana.className    = 'btn btn-primary fw-semibold';
+        if (contAgrupada) contAgrupada.style.display = 'none';
+        if (contPlana)    contPlana.style.display    = 'block';
+        if (collapseControls) collapseControls.style.display = 'none';
+    }
+
+    _evalCurrentPage = 1;
+    renderVistaEvaluaciones();
+    actualizarKPIsEvaluaciones();
+}
+
+/**
+ * Expande o colapsa todas las tarjetas de colaboradores
+ */
+function expandirTodosColaboradores(expandir) {
+    const collapses = document.querySelectorAll('.user-eval-collapse');
+    const headers   = document.querySelectorAll('.user-eval-header');
+    collapses.forEach(c => {
+        if (expandir) c.classList.add('show');
+        else c.classList.remove('show');
+    });
+    headers.forEach(h => {
+        if (expandir) {
+            h.classList.remove('collapsed');
+            h.setAttribute('aria-expanded', 'true');
+        } else {
+            h.classList.add('collapsed');
+            h.setAttribute('aria-expanded', 'false');
+        }
+    });
+}
+
+/**
+ * Alterna el acordeón de un colaborador específico
+ */
+function toggleColaboradorAcordeon(id, headerEl) {
+    const collapseEl = document.getElementById(id);
+    if (!collapseEl) return;
+    const isShown = collapseEl.classList.contains('show');
+    if (isShown) {
+        collapseEl.classList.remove('show');
+        if (headerEl) headerEl.classList.add('collapsed');
+    } else {
+        collapseEl.classList.add('show');
+        if (headerEl) headerEl.classList.remove('collapsed');
+    }
+}
+
+/**
+ * Dibuja las tarjetas de calificaciones AGRUPADAS por colaborador con paginación
+ */
+function renderEvaluacionesAgrupadasPaginada() {
+    const contenedor = document.getElementById('contenedor-evaluaciones-agrupadas');
+    if (!contenedor) return;
+
+    if (_usuariosAgrupados.length === 0) {
+        contenedor.innerHTML = `
+            <div class="text-center py-5 text-muted bg-white rounded-3 border">
+                <i class="bi bi-person-x fs-2 d-block mb-2 text-muted opacity-50"></i>
+                <h6 class="fw-bold text-secondary mb-1">No se encontraron evaluaciones</h6>
+                <p class="small text-muted mb-0">No hay módulos calificados para los filtros aplicados.</p>
+            </div>`;
+        actualizarControlesPaginacion(0, 0, 0);
+        return;
+    }
+
+    const perPage = _evalPerPage === 'all' ? _usuariosAgrupados.length : parseInt(_evalPerPage);
+    const totalPaginas = Math.ceil(_usuariosAgrupados.length / perPage) || 1;
+    if (_evalCurrentPage > totalPaginas) _evalCurrentPage = totalPaginas;
+
+    const startIdx = (_evalCurrentPage - 1) * perPage;
+    const endIdx   = Math.min(startIdx + perPage, _usuariosAgrupados.length);
+    const usuariosPagina = _usuariosAgrupados.slice(startIdx, endIdx);
+
+    let html = '';
+    usuariosPagina.forEach((u, uIdx) => {
+        const globalUserIdx = startIdx + uIdx + 1;
+        const iniciales = (u.usuarioNombre || 'U').split(' ').filter(Boolean).map(p => p[0]).slice(0, 2).join('').toUpperCase();
+        const badgeInfo = _obtenerBadgeCalificacion(u.promedio);
+
+        let filasModulosHtml = '';
+        u.evaluaciones.forEach((e, mIdx) => {
+            const mBadgeInfo = _obtenerBadgeCalificacion(e.calificacion);
+
+            const estadoBadgeHtml = e.aprobado
+                ? `<span class="badge bg-success text-white px-2 py-1"><i class="bi bi-check-circle-fill me-1"></i>Aprobado</span>`
+                : `<span class="badge bg-danger text-white px-2 py-1"><i class="bi bi-x-circle-fill me-1"></i>Reprobado</span>`;
+
+            const origenBadgeHtml = e.marcadoManual
+                ? `<span class="badge bg-warning text-dark border px-2 py-1"><i class="bi bi-pencil-square me-1"></i>Manual (Rectoría)</span>`
+                : `<span class="badge bg-light text-dark border px-2 py-1"><i class="bi bi-laptop me-1 text-primary"></i>Examen Online</span>`;
+
+            let fechaFormat = '—';
+            if (e.fecha) {
+                try {
+                    const fObj = new Date(e.fecha);
+                    if (!isNaN(fObj.getTime())) {
+                        fechaFormat = fObj.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+                    } else {
+                        fechaFormat = e.fecha;
+                    }
+                } catch (_) { fechaFormat = e.fecha; }
+            } else if (e.marcadoManual) {
+                fechaFormat = '<span class="text-success small fw-semibold"><i class="bi bi-patch-check-fill me-1"></i>Acreditado</span>';
+            }
+
+            filasModulosHtml += `
+            <tr>
+                <td class="text-muted small text-center ps-3">${mIdx + 1}</td>
+                <td>
+                    <div class="fw-semibold text-primary mb-0" style="max-width: 280px; white-space: normal;">
+                        <i class="bi bi-book me-1 opacity-75"></i>${e.cursoTitulo}
+                    </div>
+                    <div class="text-muted small" style="font-size: 0.72rem;">Código: ${e.cursoId}</div>
+                </td>
+                <td>
+                    <div class="small fw-semibold text-dark">${e.moduloTitulo}</div>
+                </td>
+                <td>
+                    <div class="d-flex flex-column" style="width: 140px;">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            ${mBadgeInfo.badge}
+                            <span class="text-muted small fw-semibold" style="font-size: 0.72rem;">${Math.round(e.calificacion)}%</span>
+                        </div>
+                        <div class="progress" style="height: 5px; border-radius: 4px; background-color: #e2e8f0;">
+                            <div class="progress-bar ${mBadgeInfo.barColor}" style="width: ${Math.min(e.calificacion, 100)}%;"></div>
+                        </div>
+                    </div>
+                </td>
+                <td>${estadoBadgeHtml}</td>
+                <td class="text-center">
+                    <span class="badge bg-light text-dark border px-2 py-1">
+                        <i class="bi bi-arrow-repeat me-1 text-muted"></i>${e.intentos}
+                    </span>
+                </td>
+                <td>${origenBadgeHtml}</td>
+                <td class="small text-muted pe-3" style="white-space: nowrap;">
+                    <i class="bi bi-calendar3 me-1 opacity-75"></i>${fechaFormat}
+                </td>
+            </tr>`;
+        });
+
+        html += `
+        <div class="card user-eval-card shadow-sm mb-3">
+            <div class="card-header user-eval-header p-3 d-flex flex-wrap align-items-center justify-content-between"
+                 onclick="toggleColaboradorAcordeon('user-eval-collapse-${u.usuarioId}', this)"
+                 id="user-eval-header-${u.usuarioId}"
+                 role="button"
+                 title="Clic para expandir u ocultar los módulos de este colaborador">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="user-eval-avatar">
+                        ${iniciales}
+                    </div>
+                    <div>
+                        <div class="fw-bold text-dark fs-6 d-flex align-items-center gap-2 mb-1">
+                            <span>${u.usuarioNombre}</span>
+                            <span class="badge bg-light text-secondary border px-2 py-0" style="font-size: 0.725rem;">${u.rolNombre}</span>
+                        </div>
+                        <div class="text-muted small d-flex flex-wrap align-items-center gap-2">
+                            <span><i class="bi bi-person-vcard me-1"></i>CI: <strong>${u.usuarioId}</strong></span>
+                            <span>•</span>
+                            <span class="text-primary fw-semibold"><i class="bi bi-journal-check me-1"></i>${u.totalModulos} ${u.totalModulos === 1 ? 'módulo cursado' : 'módulos cursados'}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex align-items-center gap-3 mt-2 mt-sm-0">
+                    <div class="text-center text-sm-end me-1">
+                        <div class="small text-muted" style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px;">Promedio General</div>
+                        <span class="badge ${badgeInfo.badgeClass} px-2 py-1 fs-6">${u.promedio} pts</span>
+                    </div>
+
+                    <div class="d-none d-md-flex align-items-center gap-2">
+                        <span class="badge badge-soft-success px-2 py-1">
+                            <i class="bi bi-check-circle-fill me-1"></i>${u.aprobados} Aprobados
+                        </span>
+                        ${u.reprobados > 0 ? `<span class="badge badge-soft-danger px-2 py-1"><i class="bi bi-x-circle-fill me-1"></i>${u.reprobados} Reprobados</span>` : ''}
+                        <span class="badge bg-light text-dark border px-2 py-1">
+                            ${u.tasaAprob}% Éxito
+                        </span>
+                    </div>
+
+                    <div class="chevron-toggle-wrapper ms-2">
+                        <button type="button" class="btn btn-sm btn-light border rounded-circle chevron-toggle" style="width: 32px; height: 32px; padding: 0; pointer-events: none;">
+                            <i class="bi bi-chevron-down chevron-icon"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="collapse show user-eval-collapse" id="user-eval-collapse-${u.usuarioId}">
+                <div class="table-responsive border-top">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light text-muted" style="font-size: 0.735rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                            <tr>
+                                <th style="width: 45px;" class="text-center ps-3">#</th>
+                                <th>Curso</th>
+                                <th>Módulo Evaluado</th>
+                                <th style="width: 160px;">Calificación</th>
+                                <th style="width: 110px;">Estado</th>
+                                <th style="width: 90px;" class="text-center">Intentos</th>
+                                <th>Modalidad</th>
+                                <th class="pe-3">Fecha</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${filasModulosHtml}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>`;
+    });
+
+    contenedor.innerHTML = html;
+    actualizarControlesPaginacion(startIdx + 1, endIdx, _usuariosAgrupados.length);
+}
+
+/**
+ * Dibuja las filas de la tabla PLANA con paginación
  */
 function renderTablaEvaluacionesPaginada() {
     const tbody = document.getElementById('tabla-evaluaciones-body');
@@ -896,26 +1312,8 @@ function renderTablaEvaluacionesPaginada() {
     let html = '';
     itemsPagina.forEach((e, idx) => {
         const globalIdx = startIdx + idx + 1;
-        const iniciales = (e.usuarioNombre || 'U').split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
-
-        // Formato numérico de calificación
-        const califFormatted = (e.calificacion % 1 === 0 ? e.calificacion : e.calificacion.toFixed(1)) + ' pts';
-        let califBadgeHtml = '';
-        let barColor = 'bg-danger';
-
-        if (e.calificacion >= 100) {
-            califBadgeHtml = `<span class="badge badge-score-perfect px-2 py-1"><i class="bi bi-star-fill text-warning me-1"></i>100 pts</span>`;
-            barColor = 'bg-success';
-        } else if (e.calificacion >= 90) {
-            califBadgeHtml = `<span class="badge badge-score-high px-2 py-1">${califFormatted}</span>`;
-            barColor = 'bg-success';
-        } else if (e.calificacion >= 70) {
-            califBadgeHtml = `<span class="badge badge-score-pass px-2 py-1">${califFormatted}</span>`;
-            barColor = 'bg-primary';
-        } else {
-            califBadgeHtml = `<span class="badge badge-score-fail px-2 py-1">${califFormatted}</span>`;
-            barColor = 'bg-danger';
-        }
+        const iniciales = (e.usuarioNombre || 'U').split(' ').filter(Boolean).map(p => p[0]).slice(0, 2).join('').toUpperCase();
+        const badgeInfo = _obtenerBadgeCalificacion(e.calificacion);
 
         const estadoBadgeHtml = e.aprobado
             ? `<span class="badge bg-success text-white shadow-sm px-2 py-1"><i class="bi bi-check-circle-fill me-1"></i>Aprobado</span>`
@@ -925,7 +1323,6 @@ function renderTablaEvaluacionesPaginada() {
             ? `<span class="badge bg-warning text-dark border px-2 py-1"><i class="bi bi-pencil-square me-1"></i>Manual (Rectoría)</span>`
             : `<span class="badge bg-light text-dark border px-2 py-1"><i class="bi bi-laptop me-1 text-primary"></i>Examen Online</span>`;
 
-        // Formato de fecha
         let fechaFormat = '—';
         if (e.fecha) {
             try {
@@ -936,6 +1333,8 @@ function renderTablaEvaluacionesPaginada() {
                     fechaFormat = e.fecha;
                 }
             } catch (_) { fechaFormat = e.fecha; }
+        } else if (e.marcadoManual) {
+            fechaFormat = '<span class="text-success small fw-semibold"><i class="bi bi-patch-check-fill me-1"></i>Acreditado</span>';
         }
 
         html += `
@@ -966,11 +1365,11 @@ function renderTablaEvaluacionesPaginada() {
             <td>
                 <div class="d-flex flex-column" style="width: 140px;">
                     <div class="d-flex justify-content-between align-items-center mb-1">
-                        ${califBadgeHtml}
+                        ${badgeInfo.badge}
                         <span class="text-muted small fw-semibold" style="font-size: 0.72rem;">${Math.round(e.calificacion)}%</span>
                     </div>
                     <div class="progress" style="height: 5px; border-radius: 4px; background-color: #e2e8f0;">
-                        <div class="progress-bar ${barColor}" style="width: ${Math.min(e.calificacion, 100)}%;"></div>
+                        <div class="progress-bar ${badgeInfo.barColor}" style="width: ${Math.min(e.calificacion, 100)}%;"></div>
                     </div>
                 </div>
             </td>
@@ -997,8 +1396,15 @@ function actualizarControlesPaginacion(desde, hasta, total) {
     const btnNext = document.getElementById('btn-eval-next');
 
     if (info) {
-        if (total === 0) info.textContent = 'Mostrando 0 de 0 evaluaciones';
-        else info.textContent = `Mostrando ${desde} a ${hasta} de ${total} evaluaciones`;
+        if (total === 0) {
+            info.textContent = (_modoVistaEval === 'agrupada') ? 'Mostrando 0 de 0 colaboradores' : 'Mostrando 0 de 0 evaluaciones';
+        } else {
+            if (_modoVistaEval === 'agrupada') {
+                info.textContent = `Mostrando ${desde} a ${hasta} de ${total} colaboradores (${_evaluacionesFiltradas.length} calificaciones en total)`;
+            } else {
+                info.textContent = `Mostrando ${desde} a ${hasta} de ${total} evaluaciones`;
+            }
+        }
     }
 
     const perPage = _evalPerPage === 'all' ? total : parseInt(_evalPerPage);
@@ -1011,22 +1417,23 @@ function actualizarControlesPaginacion(desde, hasta, total) {
 function cambiarFilasPorPaginaEval(val) {
     _evalPerPage = val;
     _evalCurrentPage = 1;
-    renderTablaEvaluacionesPaginada();
+    renderVistaEvaluaciones();
 }
 
 function paginaAnteriorEval() {
     if (_evalCurrentPage > 1) {
         _evalCurrentPage--;
-        renderTablaEvaluacionesPaginada();
+        renderVistaEvaluaciones();
     }
 }
 
 function paginaSiguienteEval() {
-    const perPage = _evalPerPage === 'all' ? _evaluacionesFiltradas.length : parseInt(_evalPerPage);
-    const totalPaginas = Math.ceil(_evaluacionesFiltradas.length / perPage) || 1;
+    const listLen = (_modoVistaEval === 'agrupada') ? _usuariosAgrupados.length : _evaluacionesFiltradas.length;
+    const perPage = _evalPerPage === 'all' ? listLen : parseInt(_evalPerPage);
+    const totalPaginas = Math.ceil(listLen / perPage) || 1;
     if (_evalCurrentPage < totalPaginas) {
         _evalCurrentPage++;
-        renderTablaEvaluacionesPaginada();
+        renderVistaEvaluaciones();
     }
 }
 
@@ -1045,6 +1452,7 @@ function renderReporteEvaluaciones() {
 
 /**
  * Exporta las evaluaciones filtradas a archivo Excel (XLSX)
+ * Garantiza orden consecutivo agrupado por Colaborador
  */
 function exportarEvaluacionesXLSX() {
     if (typeof XLSX === 'undefined') {
@@ -1057,7 +1465,16 @@ function exportarEvaluacionesXLSX() {
         return;
     }
 
-    const dataExcel = _evaluacionesFiltradas.map((e, idx) => ({
+    // Ordenar por Colaborador -> Curso -> Módulo
+    const dataOrdenada = [..._evaluacionesFiltradas].sort((a, b) => {
+        const cmpU = a.usuarioNombre.localeCompare(b.usuarioNombre);
+        if (cmpU !== 0) return cmpU;
+        const cmpC = a.cursoTitulo.localeCompare(b.cursoTitulo);
+        if (cmpC !== 0) return cmpC;
+        return a.moduloNum - b.moduloNum;
+    });
+
+    const dataExcel = dataOrdenada.map((e, idx) => ({
         '#': idx + 1,
         'Cédula / ID': e.usuarioId,
         'Colaborador': e.usuarioNombre,
@@ -1107,6 +1524,7 @@ function exportarEvaluacionesXLSX() {
 
 /**
  * Exporta las evaluaciones filtradas a archivo CSV compatible
+ * Ordenado por Colaborador
  */
 function exportarEvaluacionesCSV() {
     if (_evaluacionesFiltradas.length === 0) {
@@ -1114,8 +1532,16 @@ function exportarEvaluacionesCSV() {
         return;
     }
 
+    const dataOrdenada = [..._evaluacionesFiltradas].sort((a, b) => {
+        const cmpU = a.usuarioNombre.localeCompare(b.usuarioNombre);
+        if (cmpU !== 0) return cmpU;
+        const cmpC = a.cursoTitulo.localeCompare(b.cursoTitulo);
+        if (cmpC !== 0) return cmpC;
+        return a.moduloNum - b.moduloNum;
+    });
+
     const headers = ['#', 'Cedula', 'Colaborador', 'Cargo', 'Codigo_Curso', 'Curso', 'Modulo', 'Calificacion', 'Estado', 'Intentos', 'Modalidad', 'Fecha'];
-    const rows = _evaluacionesFiltradas.map((e, idx) => [
+    const rows = dataOrdenada.map((e, idx) => [
         idx + 1,
         `"${e.usuarioId}"`,
         `"${e.usuarioNombre.replace(/"/g, '""')}"`,
@@ -1147,7 +1573,7 @@ function exportarEvaluacionesCSV() {
 }
 
 /**
- * Genera vista de impresión / PDF profesional
+ * Genera vista de impresión / PDF profesional con soporte para formato agrupado
  */
 function imprimirReporteEvaluaciones() {
     if (_evaluacionesFiltradas.length === 0) {
@@ -1158,64 +1584,76 @@ function imprimirReporteEvaluaciones() {
     const w = window.open('', '_blank');
     const hoy = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
 
-    let rowsHtml = '';
-    _evaluacionesFiltradas.forEach((e, idx) => {
-        rowsHtml += `
-        <tr>
-            <td style="text-align:center;">${idx + 1}</td>
-            <td><strong>${e.usuarioNombre}</strong><br><small style="color:#666;">CI: ${e.usuarioId} • ${e.rolNombre}</small></td>
-            <td>${e.cursoTitulo}</td>
-            <td>${e.moduloTitulo}</td>
-            <td style="text-align:center; font-weight:bold; color:${e.aprobado ? '#059669' : '#dc2626'};">${e.calificacion.toFixed(1)} pts</td>
-            <td style="text-align:center;">${e.aprobado ? '<span style="color:#059669; font-weight:bold;">Aprobado</span>' : '<span style="color:#dc2626; font-weight:bold;">Reprobado</span>'}</td>
-            <td style="text-align:center;">${e.intentos}</td>
-            <td>${e.marcadoManual ? 'Manual (Rectoría)' : 'Online'}</td>
-            <td style="font-size:11px;">${e.fecha || '—'}</td>
-        </tr>`;
-    });
+    let bodyHtml = '';
 
-    const docHtml = `
-    <!DOCTYPE html>
-    <html lang="es">
-    <head>
-        <meta charset="UTF-8">
-        <title>Reporte de Evaluaciones — Universidad del Aluminio</title>
-        <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 12px; color: #1e293b; margin: 25px; }
-            .header { border-bottom: 2px solid #0f2b48; padding-bottom: 15px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; }
-            .title { font-size: 20px; font-weight: bold; color: #0f2b48; }
-            .subtitle { font-size: 13px; color: #64748b; margin-top: 4px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-            th { background-color: #0f2b48; color: white; text-align: left; padding: 8px; font-size: 11px; text-transform: uppercase; }
-            td { border-bottom: 1px solid #e2e8f0; padding: 7px 8px; }
-            tr:nth-child(even) { background-color: #f8fafc; }
-            .kpis { display: flex; gap: 20px; margin-bottom: 15px; background: #f1f5f9; padding: 12px; border-radius: 6px; }
-            .kpi-box { flex: 1; text-align: center; }
-            .kpi-num { font-size: 16px; font-weight: bold; color: #0f2b48; }
-            .kpi-lbl { font-size: 10px; color: #64748b; text-transform: uppercase; }
-            @media print {
-                .no-print { display: none; }
-                body { margin: 0; }
-            }
-        </style>
-    </head>
-    <body>
-        <div class="no-print" style="margin-bottom: 15px;">
-            <button onclick="window.print()" style="padding: 8px 16px; background: #0f2b48; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
-                🖨️ Imprimir / Guardar como PDF
-            </button>
-            <span style="margin-left: 10px; color: #64748b;">(Usa Ctrl+P o el botón para guardar como PDF)</span>
-        </div>
-        <div class="header">
-            <div>
-                <div class="title">Universidad del Aluminio • Panel Rectoral</div>
-                <div class="subtitle">Reporte Detallado de Resultados de Evaluaciones y Exámenes</div>
-            </div>
-            <div style="text-align: right; font-size: 11px; color: #64748b;">
-                Fecha de Emisión: ${hoy}<br>
-                Total Evaluaciones: ${_evaluacionesFiltradas.length}
-            </div>
-        </div>
+    if (_modoVistaEval === 'agrupada' && _usuariosAgrupados.length > 0) {
+        // Modo Agrupado por Colaborador
+        _usuariosAgrupados.forEach((u, uIdx) => {
+            let modRows = '';
+            u.evaluaciones.forEach((e, mIdx) => {
+                modRows += `
+                <tr>
+                    <td style="text-align:center; width:30px;">${mIdx + 1}</td>
+                    <td><strong>${e.cursoTitulo}</strong></td>
+                    <td>${e.moduloTitulo}</td>
+                    <td style="text-align:center; font-weight:bold; color:${e.aprobado ? '#059669' : '#dc2626'};">${e.calificacion.toFixed(1)} pts</td>
+                    <td style="text-align:center;">${e.aprobado ? '<span style="color:#059669; font-weight:bold;">Aprobado</span>' : '<span style="color:#dc2626; font-weight:bold;">Reprobado</span>'}</td>
+                    <td style="text-align:center;">${e.intentos}</td>
+                    <td>${e.marcadoManual ? 'Manual (Rectoría)' : 'Online'}</td>
+                    <td style="font-size:11px;">${e.fecha || '—'}</td>
+                </tr>`;
+            });
+
+            bodyHtml += `
+            <div style="margin-bottom: 22px; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; page-break-inside: avoid;">
+                <div style="background-color: #f1f5f9; padding: 10px 14px; border-bottom: 1px solid #cbd5e1; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <strong style="font-size: 14px; color: #0f2b48;">${uIdx + 1}. ${u.usuarioNombre}</strong>
+                        <span style="color: #64748b; font-size: 12px; margin-left: 8px;">(CI: ${u.usuarioId} • ${u.rolNombre})</span>
+                    </div>
+                    <div style="font-size: 12px;">
+                        <strong>Promedio:</strong> <span style="color: ${u.promedio >= 70 ? '#059669' : '#dc2626'}; font-weight: bold;">${u.promedio} pts</span> •
+                        <strong>Módulos cursados:</strong> ${u.totalModulos} (${u.aprobados} aprobados)
+                    </div>
+                </div>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background-color: #f8fafc; font-size: 11px; color: #475569; text-transform: uppercase;">
+                            <th style="padding: 6px 8px; border-bottom: 1px solid #cbd5e1;">#</th>
+                            <th style="padding: 6px 8px; border-bottom: 1px solid #cbd5e1;">Curso</th>
+                            <th style="padding: 6px 8px; border-bottom: 1px solid #cbd5e1;">Módulo Evaluado</th>
+                            <th style="padding: 6px 8px; border-bottom: 1px solid #cbd5e1; text-align:center;">Calificación</th>
+                            <th style="padding: 6px 8px; border-bottom: 1px solid #cbd5e1; text-align:center;">Estado</th>
+                            <th style="padding: 6px 8px; border-bottom: 1px solid #cbd5e1; text-align:center;">Intentos</th>
+                            <th style="padding: 6px 8px; border-bottom: 1px solid #cbd5e1;">Modalidad</th>
+                            <th style="padding: 6px 8px; border-bottom: 1px solid #cbd5e1;">Fecha</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${modRows}
+                    </tbody>
+                </table>
+            </div>`;
+        });
+    } else {
+        // Modo Lista Plana Tradicional
+        let rowsHtml = '';
+        _evaluacionesFiltradas.forEach((e, idx) => {
+            rowsHtml += `
+            <tr>
+                <td style="text-align:center;">${idx + 1}</td>
+                <td><strong>${e.usuarioNombre}</strong><br><small style="color:#666;">CI: ${e.usuarioId} • ${e.rolNombre}</small></td>
+                <td>${e.cursoTitulo}</td>
+                <td>${e.moduloTitulo}</td>
+                <td style="text-align:center; font-weight:bold; color:${e.aprobado ? '#059669' : '#dc2626'};">${e.calificacion.toFixed(1)} pts</td>
+                <td style="text-align:center;">${e.aprobado ? '<span style="color:#059669; font-weight:bold;">Aprobado</span>' : '<span style="color:#dc2626; font-weight:bold;">Reprobado</span>'}</td>
+                <td style="text-align:center;">${e.intentos}</td>
+                <td>${e.marcadoManual ? 'Manual (Rectoría)' : 'Online'}</td>
+                <td style="font-size:11px;">${e.fecha || '—'}</td>
+            </tr>`;
+        });
+
+        bodyHtml = `
         <table>
             <thead>
                 <tr>
@@ -1233,7 +1671,48 @@ function imprimirReporteEvaluaciones() {
             <tbody>
                 ${rowsHtml}
             </tbody>
-        </table>
+        </table>`;
+    }
+
+    const docHtml = `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <title>Reporte de Evaluaciones — Universidad del Aluminio</title>
+        <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 12px; color: #1e293b; margin: 25px; }
+            .header { border-bottom: 2px solid #0f2b48; padding-bottom: 15px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; }
+            .title { font-size: 20px; font-weight: bold; color: #0f2b48; }
+            .subtitle { font-size: 13px; color: #64748b; margin-top: 4px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 5px; }
+            th { background-color: #0f2b48; color: white; text-align: left; padding: 7px 8px; font-size: 11px; text-transform: uppercase; }
+            td { border-bottom: 1px solid #e2e8f0; padding: 6px 8px; }
+            tr:nth-child(even) { background-color: #f8fafc; }
+            @media print {
+                .no-print { display: none; }
+                body { margin: 0; }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="no-print" style="margin-bottom: 15px;">
+            <button onclick="window.print()" style="padding: 8px 16px; background: #0f2b48; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                🖨️ Imprimir / Guardar como PDF
+            </button>
+            <span style="margin-left: 10px; color: #64748b;">(Usa Ctrl+P o el botón para guardar como PDF)</span>
+        </div>
+        <div class="header">
+            <div>
+                <div class="title">Universidad del Aluminio • Panel Rectoral</div>
+                <div class="subtitle">Reporte de Calificaciones ${(_modoVistaEval === 'agrupada' ? 'Agrupado por Colaborador' : 'Detallado')}</div>
+            </div>
+            <div style="text-align: right; font-size: 11px; color: #64748b;">
+                Fecha de Emisión: ${hoy}<br>
+                ${_modoVistaEval === 'agrupada' ? `Total Colaboradores: ${_usuariosAgrupados.length} • ` : ''}Total Calificaciones: ${_evaluacionesFiltradas.length}
+            </div>
+        </div>
+        ${bodyHtml}
     </body>
     </html>`;
 
@@ -1254,17 +1733,22 @@ function renderRobustReports() {
 }
 
 // Exportar al scope global
-window.renderRobustReports          = renderRobustReports;
-window.renderReporteEvaluaciones   = renderReporteEvaluaciones;
-window.filtrarTablaEvaluaciones    = filtrarTablaEvaluaciones;
-window.exportarEvaluacionesXLSX    = exportarEvaluacionesXLSX;
-window.exportarEvaluacionesCSV     = exportarEvaluacionesCSV;
-window.imprimirReporteEvaluaciones = imprimirReporteEvaluaciones;
-window.cambiarFilasPorPaginaEval   = cambiarFilasPorPaginaEval;
-window.paginaAnteriorEval          = paginaAnteriorEval;
-window.paginaSiguienteEval         = paginaSiguienteEval;
-window.renderBrechasAprendizaje    = renderBrechasAprendizaje;
-window.renderTopLearners           = renderTopLearners;
-window.renderCumplimientoCargo     = renderCumplimientoCargo;
-window.exportarReporteXLSX         = exportarReporteXLSX;
+window.renderRobustReports            = renderRobustReports;
+window.renderReporteEvaluaciones     = renderReporteEvaluaciones;
+window.renderVistaEvaluaciones       = renderVistaEvaluaciones;
+window.cambiarModoVistaEvaluaciones  = cambiarModoVistaEvaluaciones;
+window.expandirTodosColaboradores    = expandirTodosColaboradores;
+window.toggleColaboradorAcordeon     = toggleColaboradorAcordeon;
+window.filtrarTablaEvaluaciones      = filtrarTablaEvaluaciones;
+window.exportarEvaluacionesXLSX      = exportarEvaluacionesXLSX;
+window.exportarEvaluacionesCSV       = exportarEvaluacionesCSV;
+window.imprimirReporteEvaluaciones   = imprimirReporteEvaluaciones;
+window.cambiarFilasPorPaginaEval     = cambiarFilasPorPaginaEval;
+window.paginaAnteriorEval            = paginaAnteriorEval;
+window.paginaSiguienteEval           = paginaSiguienteEval;
+window.renderBrechasAprendizaje      = renderBrechasAprendizaje;
+window.renderTopLearners             = renderTopLearners;
+window.renderCumplimientoCargo       = renderCumplimientoCargo;
+window.exportarReporteXLSX           = exportarReporteXLSX;
+
 

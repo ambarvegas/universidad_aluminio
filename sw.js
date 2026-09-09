@@ -4,13 +4,14 @@
  * se reflejen de inmediato mientras se mantiene la capacidad offline.
  */
 
-const CACHE_NAME    = 'unialuminio-v16';
-const CACHE_DYNAMIC = 'unialuminio-dynamic-v16';
+const CACHE_NAME    = 'unialuminio-v21';
+const CACHE_DYNAMIC = 'unialuminio-dynamic-v21';
 
 // Assets estáticos que se cachean al instalar el SW
 const STATIC_ASSETS = [
     './',
     './index.html',
+    './detalle.html',
     './login.html',
     './admin.html',
     './style.css',
@@ -28,7 +29,9 @@ const STATIC_ASSETS = [
     // Bootstrap y fuentes CDN
     'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css',
     'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js',
-    'https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css'
+    'https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css',
+    'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js'
 ];
 
 // ============================================================

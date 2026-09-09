@@ -102,6 +102,10 @@ window.API = (() => {
             return _post('solicitar_registro', payload);
         },
 
+        async cambiarClave(claveActual, claveNueva) {
+            return _post('cambiar_clave', { claveActual, claveNueva });
+        },
+
         // ---- CATALOGO Y CURSOS (Carga bajo demanda) ----
         async cargarCatalogo() {
             return _get('catalogo');
