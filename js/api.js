@@ -119,6 +119,19 @@ window.API = (() => {
             }
         },
 
+        // ---- EVALUACION DE MODULO (servidor) ----
+        async evaluarModulo(payload) {
+            _setSaving(true);
+            try {
+                const r = await _post('evaluar_modulo', payload);
+                _setSaving(false);
+                return r;
+            } catch (e) {
+                _setSaving(false);
+                throw e;
+            }
+        },
+
         // ---- PROGRESO (granular) ----
         async guardarProgreso(payload) {
             _setSaving(true);

@@ -98,63 +98,6 @@ function is_admin(): bool {
     return in_array($_SESSION['user_rol'] ?? '', ['admin', 'supervisor'], true);
 }
 
-/**
- * Construye la DB filtrada para un participante.
- * Solo recibe: sus propios datos + cursos y carreras accesibles + su rol config.
- */
-function db_read_for_participant(mysqli $conn, string $userId, string $userRol): array {
-    // Leer datos completos (es eficiente desde tablas relacionales)
-    $full = db_read_all($conn);
-
-    // Solo su usuario (sin clave)
-    $miUsuario = null;
-    foreach ($full['usuarios'] as $u) {
-        if ($u['id'] === $userId) {
-            $miUsuario = $u;
-            unset($miUsuario['clave']);
-            break;
-        }
-    }
-
-    // Cursos accesibles: los asignados directamente + los del rol
-    $asignados = $miUsuario['asignados'] ?? [];
-    $rolConfig  = null;
-    foreach ($full['rolesConfig'] as $r) {
-        if ($r['id'] === $userRol) {
-            $rolConfig = $r;
-            break;
-        }
-    }
-    $cursosRol = $rolConfig ? ($rolConfig['cursos'] ?? []) : [];
-    $cursosIds = array_unique(array_merge($asignados, $cursosRol));
-
-    // Cursos del catálogo que puede ver (incluir todos los cursos no en construcción del rol + asignados)
-    $cursosFiltrados = [];
-    foreach ($full['cursos'] as $c) {
-        if (in_array($c['id'], $cursosIds, true) || ($rolConfig && ($rolConfig['permisos'][0] ?? '') === '*')) {
-            $cursosFiltrados[] = $c;
-        }
-    }
-
-    // Carreras accesibles por el rol
-    $carrerasRol = $rolConfig ? ($rolConfig['carreras'] ?? []) : [];
-    $carrerasFiltradas = [];
-    foreach ($full['carreras'] as $c) {
-        if (in_array($c['id'], $carrerasRol, true)) {
-            $carrerasFiltradas[] = $c;
-        }
-    }
-
-    return [
-        'usuarios'            => $miUsuario ? [$miUsuario] : [],
-        'cursos'              => $cursosFiltrados,
-        'carreras'            => $carrerasFiltradas,
-        'rolesConfig'         => $rolConfig ? [$rolConfig] : [],
-        'solicitudesRegistro' => [],
-        'solicitudesCursos'   => [],
-        'configuracion'       => $full['configuracion'],
-    ];
-}
 
 // ============================================================
 // ROUTER
@@ -438,6 +381,34 @@ switch ($action) {
         catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 
+    // ------ EVALUACION SEGURA DE MODULO EN EL SERVIDOR -----------
+    case 'evaluar_modulo':
+        require_session();
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body = jsonBody();
+        $uid  = $_SESSION['user_id'];
+        $cid  = trim($body['curso_id'] ?? '');
+        $midx = isset($body['modulo_idx']) ? (int)$body['modulo_idx'] : -1;
+        $resp = $body['respuestas'] ?? [];
+
+        if (!$cid || $midx < 0 || !is_array($resp)) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Parámetros inválidos. Se requieren curso_id, modulo_idx y respuestas (array).']);
+            break;
+        }
+
+        try {
+            $resultado = db_evaluar_modulo($conn, $uid, $cid, $midx, $resp);
+            echo json_encode($resultado, JSON_UNESCAPED_UNICODE);
+        } catch (InvalidArgumentException $e) {
+            http_response_code(400);
+            echo json_encode(['error' => $e->getMessage()]);
+        } catch (Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Error al evaluar módulo: ' . $e->getMessage()]);
+        }
+        break;
+
     // ------ PROGRESO (el endpoint mas llamado) -------------------
     case 'guardar_progreso':
         require_session();
@@ -454,19 +425,66 @@ switch ($action) {
             break;
         }
 
-        $prog = [
-            'leccionesCompletadas' => $body['leccionesCompletadas'] ?? [],
-            'modulosAprobados'     => $body['modulosAprobados']     ?? [],
-            'medallas'             => $body['medallas']             ?? [],
-            'evaluaciones'         => $body['evaluaciones']         ?? (object)[],
-            'intentos'             => $body['intentos']             ?? (object)[],
-        ];
         try {
-            db_upsert_progreso($conn, $uid, $cid, $prog);
-            if (!empty($body['certificadosCurso']) && is_array($body['certificadosCurso'])) {
-                foreach ($body['certificadosCurso'] as $certId) {
-                    $s = $conn->prepare("INSERT IGNORE INTO `usuario_certificados_curso` (usuario_id, curso_id) VALUES (?,?)");
-                    $s->bind_param('ss', $uid, $certId); $s->execute();
+            if (!is_admin()) {
+                // Participante: solo puede marcar lecciones completadas libremente.
+                // Evaluaciones, intentos y módulos con examen solo se actualizan vía 'evaluar_modulo'.
+                $stmtCheck = $conn->prepare("SELECT modulos_aprobados, medallas, evaluaciones, intentos FROM `usuario_progreso` WHERE usuario_id = ? AND curso_id = ?");
+                $stmtCheck->bind_param('ss', $uid, $cid);
+                $stmtCheck->execute();
+                $resCheck = $stmtCheck->get_result();
+                $dbModAprob = [];
+                $dbMedallas = [];
+                $dbEvals    = [];
+                $dbIntentos = [];
+                if ($resCheck && $rCheck = $resCheck->fetch_assoc()) {
+                    $dbModAprob = json_decode($rCheck['modulos_aprobados'] ?? '[]', true) ?? [];
+                    $dbMedallas = json_decode($rCheck['medallas'] ?? '[]', true) ?? [];
+                    $dbEvals    = json_decode($rCheck['evaluaciones'] ?? '{}', true) ?? [];
+                    $dbIntentos = json_decode($rCheck['intentos'] ?? '{}', true) ?? [];
+                }
+
+                // Permitir aprobar módulos sin preguntas (solo lectura/video) si el frontend los envió
+                $incomingMod = (array)($body['modulosAprobados'] ?? []);
+                $allowedMod = $dbModAprob;
+                $allowedMed = $dbMedallas;
+                foreach ($incomingMod as $mNum) {
+                    $mNumStr = (string)$mNum;
+                    if (in_array($mNumStr, $allowedMod, true)) continue;
+                    $mIdxInt = (int)$mNum;
+                    $sQ = $conn->prepare("SELECT COUNT(p.id) as num_q FROM `curso_modulos` m LEFT JOIN `curso_preguntas` p ON p.modulo_id = m.id WHERE m.curso_id = ? AND m.orden = ?");
+                    $sQ->bind_param('si', $cid, $mIdxInt);
+                    $sQ->execute();
+                    $rQ = $sQ->get_result()->fetch_assoc();
+                    if ($rQ && (int)$rQ['num_q'] === 0) {
+                        $allowedMod[] = $mNumStr;
+                        $allowedMed[] = $mNumStr;
+                    }
+                }
+
+                $prog = [
+                    'leccionesCompletadas' => $body['leccionesCompletadas'] ?? [],
+                    'modulosAprobados'     => array_values(array_unique($allowedMod)),
+                    'medallas'             => array_values(array_unique($allowedMed)),
+                    'evaluaciones'         => (object)$dbEvals,
+                    'intentos'             => (object)$dbIntentos,
+                ];
+                db_upsert_progreso($conn, $uid, $cid, $prog);
+            } else {
+                // Admin: puede guardar todo tal como viene
+                $prog = [
+                    'leccionesCompletadas' => $body['leccionesCompletadas'] ?? [],
+                    'modulosAprobados'     => $body['modulosAprobados']     ?? [],
+                    'medallas'             => $body['medallas']             ?? [],
+                    'evaluaciones'         => $body['evaluaciones']         ?? (object)[],
+                    'intentos'             => $body['intentos']             ?? (object)[],
+                ];
+                db_upsert_progreso($conn, $uid, $cid, $prog);
+                if (!empty($body['certificadosCurso']) && is_array($body['certificadosCurso'])) {
+                    foreach ($body['certificadosCurso'] as $certId) {
+                        $s = $conn->prepare("INSERT IGNORE INTO `usuario_certificados_curso` (usuario_id, curso_id) VALUES (?,?)");
+                        $s->bind_param('ss', $uid, $certId); $s->execute();
+                    }
                 }
             }
             echo json_encode(['message' => 'Progreso guardado']);

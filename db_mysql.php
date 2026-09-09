@@ -1349,6 +1349,80 @@ function db_read_safe(mysqli $conn): array {
     return $data;
 }
 
+/**
+ * Construye la DB filtrada para un participante.
+ * Solo recibe: sus propios datos + cursos y carreras accesibles + su rol config.
+ * Sanitiza las evaluaciones removiendo 'correcta' para evitar trampas en el frontend.
+ */
+function db_read_for_participant(mysqli $conn, string $userId, string $userRol): array {
+    $full = db_read_all($conn);
+
+    // Solo su usuario (sin clave)
+    $miUsuario = null;
+    foreach ($full['usuarios'] as $u) {
+        if ($u['id'] === $userId) {
+            $miUsuario = $u;
+            unset($miUsuario['clave']);
+            break;
+        }
+    }
+
+    // Cursos accesibles: los asignados directamente + los del rol
+    $asignados = $miUsuario['asignados'] ?? [];
+    $rolConfig  = null;
+    foreach ($full['rolesConfig'] as $r) {
+        if ($r['id'] === $userRol) {
+            $rolConfig = $r;
+            break;
+        }
+    }
+    $cursosRol = $rolConfig ? ($rolConfig['cursos'] ?? []) : [];
+    $cursosIds = array_unique(array_merge($asignados, $cursosRol));
+
+    // Cursos del catálogo que puede ver
+    $cursosFiltrados = [];
+    foreach ($full['cursos'] as $c) {
+        if (in_array($c['id'], $cursosIds, true) || ($rolConfig && ($rolConfig['permisos'][0] ?? '') === '*')) {
+            $cursosFiltrados[] = $c;
+        }
+    }
+
+    // Carreras accesibles por el rol
+    $carrerasRol = $rolConfig ? ($rolConfig['carreras'] ?? []) : [];
+    $carrerasFiltradas = [];
+    foreach ($full['carreras'] as $c) {
+        if (in_array($c['id'], $carrerasRol, true)) {
+            $carrerasFiltradas[] = $c;
+        }
+    }
+
+    // Sanitizar preguntas: los participantes no deben recibir el campo 'correcta'
+    foreach ($cursosFiltrados as &$c) {
+        if (!empty($c['modulos']) && is_array($c['modulos'])) {
+            foreach ($c['modulos'] as &$m) {
+                if (!empty($m['evaluacion']['preguntas']) && is_array($m['evaluacion']['preguntas'])) {
+                    foreach ($m['evaluacion']['preguntas'] as &$p) {
+                        unset($p['correcta']);
+                    }
+                    unset($p);
+                }
+            }
+            unset($m);
+        }
+    }
+    unset($c);
+
+    return [
+        'usuarios'            => $miUsuario ? [$miUsuario] : [],
+        'cursos'              => $cursosFiltrados,
+        'carreras'            => $carrerasFiltradas,
+        'rolesConfig'         => $rolConfig ? [$rolConfig] : [],
+        'solicitudesRegistro' => [],
+        'solicitudesCursos'   => [],
+        'configuracion'       => $full['configuracion'],
+    ];
+}
+
 // ============================================================
 // ESCRITURAS GRANULARES — Por entidad individual
 // ============================================================
@@ -1601,6 +1675,279 @@ function db_upsert_progreso(mysqli $conn, string $userId, string $cursoId, array
             $stmtIn->execute();
         }
     }
+}
+
+/**
+ * Evalúa las respuestas de un módulo de forma segura en el servidor.
+ * Calcula calificación, intentos, aprobación y certificados, y persiste directamente en MySQL.
+ *
+ * @param mysqli $conn Conexión a la base de datos
+ * @param string $userId ID del usuario (cédula)
+ * @param string $cursoId ID del curso
+ * @param int $moduloIdx Índice orden del módulo (0, 1, 2...)
+ * @param array $respuestas Arreglo de opciones seleccionadas por el alumno [idxPregunta => opcionElegida]
+ * @return array Resultado detallado de la evaluación y nuevo estado del progreso
+ */
+function db_evaluar_modulo(mysqli $conn, string $userId, string $cursoId, int $moduloIdx, array $respuestas): array {
+    // 1. Validar existencia del usuario
+    $stmtU = $conn->prepare("SELECT id, rol FROM `usuarios` WHERE id = ?");
+    $stmtU->bind_param('s', $userId);
+    $stmtU->execute();
+    $resU = $stmtU->get_result();
+    if (!$resU || !($uRow = $resU->fetch_assoc())) {
+        throw new InvalidArgumentException("Usuario no encontrado: $userId");
+    }
+
+    // 2. Buscar el módulo por curso_id y orden
+    $stmtM = $conn->prepare("SELECT id, orden, titulo FROM `curso_modulos` WHERE curso_id = ? AND orden = ?");
+    $stmtM->bind_param('si', $cursoId, $moduloIdx);
+    $stmtM->execute();
+    $resM = $stmtM->get_result();
+    if (!$resM || !($mRow = $resM->fetch_assoc())) {
+        throw new InvalidArgumentException("Módulo no encontrado en curso $cursoId con orden $moduloIdx");
+    }
+    $moduloId = (int)$mRow['id'];
+    $moduloTitulo = $mRow['titulo'];
+
+    // 3. Obtener las preguntas del módulo en orden
+    $stmtQ = $conn->prepare("SELECT id, orden, enunciado, opciones, correcta FROM `curso_preguntas` WHERE modulo_id = ? ORDER BY orden ASC");
+    $stmtQ->bind_param('i', $moduloId);
+    $stmtQ->execute();
+    $resQ = $stmtQ->get_result();
+    $preguntas = [];
+    while ($qRow = $resQ->fetch_assoc()) {
+        $preguntas[] = $qRow;
+    }
+    if (empty($preguntas)) {
+        throw new InvalidArgumentException("El módulo \"$moduloTitulo\" no posee preguntas de evaluación configuradas.");
+    }
+
+    // 4. Comparar respuestas y calcular puntaje
+    $total = count($preguntas);
+    $aciertos = 0;
+    $preguntasDetalle = [];
+
+    foreach ($preguntas as $idx => $p) {
+        $userSelected = isset($respuestas[$idx]) ? (int)$respuestas[$idx] : -1;
+        $correcta = (int)$p['correcta'];
+        $esCorrecta = ($userSelected === $correcta);
+        if ($esCorrecta) {
+            $aciertos++;
+        }
+
+        $opciones = is_string($p['opciones']) ? json_decode($p['opciones'], true) : $p['opciones'];
+        if (!is_array($opciones)) $opciones = [];
+
+        $preguntasDetalle[] = [
+            'orden'        => (int)$p['orden'],
+            'enunciado'    => $p['enunciado'],
+            'opciones'     => $opciones,
+            'seleccionada' => $userSelected,
+            'correcta'     => $correcta,
+            'esCorrecta'   => $esCorrecta,
+        ];
+    }
+
+    $calificacion = (int)round(($aciertos / $total) * 100);
+
+    // Obtener minAprobacion de configuracion (default 75)
+    $minAprobacion = 75;
+    $resCfg = $conn->query("SELECT valor FROM `configuracion` WHERE clave = 'minAprobacion'");
+    if ($resCfg && $rCfg = $resCfg->fetch_assoc()) {
+        $v = (int)$rCfg['valor'];
+        if ($v > 0) $minAprobacion = $v;
+    }
+
+    $aprobado = ($calificacion >= $minAprobacion);
+    $mNumStr = (string)$moduloIdx;
+    $fechaIso = date('c');
+
+    // 5. Incrementar número de intentos
+    $stmtIntSel = $conn->prepare("SELECT intentos FROM `usuario_intentos` WHERE usuario_id = ? AND curso_id = ? AND modulo_num = ?");
+    $stmtIntSel->bind_param('sss', $userId, $cursoId, $mNumStr);
+    $stmtIntSel->execute();
+    $resInt = $stmtIntSel->get_result();
+    $numIntentos = 1;
+    if ($resInt && $rInt = $resInt->fetch_assoc()) {
+        $numIntentos = ((int)$rInt['intentos']) + 1;
+    }
+    $stmtIntUp = $conn->prepare("INSERT INTO `usuario_intentos` (usuario_id, curso_id, modulo_num, intentos) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE intentos = VALUES(intentos)");
+    $stmtIntUp->bind_param('sssi', $userId, $cursoId, $mNumStr, $numIntentos);
+    $stmtIntUp->execute();
+
+    // 6. Registrar evaluación en usuario_evaluaciones
+    $aprobadoInt = $aprobado ? 1 : 0;
+    $califFloat = (float)$calificacion;
+    $stmtEv = $conn->prepare("INSERT INTO `usuario_evaluaciones` (usuario_id, curso_id, modulo_num, calificacion, aprobado, marcado_manual, fecha)
+        VALUES (?,?,?,?,?,0,?)
+        ON DUPLICATE KEY UPDATE calificacion = VALUES(calificacion), aprobado = VALUES(aprobado), fecha = VALUES(fecha)");
+    $stmtEv->bind_param('sssdis', $userId, $cursoId, $mNumStr, $califFloat, $aprobadoInt, $fechaIso);
+    $stmtEv->execute();
+
+    // 7. Si aprobó, registrar módulo aprobado, medalla y verificar certificación
+    $certificadoOtorgado = false;
+    if ($aprobado) {
+        $stmtMod = $conn->prepare("INSERT IGNORE INTO `usuario_modulos_aprobados` (usuario_id, curso_id, modulo_num) VALUES (?,?,?)");
+        $stmtMod->bind_param('sss', $userId, $cursoId, $mNumStr);
+        $stmtMod->execute();
+
+        $stmtMed = $conn->prepare("INSERT IGNORE INTO `usuario_medallas` (usuario_id, curso_id, medalla_num) VALUES (?,?,?)");
+        $stmtMed->bind_param('sss', $userId, $cursoId, $mNumStr);
+        $stmtMed->execute();
+
+        // Verificar si completó todos los módulos con evaluación de este curso
+        $stmtTot = $conn->prepare("SELECT COUNT(DISTINCT m.id) as total_eval FROM `curso_modulos` m JOIN `curso_preguntas` p ON p.modulo_id = m.id WHERE m.curso_id = ?");
+        $stmtTot->bind_param('s', $cursoId);
+        $stmtTot->execute();
+        $resTot = $stmtTot->get_result();
+        $totalEval = ($resTot && $rTot = $resTot->fetch_assoc()) ? (int)$rTot['total_eval'] : 0;
+
+        $stmtApr = $conn->prepare("SELECT COUNT(DISTINCT modulo_num) as aprobados FROM `usuario_modulos_aprobados` WHERE usuario_id = ? AND curso_id = ?");
+        $stmtApr->bind_param('ss', $userId, $cursoId);
+        $stmtApr->execute();
+        $resApr = $stmtApr->get_result();
+        $aprobados = ($resApr && $rApr = $resApr->fetch_assoc()) ? (int)$rApr['aprobados'] : 0;
+
+        if ($totalEval > 0 && $aprobados >= $totalEval) {
+            $stmtCert = $conn->prepare("INSERT IGNORE INTO `usuario_certificados_curso` (usuario_id, curso_id) VALUES (?,?)");
+            $stmtCert->bind_param('ss', $userId, $cursoId);
+            $stmtCert->execute();
+            if ($stmtCert->affected_rows > 0) {
+                $certificadoOtorgado = true;
+            }
+        }
+    }
+
+    // 8. Sincronizar espejo JSON usuario_progreso legacy
+    $stmtProg = $conn->prepare("SELECT lecciones_completadas, modulos_aprobados, medallas, evaluaciones, intentos FROM `usuario_progreso` WHERE usuario_id = ? AND curso_id = ?");
+    $stmtProg->bind_param('ss', $userId, $cursoId);
+    $stmtProg->execute();
+    $resProg = $stmtProg->get_result();
+    $curProg = [
+        'lecciones_completadas' => [],
+        'modulos_aprobados'     => [],
+        'medallas'              => [],
+        'evaluaciones'          => [],
+        'intentos'              => []
+    ];
+    if ($resProg && $pRow = $resProg->fetch_assoc()) {
+        $curProg['lecciones_completadas'] = json_decode($pRow['lecciones_completadas'] ?? '[]', true) ?? [];
+        $curProg['modulos_aprobados']     = json_decode($pRow['modulos_aprobados'] ?? '[]', true) ?? [];
+        $curProg['medallas']              = json_decode($pRow['medallas'] ?? '[]', true) ?? [];
+        $curProg['evaluaciones']          = json_decode($pRow['evaluaciones'] ?? '{}', true) ?? [];
+        $curProg['intentos']              = json_decode($pRow['intentos'] ?? '{}', true) ?? [];
+    }
+
+    $curProg['intentos'][$mNumStr] = $numIntentos;
+    $curProg['evaluaciones'][$mNumStr] = [
+        'calificacion' => $calificacion,
+        'aprobado'     => $aprobado,
+        'fecha'        => $fechaIso
+    ];
+    if ($aprobado) {
+        if (!in_array($mNumStr, $curProg['modulos_aprobados'], true)) {
+            $curProg['modulos_aprobados'][] = $mNumStr;
+        }
+        if (!in_array($mNumStr, $curProg['medallas'], true)) {
+            $curProg['medallas'][] = $mNumStr;
+        }
+    }
+
+    $lecJson  = json_encode(array_values($curProg['lecciones_completadas']));
+    $modJson  = json_encode(array_values($curProg['modulos_aprobados']));
+    $medJson  = json_encode(array_values($curProg['medallas']));
+    $evalJson = json_encode((object)$curProg['evaluaciones'], JSON_FORCE_OBJECT);
+    $intJson  = json_encode((object)$curProg['intentos'], JSON_FORCE_OBJECT);
+
+    $stmtUpProg = $conn->prepare("INSERT INTO `usuario_progreso` (usuario_id, curso_id, lecciones_completadas, modulos_aprobados, medallas, evaluaciones, intentos)
+        VALUES (?,?,?,?,?,?,?)
+        ON DUPLICATE KEY UPDATE
+            modulos_aprobados = VALUES(modulos_aprobados),
+            medallas = VALUES(medallas),
+            evaluaciones = VALUES(evaluaciones),
+            intentos = VALUES(intentos)");
+    $stmtUpProg->bind_param('sssssss', $userId, $cursoId, $lecJson, $modJson, $medJson, $evalJson, $intJson);
+    $stmtUpProg->execute();
+
+    // 9. Verificar carreras completadas
+    $stmtUC = $conn->prepare("SELECT curso_id FROM `usuario_certificados_curso` WHERE usuario_id = ?");
+    $stmtUC->bind_param('s', $userId);
+    $stmtUC->execute();
+    $resUC = $stmtUC->get_result();
+    $userCertsCurso = [];
+    while ($rUC = $resUC->fetch_assoc()) {
+        $userCertsCurso[] = $rUC['curso_id'];
+    }
+
+    $stmtCars = $conn->prepare("SELECT carrera_id FROM `usuario_carreras_asignadas` WHERE usuario_id = ?");
+    $stmtCars->bind_param('s', $userId);
+    $stmtCars->execute();
+    $resCars = $stmtCars->get_result();
+    $carreraOtorgada = false;
+    while ($carRow = $resCars->fetch_assoc()) {
+        $carId = $carRow['carrera_id'];
+        $stmtCC = $conn->prepare("SELECT curso_id FROM `carrera_cursos` WHERE carrera_id = ?");
+        $stmtCC->bind_param('s', $carId);
+        $stmtCC->execute();
+        $resCC = $stmtCC->get_result();
+        $reqCursos = [];
+        while ($ccRow = $resCC->fetch_assoc()) {
+            $reqCursos[] = $ccRow['curso_id'];
+        }
+        if (!empty($reqCursos)) {
+            $completa = true;
+            foreach ($reqCursos as $rcId) {
+                if (!in_array($rcId, $userCertsCurso, true)) {
+                    $completa = false;
+                    break;
+                }
+            }
+            if ($completa) {
+                $stmtUpCar = $conn->prepare("UPDATE `usuario_carreras_asignadas` SET estado = 'Completada' WHERE usuario_id = ? AND carrera_id = ?");
+                $stmtUpCar->bind_param('ss', $userId, $carId);
+                $stmtUpCar->execute();
+
+                $stmtInsCertCar = $conn->prepare("INSERT IGNORE INTO `usuario_certificados_carrera` (usuario_id, carrera_id) VALUES (?,?)");
+                $stmtInsCertCar->bind_param('ss', $userId, $carId);
+                $stmtInsCertCar->execute();
+                if ($stmtInsCertCar->affected_rows > 0) {
+                    $carreraOtorgada = true;
+                }
+            }
+        }
+    }
+
+    // Certificados de carrera del usuario
+    $stmtUCarr = $conn->prepare("SELECT carrera_id FROM `usuario_certificados_carrera` WHERE usuario_id = ?");
+    $stmtUCarr->bind_param('s', $userId);
+    $stmtUCarr->execute();
+    $resUCarr = $stmtUCarr->get_result();
+    $userCertsCarrera = [];
+    while ($rUCarr = $resUCarr->fetch_assoc()) {
+        $userCertsCarrera[] = $rUCarr['carrera_id'];
+    }
+
+    return [
+        'success'             => true,
+        'calificacion'        => $calificacion,
+        'aprobado'            => $aprobado,
+        'aciertos'            => $aciertos,
+        'total'               => $total,
+        'minAprobacion'       => $minAprobacion,
+        'numIntentos'         => $numIntentos,
+        'certificadoOtorgado' => $certificadoOtorgado,
+        'carreraOtorgada'     => $carreraOtorgada,
+        'preguntasDetalle'    => $preguntasDetalle,
+        'progreso'            => [
+            'leccionesCompletadas' => array_values($curProg['lecciones_completadas']),
+            'modulosAprobados'     => array_values($curProg['modulos_aprobados']),
+            'medallas'             => array_values($curProg['medallas']),
+            'evaluaciones'         => (object)$curProg['evaluaciones'],
+            'intentos'             => (object)$curProg['intentos'],
+        ],
+        'certificadosCurso'   => $userCertsCurso,
+        'certificadosCarrera' => $userCertsCarrera,
+    ];
 }
 
 /**

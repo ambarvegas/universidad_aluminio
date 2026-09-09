@@ -1434,14 +1434,11 @@ window.validarEvaluacionModulo = async (mIdx) => {
     const originalHtml = btn.innerHTML;
 
     try {
-        btn.disabled = true;
-        btn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>Calificando evaluación...`;
-
         const modulo = cursoActualData.modulos[mIdx];
         const preguntas = (modulo.evaluacion && modulo.evaluacion.preguntas) || [];
-        let aciertos = 0;
         const feedback = document.getElementById('feedback');
 
+        // 1. Verificar que todas las preguntas hayan sido respondidas
         let todasRespondidas = true;
         for (let i = 0; i < preguntas.length; i++) {
             const sel = document.querySelector(`input[name="q${i}"]:checked`);
@@ -1453,54 +1450,48 @@ window.validarEvaluacionModulo = async (mIdx) => {
 
         if (!todasRespondidas) {
             showToast("Por favor responde todas las preguntas antes de enviar la evaluación.", "warning");
-            btn.disabled = false;
-            btn.innerHTML = originalHtml;
             return;
         }
 
-        preguntas.forEach((p, i) => {
+        // 2. Recolectar respuestas seleccionadas
+        const respuestas = preguntas.map((_, i) => {
             const sel = document.querySelector(`input[name="q${i}"]:checked`);
-            if (sel && parseInt(sel.value) === p.correcta) aciertos++;
+            return sel ? parseInt(sel.value, 10) : -1;
         });
 
-        const porcentaje = Math.round((aciertos / preguntas.length) * 100);
-        const min = (db.configuracion && db.configuracion.minAprobacion) || 70;
+        // 3. Estado de carga en el botón
+        btn.disabled = true;
+        btn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>Calificando en el servidor...`;
 
-        if (!sesion.progreso[cursoActualData.id]) {
-            sesion.progreso[cursoActualData.id] = {
-                leccionesCompletadas: [],
-                modulosAprobados: []
-            };
+        // 4. Enviar respuestas al servidor para calificación segura
+        const res = await window.API.evaluarModulo({
+            curso_id: cursoActualData.id,
+            modulo_idx: mIdx,
+            respuestas: respuestas
+        });
+
+        // 5. Actualizar sesión y progreso local con la respuesta autorizada del servidor
+        if (!sesion.progreso) sesion.progreso = {};
+        sesion.progreso[cursoActualData.id] = res.progreso;
+        if (Array.isArray(res.certificadosCurso)) {
+            sesion.certificadosCurso = res.certificadosCurso;
         }
-        if (Array.isArray(sesion.progreso[cursoActualData.id])) {
-            sesion.progreso[cursoActualData.id] = {
-                leccionesCompletadas: sesion.progreso[cursoActualData.id],
-                modulosAprobados: []
-            };
+        if (Array.isArray(res.certificadosCarrera)) {
+            sesion.certificadosCarrera = res.certificadosCarrera;
         }
-        const progreso = sesion.progreso[cursoActualData.id];
+        if (typeof actualizarEstadoCarrerasUsuario === 'function') {
+            actualizarEstadoCarrerasUsuario(sesion);
+        }
+        sessionStorage.setItem('aluSesion', JSON.stringify(sesion));
 
-        if (!progreso.intentos) progreso.intentos = {};
-        if (!progreso.intentos[mIdx]) progreso.intentos[mIdx] = 0;
-        progreso.intentos[mIdx]++;
+        // 6. Deshabilitar botón de envío
+        btn.style.display = 'none';
 
-        const numIntentos = progreso.intentos[mIdx];
-        const maxIntentos = modulo.maxIntentos || 0;
-
-        if (!progreso.evaluaciones) progreso.evaluaciones = {};
-        progreso.evaluaciones[mIdx] = {
-            calificacion: porcentaje,
-            aprobado: porcentaje >= min,
-            fecha: new Date().toISOString()
-        };
-
+        // 7. Renderizar retroalimentación detallada de cada pregunta
         const quizArea = document.querySelector('.quiz-area');
-        if (quizArea) {
-            document.querySelectorAll('.quiz-area input').forEach(input => input.disabled = true);
-            quizArea.innerHTML = preguntas.map((p, i) => {
-                const selectedInput = document.querySelector(`input[name="q${i}"]:checked`);
-                const selectedVal = selectedInput ? parseInt(selectedInput.value) : -1;
-                const isCorrect = selectedVal === p.correcta;
+        if (quizArea && Array.isArray(res.preguntasDetalle)) {
+            quizArea.innerHTML = res.preguntasDetalle.map((p, i) => {
+                const isCorrect = p.esCorrecta;
                 return `
                     <div class="card p-3 mb-3 border ${isCorrect ? 'border-success bg-success bg-opacity-10' : 'border-danger bg-danger bg-opacity-10'}">
                         <h6 class="fw-bold d-flex justify-content-between align-items-center">
@@ -1513,10 +1504,10 @@ window.validarEvaluacionModulo = async (mIdx) => {
                             ${p.opciones.map((opt, oIdx) => {
                                 let labelStyle = "";
                                 if (oIdx === p.correcta) labelStyle = "font-weight-bold text-success";
-                                else if (oIdx === selectedVal) labelStyle = "text-danger text-decoration-line-through";
+                                else if (oIdx === p.seleccionada && !isCorrect) labelStyle = "text-danger text-decoration-line-through";
                                 return `
                                     <div class="py-1 small ${labelStyle}">
-                                        ${oIdx === p.correcta ? '✓ ' : (oIdx === selectedVal ? '✗ ' : '• ')}${opt}
+                                        ${oIdx === p.correcta ? '✓ ' : (oIdx === p.seleccionada ? '✗ ' : '• ')}${opt}
                                     </div>`;
                             }).join('')}
                         </div>
@@ -1524,66 +1515,56 @@ window.validarEvaluacionModulo = async (mIdx) => {
             }).join('');
         }
 
-        if (submitBtn = document.getElementById('btn-enviar-evaluacion')) {
-            submitBtn.style.display = 'none';
-        }
+        // 8. Renderizar tarjeta de resultado global
+        const min = res.minAprobacion || 75;
+        const porcentaje = res.calificacion;
+        const aciertos = res.aciertos;
+        const total = res.total;
 
-        if (porcentaje >= min) {
-            sesion.certificadosCurso = sesion.certificadosCurso || [];
-            if (!progreso.modulosAprobados) progreso.modulosAprobados = [];
-            if (!progreso.modulosAprobados.includes(String(mIdx))) {
-                progreso.modulosAprobados.push(String(mIdx));
+        if (res.aprobado) {
+            showToast('¡Felicitaciones! Has aprobado la evaluación del módulo.', 'success');
+            if (res.certificadoOtorgado) {
+                showToast('🎉 ¡Felicidades! Has completado y certificado este curso.', 'success');
             }
-
-            const modulosConEvaluacion = cursoActualData.modulos.filter(m =>
-                m.evaluacion && m.evaluacion.preguntas && m.evaluacion.preguntas.length > 0
-            ).length;
-            if (progreso.modulosAprobados.length >= modulosConEvaluacion) {
-                if (!sesion.certificadosCurso.includes(cursoActualData.id)) {
-                    sesion.certificadosCurso.push(cursoActualData.id);
-                }
+            if (res.carreraOtorgada) {
+                showToast('🎓 ¡Felicidades! Has completado todos los requisitos de tu carrera.', 'success');
             }
-
-            if (!progreso.medallas) progreso.medallas = [];
-            if (!progreso.medallas.includes(String(mIdx))) {
-                progreso.medallas.push(String(mIdx));
+            if (feedback) {
+                feedback.innerHTML = `
+                    <div class="card border-success bg-success bg-opacity-10 text-center p-4">
+                        <div class="quiz-score-badge pass">${porcentaje}%</div>
+                        <h3 class="fw-bold text-success mb-2">¡Felicitaciones! Módulo Aprobado</h3>
+                        <p class="text-muted mb-3">Has obtenido <strong>${aciertos} de ${total}</strong> respuestas correctas (Mínimo: ${min}%).</p>
+                        ${res.certificadoOtorgado ? '<div class="alert alert-success fw-bold py-2 mb-3"><i class="bi bi-patch-check-fill me-2"></i>¡Certificado del Curso Obtenido!</div>' : ''}
+                        <div class="d-flex justify-content-center gap-3">
+                            <button class="btn btn-success px-4" onclick="window.location.reload()">
+                                <i class="bi bi-arrow-right-circle me-1"></i>Continuar al Siguiente Contenido
+                            </button>
+                        </div>
+                    </div>`;
             }
-
-            await guardarProgresoUsuario();
-
-            feedback.innerHTML = `
-                <div class="card border-success bg-success bg-opacity-10 text-center p-4">
-                    <div class="quiz-score-badge pass">${porcentaje}%</div>
-                    <h3 class="fw-bold text-success mb-2">¡Felicitaciones! Módulo Aprobado</h3>
-                    <p class="text-muted mb-3">Has obtenido <strong>${aciertos} de ${preguntas.length}</strong> respuestas correctas (Mínimo: ${min}%).</p>
-                    <div class="d-flex justify-content-center gap-3">
-                        <button class="btn btn-success px-4" onclick="window.location.reload()">
-                            <i class="bi bi-arrow-right-circle me-1"></i>Continuar al Siguiente Contenido
-                        </button>
-                    </div>
-                </div>`;
         } else {
-            await guardarProgresoUsuario();
-
-            feedback.innerHTML = `
-                <div class="card border-danger bg-danger bg-opacity-10 text-center p-4">
-                    <div class="quiz-score-badge fail">${porcentaje}%</div>
-                    <h3 class="fw-bold text-danger mb-2">Módulo No Aprobado</h3>
-                    <p class="text-muted mb-3">Obtuviste <strong>${aciertos} de ${preguntas.length}</strong> aciertos. Se requiere al menos un <strong>${min}%</strong> para aprobar.</p>
-                    <div class="d-flex justify-content-center gap-3">
-                        <button class="btn btn-warning px-4" onclick="reintentarEvaluacion('${cursoActualData.id}', ${mIdx})">
-                            <i class="bi bi-arrow-counterclockwise me-1"></i>Reintentar Evaluación
-                        </button>
-                        <button class="btn btn-outline-secondary" onclick="window.location.reload()">
-                            Volver al Curso
-                        </button>
-                    </div>
-                </div>`;
+            showToast(`Obtuviste ${porcentaje}%. Se requiere al menos un ${min}% para aprobar.`, 'warning');
+            if (feedback) {
+                feedback.innerHTML = `
+                    <div class="card border-danger bg-danger bg-opacity-10 text-center p-4">
+                        <div class="quiz-score-badge fail">${porcentaje}%</div>
+                        <h3 class="fw-bold text-danger mb-2">Módulo No Aprobado</h3>
+                        <p class="text-muted mb-3">Obtuviste <strong>${aciertos} de ${total}</strong> aciertos. Se requiere al menos un <strong>${min}%</strong> para aprobar.</p>
+                        <div class="d-flex justify-content-center gap-3">
+                            <button class="btn btn-warning px-4" onclick="reintentarEvaluacion('${cursoActualData.id}', ${mIdx})">
+                                <i class="bi bi-arrow-counterclockwise me-1"></i>Reintentar Evaluación
+                            </button>
+                            <button class="btn btn-outline-secondary" onclick="window.location.reload()">
+                                Volver al Curso
+                            </button>
+                        </div>
+                    </div>`;
+            }
         }
     } catch (error) {
         console.error('Error en validación:', error);
-        showToast('Ocurrió un error al validar la evaluación.', 'danger');
-    } finally {
+        showToast(error.message || 'Ocurrió un error al calificar la evaluación.', 'danger');
         if (btn) {
             btn.disabled = false;
             btn.innerHTML = originalHtml;
