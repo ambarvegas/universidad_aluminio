@@ -3,7 +3,7 @@
  * Gestión de autenticación, control de sesión y protección de rutas
  */
 
-let sesion = JSON.parse(sessionStorage.getItem('aluSesion')) || null;
+window.sesion = JSON.parse(sessionStorage.getItem('aluSesion')) || null;
 
 /**
  * Autenticación en el servidor (bcrypt)
@@ -56,4 +56,3 @@ function verificarProteccion() {
 window.login = login;
 window.logout = logout;
 window.verificarProteccion = verificarProteccion;
-window.sesion = sesion;

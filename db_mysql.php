@@ -550,10 +550,14 @@ function db_read_all(mysqli $conn): array {
     // --- Cursos (desde tablas relacionales normalizadas) ---
     // Pre-cargar módulos
     $cursosModulosMap = [];
+    $moduloToCursoMap = [];
     $resCM = $conn->query("SELECT id, curso_id, orden, titulo FROM `curso_modulos` ORDER BY curso_id, orden ASC");
     if ($resCM) {
         while ($r = $resCM->fetch_assoc()) {
-            $cursosModulosMap[$r['curso_id']][$r['id']] = [
+            $mid = (int)$r['id'];
+            $cid = $r['curso_id'];
+            $moduloToCursoMap[$mid] = $cid;
+            $cursosModulosMap[$cid][$mid] = [
                 '_orden'     => (int)$r['orden'],
                 'titulo'     => $r['titulo'],
                 'lecciones'  => [],
@@ -567,16 +571,13 @@ function db_read_all(mysqli $conn): array {
     if ($resCL) {
         while ($r = $resCL->fetch_assoc()) {
             $mid = (int)$r['modulo_id'];
-            foreach ($cursosModulosMap as $cid => &$modsRef) {
-                if (isset($modsRef[$mid])) {
-                    $lec = ['titulo' => $r['titulo'], 'videoID' => $r['video_id'] ?? ''];
-                    if (!empty($r['contenido'])) $lec['contenido'] = $r['contenido'];
-                    if (!empty($r['adjunto']))   $lec['adjunto']   = $r['adjunto'];
-                    $modsRef[$mid]['lecciones'][] = $lec;
-                    break;
-                }
+            $cid = $moduloToCursoMap[$mid] ?? null;
+            if ($cid !== null && isset($cursosModulosMap[$cid][$mid])) {
+                $lec = ['titulo' => $r['titulo'], 'videoID' => $r['video_id'] ?? ''];
+                if (!empty($r['contenido'])) $lec['contenido'] = $r['contenido'];
+                if (!empty($r['adjunto']))   $lec['adjunto']   = $r['adjunto'];
+                $cursosModulosMap[$cid][$mid]['lecciones'][] = $lec;
             }
-            unset($modsRef);
         }
     }
 
@@ -585,17 +586,14 @@ function db_read_all(mysqli $conn): array {
     if ($resCP) {
         while ($r = $resCP->fetch_assoc()) {
             $mid = (int)$r['modulo_id'];
-            foreach ($cursosModulosMap as $cid => &$modsRef) {
-                if (isset($modsRef[$mid])) {
-                    $modsRef[$mid]['evaluacion']['preguntas'][] = [
-                        'enunciado' => $r['enunciado'],
-                        'opciones'  => json_decode($r['opciones'] ?? '[]', true) ?? [],
-                        'correcta'  => (int)$r['correcta'],
-                    ];
-                    break;
-                }
+            $cid = $moduloToCursoMap[$mid] ?? null;
+            if ($cid !== null && isset($cursosModulosMap[$cid][$mid])) {
+                $cursosModulosMap[$cid][$mid]['evaluacion']['preguntas'][] = [
+                    'enunciado' => $r['enunciado'],
+                    'opciones'  => json_decode($r['opciones'] ?? '[]', true) ?? [],
+                    'correcta'  => (int)$r['correcta'],
+                ];
             }
-            unset($modsRef);
         }
     }
 
@@ -606,7 +604,7 @@ function db_read_all(mysqli $conn): array {
             $cid = $row['id'];
             // Reconstruir array modulos en orden
             $modsRaw = $cursosModulosMap[$cid] ?? [];
-            ksort($modsRaw);
+            uasort($modsRaw, fn($a, $b) => ($a['_orden'] ?? 0) <=> ($b['_orden'] ?? 0));
             $modulosArr = [];
             foreach ($modsRaw as $mod) {
                 unset($mod['_orden']);
