@@ -9,11 +9,11 @@
 // CONFIGURACIÓN DE CONEXIÓN
 // ============================================================
 
-define('MYSQL_HOST', '185.2.168.16');
-define('MYSQL_USER', 'alufletes_admin');
-define('MYSQL_PASS', '2fjy68PjsK7u2Hi');
-define('MYSQL_DB',   'alufletes_universidad');
-define('MYSQL_PORT', 3306);
+define('MYSQL_HOST', getenv('DB_HOST') ?: '185.2.168.16');
+define('MYSQL_USER', getenv('DB_USER') ?: 'alufletes_admin');
+define('MYSQL_PASS', getenv('DB_PASS') ?: '2fjy68PjsK7u2Hi');
+define('MYSQL_DB',   getenv('DB_NAME') ?: 'alufletes_universidad');
+define('MYSQL_PORT', (int)(getenv('DB_PORT') ?: 3306));
 define('MYSQL_CHARSET', 'utf8mb4');
 
 /**
@@ -969,7 +969,7 @@ function db_write_all(mysqli $conn, array $data): void {
             $titulo         = $c['titulo']       ?? '';
             $descripcion    = $c['descripcion']  ?? '';
             $tipo           = $c['tipo']         ?? 'especializado';
-            $imagen         = $c['imagen']       ?? '';
+            $imagen         = db_guardar_imagen_si_base64($c['imagen'] ?? '', $cId);
             $prel           = !empty($c['prelacion']) ? $c['prelacion'] : null;
             $enConstruccion = !empty($c['enConstruccion']) ? 1 : 0;
             if (!$cId) continue;
@@ -1129,6 +1129,9 @@ function db_write_all(mysqli $conn, array $data): void {
         // --- Configuración ---
         $cfgRows = [];
         foreach (($data['configuracion'] ?? []) as $k => $v) {
+            if ($k === 'logo' && is_string($v)) {
+                $v = db_guardar_imagen_si_base64($v, 'logo_institucional');
+            }
             $valor = is_string($v) ? $v : json_encode($v);
             $cfgRows[] = [$k, $valor];
         }
@@ -1601,6 +1604,65 @@ function db_upsert_progreso(mysqli $conn, string $userId, string $cursoId, array
 }
 
 /**
+ * Si la imagen viene como cadena data:image/... en Base64,
+ * la extrae, la guarda como archivo JPG optimizado en uploads/ y retorna la ruta relativa.
+ * Si ya es una ruta relativa o URL, la retorna sin modificar.
+ */
+function db_guardar_imagen_si_base64(string $imagen, string $prefix = 'img'): string {
+    if (strpos($imagen, 'data:image/') !== 0) {
+        return $imagen;
+    }
+
+    $uploadDir = __DIR__ . '/uploads/';
+    if (!is_dir($uploadDir)) {
+        @mkdir($uploadDir, 0755, true);
+    }
+
+    $comaPos = strpos($imagen, ',');
+    if ($comaPos === false) return $imagen;
+
+    $base64Data = substr($imagen, $comaPos + 1);
+    $binaryData = base64_decode($base64Data);
+    if (!$binaryData) return $imagen;
+
+    $cleanPrefix = preg_replace('/[^a-zA-Z0-9_-]/', '', $prefix);
+    $fileName = "portada_{$cleanPrefix}_" . time() . ".jpg";
+    $filePath = $uploadDir . $fileName;
+    $relPath  = "uploads/{$fileName}";
+
+    if (function_exists('imagecreatefromstring')) {
+        $src = @imagecreatefromstring($binaryData);
+        if ($src !== false) {
+            $w = imagesx($src);
+            $h = imagesy($src);
+            $maxWidth = 1200;
+            if ($w > $maxWidth) {
+                $newH = (int)round($h * $maxWidth / $w);
+                $newW = $maxWidth;
+            } else {
+                $newW = $w;
+                $newH = $h;
+            }
+            $dst = imagecreatetruecolor($newW, $newH);
+            imagefilledrectangle($dst, 0, 0, $newW, $newH, imagecolorallocate($dst, 255, 255, 255));
+            imagecopyresampled($dst, $src, 0, 0, 0, 0, $newW, $newH, $w, $h);
+            imagedestroy($src);
+            if (imagejpeg($dst, $filePath, 85)) {
+                imagedestroy($dst);
+                return $relPath;
+            }
+            imagedestroy($dst);
+        }
+    }
+
+    if (file_put_contents($filePath, $binaryData) !== false) {
+        return $relPath;
+    }
+
+    return $imagen;
+}
+
+/**
  * Inserta o actualiza un curso y sincroniza sus módulos, lecciones y preguntas
  * en las tablas relacionales normalizadas.
  */
@@ -1609,7 +1671,7 @@ function db_upsert_curso(mysqli $conn, array $c): void {
     $titulo         = trim((string)($c['titulo']       ?? ''));
     $descripcion    = trim((string)($c['descripcion']  ?? ''));
     $tipo           = trim((string)($c['tipo']         ?? 'especializado'));
-    $imagen         = $c['imagen']   ?? '';
+    $imagen         = db_guardar_imagen_si_base64($c['imagen'] ?? '', $id);
     $prel           = !empty($c['prelacion']) ? trim((string)$c['prelacion']) : null;
     $enConstruccion = !empty($c['enConstruccion']) ? 1 : 0;
     if (!$id) return;
@@ -1770,6 +1832,9 @@ function db_delete_rol(mysqli $conn, string $id): void {
  * Guarda una clave de configuración.
  */
 function db_upsert_config(mysqli $conn, string $clave, $valor): void {
+    if ($clave === 'logo' && is_string($valor)) {
+        $valor = db_guardar_imagen_si_base64($valor, 'logo_institucional');
+    }
     $valorStr = is_string($valor) ? $valor : json_encode($valor);
     $stmt = $conn->prepare(
         "INSERT INTO `configuracion` (clave, valor) VALUES (?,?)
