@@ -3105,15 +3105,7 @@ function renderizarGaleria() {
     galeria.innerHTML = galeriaHTML;
 }
 
-const verificarProteccion = () => {
-    const path = window.location.pathname;
-    if (!sesion && !path.includes('login.html')) {
-        window.location.href = 'login.html';
-    }
-    if (sesion && sesion.rol !== 'admin' && path.includes('admin.html')) {
-        window.location.href = 'index.html';
-    }
-};
+// verificarProteccion está centralizada en js/auth.js
 
 // ============================================================
 // 19. ACTUALIZACIÓN DE TABLAS Y CONTROL ADMIN
