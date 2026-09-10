@@ -1434,6 +1434,12 @@ window.validarEvaluacionModulo = async (mIdx) => {
     const originalHtml = btn.innerHTML;
 
     try {
+        if (!window.API || typeof window.API.evaluarModulo !== 'function') {
+            showToast("Se detectó una versión desactualizada en el navegador. Recargando para actualizar...", "warning");
+            setTimeout(() => window.location.reload(true), 1200);
+            return;
+        }
+
         const modulo = cursoActualData.modulos[mIdx];
         const preguntas = (modulo.evaluacion && modulo.evaluacion.preguntas) || [];
         const feedback = document.getElementById('feedback');
@@ -2429,7 +2435,7 @@ function renderizarCursoTeachlr(curso) {
                 <h2 class="fw-bold text-dark mb-2">Curso en Construcción</h2>
                 <p class="text-muted fs-5 mb-4">El curso <strong>"${curso.titulo}"</strong> se encuentra actualmente en desarrollo y afinamiento. ¡Estará disponible para ti muy pronto!</p>
                 <div>
-                    <a href="index.html" class="btn btn-primary px-4 shadow-sm">
+                    <a href="index.php" class="btn btn-primary px-4 shadow-sm">
                         <i class="bi bi-arrow-left me-1"></i>Volver a Mis Cursos
                     </a>
                 </div>
@@ -3029,7 +3035,7 @@ async function cargarDatosDelServidor() {
     }
 
     try {
-        const isAdminPage = window.location.pathname.includes('admin.html');
+        const isAdminPage = window.location.pathname.includes('admin.php') || window.location.pathname.includes('admin.html');
         let data;
         if (isAdminPage) {
             data = await window.API.cargarDB();
@@ -3365,17 +3371,17 @@ function renderizarGaleria() {
                 </button>`;
         } else if (prog.completado) {
             btnAccion = `
-                <a href="detalle.html?id=${c.id}" class="btn btn-success w-100" style="font-size:0.875rem;">
+                <a href="detalle.php?id=${c.id}" class="btn btn-success w-100" style="font-size:0.875rem;">
                     <i class="bi bi-check2-circle me-1"></i>Repasar / Certificado
                 </a>`;
         } else if (prog.porcentaje > 0) {
             btnAccion = `
-                <a href="detalle.html?id=${c.id}" class="btn btn-primary w-100" style="font-size:0.875rem;">
+                <a href="detalle.php?id=${c.id}" class="btn btn-primary w-100" style="font-size:0.875rem;">
                     <i class="bi bi-play-circle-fill me-1"></i>Continuar (${prog.porcentaje}%)
                 </a>`;
         } else {
             btnAccion = `
-                <a href="detalle.html?id=${c.id}" class="btn btn-primary w-100" style="font-size:0.875rem;">
+                <a href="detalle.php?id=${c.id}" class="btn btn-primary w-100" style="font-size:0.875rem;">
                     <i class="bi bi-arrow-right-circle-fill me-1"></i>Comenzar Curso
                 </a>`;
         }
@@ -3604,13 +3610,13 @@ window.renderizarCarreras = function() {
 
             if (cd.aprobado) {
                 statusBadge = `<span class="badge bg-success bg-opacity-15 text-success border border-success border-opacity-25 px-2 py-1"><i class="bi bi-check-circle-fill me-1"></i>Aprobado</span>`;
-                btnAction = `<a href="detalle.html?id=${encodeURIComponent(cd.id)}" class="btn btn-sm btn-outline-success"><i class="bi bi-arrow-repeat me-1"></i>Repasar</a>`;
+                btnAction = `<a href="detalle.php?id=${encodeURIComponent(cd.id)}" class="btn btn-sm btn-outline-success"><i class="bi bi-arrow-repeat me-1"></i>Repasar</a>`;
             } else if (cd.porcentaje > 0) {
                 statusBadge = `<span class="badge bg-primary bg-opacity-15 text-primary border border-primary border-opacity-25 px-2 py-1"><i class="bi bi-hourglass-split me-1"></i>${cd.porcentaje}%</span>`;
-                btnAction = `<a href="detalle.html?id=${encodeURIComponent(cd.id)}" class="btn btn-sm btn-primary"><i class="bi bi-play-fill me-1"></i>Continuar</a>`;
+                btnAction = `<a href="detalle.php?id=${encodeURIComponent(cd.id)}" class="btn btn-sm btn-primary"><i class="bi bi-play-fill me-1"></i>Continuar</a>`;
             } else {
                 statusBadge = `<span class="badge bg-secondary bg-opacity-15 text-secondary border px-2 py-1"><i class="bi bi-circle me-1"></i>Pendiente</span>`;
-                btnAction = `<a href="detalle.html?id=${encodeURIComponent(cd.id)}" class="btn btn-sm btn-outline-primary"><i class="bi bi-play-fill me-1"></i>Iniciar</a>`;
+                btnAction = `<a href="detalle.php?id=${encodeURIComponent(cd.id)}" class="btn btn-sm btn-outline-primary"><i class="bi bi-play-fill me-1"></i>Iniciar</a>`;
             }
 
             coursesListHtml += `

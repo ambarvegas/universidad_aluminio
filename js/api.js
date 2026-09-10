@@ -37,9 +37,9 @@ window.API = (() => {
         if (res.status === 401) {
             // Sesión expirada o no autenticado → redirigir a login
             sessionStorage.removeItem('aluSesion');
-            const isAlreadyOnLogin = window.location.pathname.includes('login.html');
+            const isAlreadyOnLogin = window.location.pathname.includes('login.php') || window.location.pathname.includes('login.html');
             if (!isAlreadyOnLogin) {
-                window.location.href = 'login.html?expired=1';
+                window.location.href = 'login.php?expired=1';
             }
             return true;
         }

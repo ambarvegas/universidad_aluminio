@@ -1,3 +1,12 @@
+<?php
+if (!function_exists('v_asset')) {
+    function v_asset($path) {
+        $file = __DIR__ . '/' . ltrim($path, '/');
+        $v = file_exists($file) ? filemtime($file) : '1';
+        return $path . '?v=' . $v;
+    }
+}
+?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -18,7 +27,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet" />
-    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="<?= v_asset('style.css') ?>" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
@@ -36,7 +45,7 @@
     <!-- Navbar Principal -->
     <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
         <div class="container">
-            <a class="navbar-brand" href="index.html">
+            <a class="navbar-brand" href="index.php">
                 <i class="bi bi-mortarboard-fill"></i>
                 <span>Universidad del Aluminio</span>
             </a>
@@ -77,7 +86,7 @@
                         </a>
                     </li>
                     <li class="nav-item" id="nav-admin-link" style="display: none;">
-                        <a class="nav-link text-warning" href="admin.html"><i class="bi bi-speedometer2 me-1"></i>Panel de Control</a>
+                        <a class="nav-link text-warning" href="admin.php"><i class="bi bi-speedometer2 me-1"></i>Panel de Control</a>
                     </li>
                 </ul>
             </div>
@@ -368,16 +377,16 @@
         </div>
     </footer>
 
-    <!-- Scripts Esenciales -->
+    <!-- Scripts Esenciales con auto-versionado -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
-    <script src="js/ui/modal.js"></script>
-    <script src="js/ui/toast.js"></script>
-    <script src="js/auth.js?v=4"></script>
-    <script src="js/api.js?v=4"></script>
-    <script src="js/features/images.js"></script>
-    <script src="js/features/config.js"></script>
-    <script src="script.js?v=5"></script>
+    <script src="<?= v_asset('js/ui/modal.js') ?>"></script>
+    <script src="<?= v_asset('js/ui/toast.js') ?>"></script>
+    <script src="<?= v_asset('js/auth.js') ?>"></script>
+    <script src="<?= v_asset('js/api.js') ?>"></script>
+    <script src="<?= v_asset('js/features/images.js') ?>"></script>
+    <script src="<?= v_asset('js/features/config.js') ?>"></script>
+    <script src="<?= v_asset('script.js') ?>"></script>
 </body>
 </html>

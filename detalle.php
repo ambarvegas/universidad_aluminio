@@ -1,3 +1,12 @@
+<?php
+if (!function_exists('v_asset')) {
+    function v_asset($path) {
+        $file = __DIR__ . '/' . ltrim($path, '/');
+        $v = file_exists($file) ? filemtime($file) : '1';
+        return $path . '?v=' . $v;
+    }
+}
+?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -10,7 +19,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="<?= v_asset('style.css') ?>">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
 </head>
@@ -20,7 +29,7 @@
     <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
         <div class="container-fluid px-lg-4 d-flex justify-content-between align-items-center">
             <div class="d-flex align-items-center gap-3">
-                <a class="navbar-brand mb-0" href="index.html">
+                <a class="navbar-brand mb-0" href="index.php">
                     <i class="bi bi-mortarboard-fill"></i>
                     <span class="d-none d-sm-inline">Universidad del Aluminio</span>
                 </a>
@@ -31,7 +40,7 @@
 
             <div class="d-flex align-items-center gap-3">
                 <div id="save-indicator" class="save-indicator"></div>
-                <a href="index.html" class="btn btn-outline-light btn-sm">
+                <a href="index.php" class="btn btn-outline-light btn-sm">
                     <i class="bi bi-arrow-left me-1"></i>Volver a Mis Cursos
                 </a>
             </div>
@@ -57,12 +66,12 @@
 
     <!-- Scripts Esenciales -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="js/ui/modal.js"></script>
-    <script src="js/ui/toast.js"></script>
-    <script src="js/auth.js?v=4"></script>
-    <script src="js/api.js?v=4"></script>
-    <script src="js/features/images.js"></script>
-    <script src="js/features/config.js"></script>
-    <script src="script.js?v=5"></script>
+    <script src="<?= v_asset('js/ui/modal.js') ?>"></script>
+    <script src="<?= v_asset('js/ui/toast.js') ?>"></script>
+    <script src="<?= v_asset('js/auth.js') ?>"></script>
+    <script src="<?= v_asset('js/api.js') ?>"></script>
+    <script src="<?= v_asset('js/features/images.js') ?>"></script>
+    <script src="<?= v_asset('js/features/config.js') ?>"></script>
+    <script src="<?= v_asset('script.js') ?>"></script>
 </body>
 </html>

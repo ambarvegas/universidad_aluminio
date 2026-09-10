@@ -1,3 +1,12 @@
+<?php
+if (!function_exists('v_asset')) {
+    function v_asset($path) {
+        $file = __DIR__ . '/' . ltrim($path, '/');
+        $v = file_exists($file) ? filemtime($file) : '1';
+        return $path . '?v=' . $v;
+    }
+}
+?>
 <!DOCTYPE html>
 <html lang="es">
 
@@ -17,7 +26,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="<?= v_asset('style.css') ?>">
     <style>
         body {
             min-height: 100vh;
@@ -203,12 +212,12 @@
 
     <!-- Scripts Esenciales -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="js/ui/modal.js"></script>
-    <script src="js/auth.js?v=4"></script>
-    <script src="js/api.js?v=4"></script>
-    <script src="js/features/images.js"></script>
-    <script src="js/features/config.js"></script>
-    <script src="script.js?v=4"></script>
+    <script src="<?= v_asset('js/ui/modal.js') ?>"></script>
+    <script src="<?= v_asset('js/auth.js') ?>"></script>
+    <script src="<?= v_asset('js/api.js') ?>"></script>
+    <script src="<?= v_asset('js/features/images.js') ?>"></script>
+    <script src="<?= v_asset('js/features/config.js') ?>"></script>
+    <script src="<?= v_asset('script.js') ?>"></script>
     <script>
         function togglePasswordVisibility() {
             const pwdInput = document.getElementById('login-pass');
@@ -242,7 +251,7 @@
             btn.innerHTML = origHtml;
 
             if (ok) {
-                window.location.href = 'index.html';
+                window.location.href = 'index.php';
             } else {
                 errEl.style.display = 'block';
             }
