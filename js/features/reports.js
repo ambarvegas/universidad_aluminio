@@ -32,6 +32,19 @@ function _porcentajeCurso(usuario, curso) {
     return totalLecciones === 0 ? 0 : Math.round((completadasCount / totalLecciones) * 100);
 }
 
+function _obtenerNombreRol(rolId) {
+    if (!rolId) return 'Participante General';
+    const allRoles = (window.rolesConfig && Array.isArray(window.rolesConfig) && window.rolesConfig.length > 0)
+        ? window.rolesConfig
+        : ((window.db && Array.isArray(window.db.rolesConfig)) ? window.db.rolesConfig : (typeof rolesConfig !== 'undefined' && Array.isArray(rolesConfig) ? rolesConfig : []));
+    const uRolStr = String(rolId).trim().toLowerCase();
+    const rolObj = allRoles.find(r => 
+        String(r.id || '').trim().toLowerCase() === uRolStr ||
+        String(r.nombre || '').trim().toLowerCase() === uRolStr
+    );
+    return rolObj ? rolObj.nombre : rolId;
+}
+
 /**
  * Obtiene todos los IDs de cursos requeridos para un usuario según su ROL,
  * incluyendo cursos directos del rol, carreras asociadas al rol y asignaciones manuales.
@@ -271,15 +284,8 @@ function renderTopLearners() {
         </thead>
         <tbody>
         ${datos.map((d, i) => {
-            const allRoles = (window.rolesConfig && Array.isArray(window.rolesConfig) && window.rolesConfig.length > 0)
-                ? window.rolesConfig
-                : ((window.db && Array.isArray(window.db.rolesConfig)) ? window.db.rolesConfig : (typeof rolesConfig !== 'undefined' && Array.isArray(rolesConfig) ? rolesConfig : []));
-            const uRolStr = String(d.usuario.rol || '').trim().toLowerCase();
-            const rolObj = allRoles.find(r => 
-                String(r.id || '').trim().toLowerCase() === uRolStr ||
-                String(r.nombre || '').trim().toLowerCase() === uRolStr
-            );
-            const rolNombre = rolObj ? rolObj.nombre : d.usuario.rol;
+            const initials = (d.usuario.nombre || '?').split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase();
+            const rolNombre = _obtenerNombreRol(d.usuario.rol);
             const colorMod = getColorPct(d.pctModulos);
             const colorLec = getColorPct(d.pctLecciones);
             const colorTasa = getColorPct(d.tasaCompletitud);
@@ -464,8 +470,7 @@ function renderBrechasAprendizaje() {
         totalBrechas += brechas.length;
 
         const initials = (u.nombre || '?').split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase();
-        const rolObj = (rolesConfig || []).find(r => r.id === u.rol);
-        const rolNombre = rolObj ? rolObj.nombre : u.rol;
+        const rolNombre = _obtenerNombreRol(u.rol);
         const cursosFaltantes = brechas.length;
         const cursosTotal = (Array.isArray(u.asignados) ? u.asignados : []).length;
 
@@ -631,13 +636,13 @@ function exportarReporteXLSX() {
         const pctLecciones = totalLecciones > 0 ? Math.round((leccionesCompletadasCount / totalLecciones) * 100) : 0;
         const promedioEvals = totalEvaluaciones > 0 ? (sumaCalificaciones / totalEvaluaciones).toFixed(1) : "0.0";
         const tasaCompletitud = Math.round((pctModulos + pctLecciones + pctCursos) / 3);
-        const rolObj = (rolesConfig || []).find(r => r.id === u.rol);
+        const rolNombre = _obtenerNombreRol(u.rol);
 
         return {
             'Posición': 0,
             'Cédula / ID': u.id,
             'Nombre del Colaborador': u.nombre,
-            'Rol / Cargo': rolObj ? rolObj.nombre : u.rol,
+            'Rol / Cargo': rolNombre,
             'Estado': (u.estado || 'activo').toUpperCase(),
             'Cursos Completados (Rol)': `${completadosCursos} / ${totalCursos}`,
             'Progreso Cursos (%)': `${pctCursos}%`,
@@ -658,8 +663,7 @@ function exportarReporteXLSX() {
     const dataBrechas = [];
     usuariosActivos.forEach(u => {
         const brechas = _calcularBrechasUsuario(u);
-        const rolObj = (rolesConfig || []).find(r => r.id === u.rol);
-        const rolNombre = rolObj ? rolObj.nombre : u.rol;
+        const rolNombre = _obtenerNombreRol(u.rol);
 
         if (brechas.length === 0) {
             dataBrechas.push({
@@ -742,8 +746,7 @@ function _obtenerTodasEvaluaciones() {
     const lista = [];
     (usuarios || []).forEach(u => {
         const uProg = u.progreso || {};
-        const rolObj = (rolesConfig || []).find(r => r.id === u.rol);
-        const rolNombre = rolObj ? rolObj.nombre : (u.rol || 'Participante');
+        const rolNombre = _obtenerNombreRol(u.rol);
 
         // Iterar únicamente sobre los cursos en los que el colaborador tiene registro de progreso
         Object.keys(uProg).forEach(cursoId => {
