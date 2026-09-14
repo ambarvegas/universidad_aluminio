@@ -14,12 +14,7 @@
         ],
         cursos: [],
         carreras: [],
-        rolesConfig: [
-            { id: "admin", nombre: "Administrador", permisos: ["*"] },
-            { id: "asesor_ventas", nombre: "Asesor de Ventas", cursos: [], carreras: [] },
-            { id: "proyectista", nombre: "Proyectista / Diseño", cursos: [], carreras: [] },
-            { id: "participante", nombre: "Participante General", cursos: [], carreras: [] }
-        ],
+        rolesConfig: [],
         solicitudesRegistro: [],
         solicitudesCursos: [],
         configuracion: { nombreInstitucion: "Universidad del Aluminio", logo: "", minAprobacion: 70 }
@@ -291,7 +286,7 @@
             window.usuarios = window.db.usuarios || [];
             window.cursos = window.db.cursos || [];
             window.carreras = window.db.carreras || [];
-            window.rolesConfig = window.rolesConfig || [];
+            window.rolesConfig = (window.db && Array.isArray(window.db.rolesConfig)) ? window.db.rolesConfig : (window.rolesConfig || []);
             window.solicitudesRegistro = window.db.solicitudesRegistro || [];
             window.solicitudesCursos = window.db.solicitudesCursos || [];
 

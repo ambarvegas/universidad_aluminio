@@ -40,8 +40,16 @@ function _obtenerCursosDelRol(usuario) {
     const cursosSet = new Set();
     if (!usuario) return [];
 
+    const uRol = String(usuario.rol || '').trim().toLowerCase();
+    const allRoles = (window.rolesConfig && Array.isArray(window.rolesConfig) && window.rolesConfig.length > 0)
+        ? window.rolesConfig
+        : ((window.db && Array.isArray(window.db.rolesConfig)) ? window.db.rolesConfig : (typeof rolesConfig !== 'undefined' && Array.isArray(rolesConfig) ? rolesConfig : []));
+
     // 1. Cursos asociados al Rol directamente (en rolesConfig)
-    const userRoleConfig = (rolesConfig || []).find(r => r.id === usuario.rol);
+    const userRoleConfig = allRoles.find(r => 
+        String(r.id || '').trim().toLowerCase() === uRol ||
+        String(r.nombre || '').trim().toLowerCase() === uRol
+    );
     if (userRoleConfig) {
         if (Array.isArray(userRoleConfig.cursos)) {
             userRoleConfig.cursos.forEach(cid => { if (cid) cursosSet.add(cid); });
@@ -263,8 +271,14 @@ function renderTopLearners() {
         </thead>
         <tbody>
         ${datos.map((d, i) => {
-            const initials = (d.usuario.nombre || '?').split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase();
-            const rolObj = (rolesConfig || []).find(r => r.id === d.usuario.rol);
+            const allRoles = (window.rolesConfig && Array.isArray(window.rolesConfig) && window.rolesConfig.length > 0)
+                ? window.rolesConfig
+                : ((window.db && Array.isArray(window.db.rolesConfig)) ? window.db.rolesConfig : (typeof rolesConfig !== 'undefined' && Array.isArray(rolesConfig) ? rolesConfig : []));
+            const uRolStr = String(d.usuario.rol || '').trim().toLowerCase();
+            const rolObj = allRoles.find(r => 
+                String(r.id || '').trim().toLowerCase() === uRolStr ||
+                String(r.nombre || '').trim().toLowerCase() === uRolStr
+            );
             const rolNombre = rolObj ? rolObj.nombre : d.usuario.rol;
             const colorMod = getColorPct(d.pctModulos);
             const colorLec = getColorPct(d.pctLecciones);
@@ -379,15 +393,21 @@ function renderCumplimientoCargo() {
     const container = document.getElementById('chart-cumplimiento');
     if (!container) return;
 
-    const rolesValidos = (rolesConfig || []).filter(r => r.id !== 'admin');
+    const allRoles = (window.rolesConfig && Array.isArray(window.rolesConfig) && window.rolesConfig.length > 0)
+        ? window.rolesConfig
+        : ((window.db && Array.isArray(window.db.rolesConfig)) ? window.db.rolesConfig : (typeof rolesConfig !== 'undefined' && Array.isArray(rolesConfig) ? rolesConfig : []));
+    const rolesValidos = allRoles.filter(r => r.id !== 'admin');
     if (rolesValidos.length === 0) { container.innerHTML = '<p class="text-muted small text-center py-3">Sin roles configurados.</p>'; return; }
 
+    const allUsers = (window.usuarios && Array.isArray(window.usuarios)) ? window.usuarios : (typeof usuarios !== 'undefined' && Array.isArray(usuarios) ? usuarios : []);
+
     const stats = rolesValidos.map(rol => {
-        const miembros = (usuarios || []).filter(u => {
+        const rIdStr  = String(rol.id || '').toLowerCase().trim();
+        const rNomStr = String(rol.nombre || '').toLowerCase().trim();
+
+        const miembros = allUsers.filter(u => {
             if (u.estado === 'suspendido' || u.rol === 'admin') return false;
             const uRolStr = String(u.rol || '').toLowerCase().trim();
-            const rIdStr  = String(rol.id || '').toLowerCase().trim();
-            const rNomStr = String(rol.nombre || '').toLowerCase().trim();
             return uRolStr === rIdStr || uRolStr === rNomStr;
         });
 
