@@ -105,7 +105,10 @@
         window.tempImagenPortada = c.imagen || "";
         window.mostrarVistaPreviaPortada();
 
-        window.tempModulos = JSON.parse(JSON.stringify(c.modulos || []));
+        window.tempModulos = (c.modulos || []).map(m => ({
+            ...JSON.parse(JSON.stringify(m)),
+            maxIntentos: (m.maxIntentos !== undefined) ? (parseInt(m.maxIntentos) || 0) : (parseInt(m.max_intentos) || 0)
+        }));
         window.renderModulosEditor();
 
         document.getElementById('modalTitulo').innerText = "Editar Curso";
@@ -141,6 +144,11 @@
             const tipo = document.getElementById('curso-tipo') ? document.getElementById('curso-tipo').value : 'especializado';
             const idEdit = document.getElementById('edit-id').value;
 
+            const modulosSanitizados = (window.tempModulos || []).map(m => ({
+                ...m,
+                maxIntentos: (m.maxIntentos !== undefined && m.maxIntentos !== null && m.maxIntentos !== '') ? (parseInt(m.maxIntentos) || 0) : 0
+            }));
+
             const nuevoCurso = {
                 id: idEdit ? idEdit : "CUR-" + Date.now(),
                 titulo: (document.getElementById('titulo')?.value || '').trim(),
@@ -149,7 +157,7 @@
                 descripcion: (document.getElementById('descripcion')?.value || '').trim(),
                 prelacion: document.getElementById('curso-prelacion')?.value || '',
                 enConstruccion: enConstruccion,
-                modulos: window.tempModulos
+                modulos: modulosSanitizados
             };
 
             if (idEdit) {
@@ -211,7 +219,7 @@
     };
 
     window.agregarModulo = () => {
-        window.tempModulos.push({ titulo: "Nuevo Módulo", enConstruccion: false, lecciones: [] });
+        window.tempModulos.push({ titulo: "Nuevo Módulo", enConstruccion: false, maxIntentos: 0, lecciones: [] });
         window.renderModulosEditor();
     };
 

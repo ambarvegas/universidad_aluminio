@@ -114,10 +114,11 @@ function db_create_tables(mysqli $conn): void {
 
         // Módulos de un curso (relación normalizada)
         "CREATE TABLE IF NOT EXISTS `curso_modulos` (
-            `id`       INT          NOT NULL AUTO_INCREMENT,
-            `curso_id` VARCHAR(100) NOT NULL,
-            `orden`    INT          NOT NULL DEFAULT 0,
-            `titulo`   VARCHAR(500) NOT NULL DEFAULT '',
+            `id`           INT          NOT NULL AUTO_INCREMENT,
+            `curso_id`     VARCHAR(100) NOT NULL,
+            `orden`        INT          NOT NULL DEFAULT 0,
+            `titulo`       VARCHAR(500) NOT NULL DEFAULT '',
+            `max_intentos` INT          NOT NULL DEFAULT 0,
             PRIMARY KEY (`id`),
             INDEX `idx_cm_curso` (`curso_id`),
             FOREIGN KEY (`curso_id`) REFERENCES `cursos`(`id`) ON DELETE CASCADE
@@ -565,17 +566,18 @@ function db_read_all(mysqli $conn): array {
     // Pre-cargar módulos
     $cursosModulosMap = [];
     $moduloToCursoMap = [];
-    $resCM = $conn->query("SELECT id, curso_id, orden, titulo FROM `curso_modulos` ORDER BY curso_id, orden ASC");
+    $resCM = $conn->query("SELECT id, curso_id, orden, titulo, max_intentos FROM `curso_modulos` ORDER BY curso_id, orden ASC");
     if ($resCM) {
         while ($r = $resCM->fetch_assoc()) {
             $mid = (int)$r['id'];
             $cid = $r['curso_id'];
             $moduloToCursoMap[$mid] = $cid;
             $cursosModulosMap[$cid][$mid] = [
-                '_orden'     => (int)$r['orden'],
-                'titulo'     => $r['titulo'],
-                'lecciones'  => [],
-                'evaluacion' => ['preguntas' => []],
+                '_orden'      => (int)$r['orden'],
+                'titulo'      => $r['titulo'],
+                'maxIntentos' => (int)($r['max_intentos'] ?? 0),
+                'lecciones'   => [],
+                'evaluacion'  => ['preguntas' => []],
             ];
         }
     }
@@ -1014,7 +1016,8 @@ function db_write_all(mysqli $conn, array $data): void {
             $modOrd = 0;
             foreach (($c['modulos'] ?? []) as $mod) {
                 $modTitulo = $conn->real_escape_string(trim((string)($mod['titulo'] ?? '')));
-                $conn->query("INSERT INTO `curso_modulos` (curso_id, orden, titulo) VALUES ('$safeCId', $modOrd, '$modTitulo')");
+                $modMaxInt = (int)($mod['maxIntentos'] ?? $mod['max_intentos'] ?? 0);
+                $conn->query("INSERT INTO `curso_modulos` (curso_id, orden, titulo, max_intentos) VALUES ('$safeCId', $modOrd, '$modTitulo', $modMaxInt)");
                 $modId = (int)$conn->insert_id;
                 $modOrd++;
 
@@ -1579,7 +1582,7 @@ function db_read_catalogo(mysqli $conn, string $userId, string $userRol): array 
     $esSuperRol = ($miRolConfig && in_array('*', $miRolConfig['permisos'] ?? [], true));
 
     // 3. Módulos agregados (con conteo de lecciones y preguntas)
-    $sqlMod = "SELECT cm.id, cm.curso_id, cm.orden, cm.titulo,
+    $sqlMod = "SELECT cm.id, cm.curso_id, cm.orden, cm.titulo, cm.max_intentos,
                       COUNT(DISTINCT cl.id) as total_lecciones,
                       COUNT(DISTINCT cp.id) as total_preguntas
                FROM `curso_modulos` cm
@@ -1596,6 +1599,7 @@ function db_read_catalogo(mysqli $conn, string $userId, string $userRol): array 
                 'id'              => (int)$mr['id'],
                 '_orden'          => (int)$mr['orden'],
                 'titulo'          => $mr['titulo'],
+                'maxIntentos'     => (int)($mr['max_intentos'] ?? 0),
                 'totalLecciones'  => (int)$mr['total_lecciones'],
                 'tieneEvaluacion' => ((int)$mr['total_preguntas'] > 0),
                 'lecciones'       => array_fill(0, (int)$mr['total_lecciones'], null),
@@ -1698,7 +1702,7 @@ function db_read_curso_detalle(mysqli $conn, string $cursoId, bool $esAdmin): ?a
     }
 
     // Módulos
-    $stmtM = $conn->prepare("SELECT id, orden, titulo FROM `curso_modulos` WHERE curso_id = ? ORDER BY orden ASC");
+    $stmtM = $conn->prepare("SELECT id, orden, titulo, max_intentos FROM `curso_modulos` WHERE curso_id = ? ORDER BY orden ASC");
     $stmtM->bind_param('s', $cursoId);
     $stmtM->execute();
     $resM = $stmtM->get_result();
@@ -1708,11 +1712,12 @@ function db_read_curso_detalle(mysqli $conn, string $cursoId, bool $esAdmin): ?a
         $mid = (int)$mRow['id'];
         $modulosOrden[] = $mid;
         $modulosMap[$mid] = [
-            'id'         => $mid,
-            '_orden'     => (int)$mRow['orden'],
-            'titulo'     => $mRow['titulo'],
-            'lecciones'  => [],
-            'evaluacion' => ['preguntas' => []],
+            'id'          => $mid,
+            '_orden'      => (int)$mRow['orden'],
+            'titulo'      => $mRow['titulo'],
+            'maxIntentos' => (int)($mRow['max_intentos'] ?? 0),
+            'lecciones'   => [],
+            'evaluacion'  => ['preguntas' => []],
         ];
     }
 
@@ -2050,7 +2055,7 @@ function db_evaluar_modulo(mysqli $conn, string $userId, string $cursoId, int $m
     }
 
     // 2. Buscar el módulo por curso_id y orden
-    $stmtM = $conn->prepare("SELECT id, orden, titulo FROM `curso_modulos` WHERE curso_id = ? AND orden = ?");
+    $stmtM = $conn->prepare("SELECT id, orden, titulo, max_intentos FROM `curso_modulos` WHERE curso_id = ? AND orden = ?");
     $stmtM->bind_param('si', $cursoId, $moduloIdx);
     $stmtM->execute();
     $resM = $stmtM->get_result();
@@ -2059,6 +2064,28 @@ function db_evaluar_modulo(mysqli $conn, string $userId, string $cursoId, int $m
     }
     $moduloId = (int)$mRow['id'];
     $moduloTitulo = $mRow['titulo'];
+    $maxIntentos = (int)($mRow['max_intentos'] ?? 0);
+    $mNumStr = (string)$moduloIdx;
+
+    // Verificar si ya está aprobado
+    $stmtYaApr = $conn->prepare("SELECT 1 FROM `usuario_modulos_aprobados` WHERE usuario_id = ? AND curso_id = ? AND modulo_num = ?");
+    $stmtYaApr->bind_param('sss', $userId, $cursoId, $mNumStr);
+    $stmtYaApr->execute();
+    $yaAprobado = ($stmtYaApr->get_result()->num_rows > 0);
+
+    // Obtener intentos previos
+    $stmtIntSel = $conn->prepare("SELECT intentos FROM `usuario_intentos` WHERE usuario_id = ? AND curso_id = ? AND modulo_num = ?");
+    $stmtIntSel->bind_param('sss', $userId, $cursoId, $mNumStr);
+    $stmtIntSel->execute();
+    $resInt = $stmtIntSel->get_result();
+    $prevIntentos = 0;
+    if ($resInt && $rInt = $resInt->fetch_assoc()) {
+        $prevIntentos = (int)$rInt['intentos'];
+    }
+
+    if (!$yaAprobado && $maxIntentos > 0 && $prevIntentos >= $maxIntentos) {
+        throw new InvalidArgumentException("Has alcanzado el límite máximo de $maxIntentos intentos permitidos para esta evaluación. Contacta a un administrador para restablecer tus intentos.");
+    }
 
     // 3. Obtener las preguntas del módulo en orden
     $stmtQ = $conn->prepare("SELECT id, orden, enunciado, opciones, correcta FROM `curso_preguntas` WHERE modulo_id = ? ORDER BY orden ASC");
@@ -2110,18 +2137,10 @@ function db_evaluar_modulo(mysqli $conn, string $userId, string $cursoId, int $m
     }
 
     $aprobado = ($calificacion >= $minAprobacion);
-    $mNumStr = (string)$moduloIdx;
     $fechaIso = date('c');
 
     // 5. Incrementar número de intentos
-    $stmtIntSel = $conn->prepare("SELECT intentos FROM `usuario_intentos` WHERE usuario_id = ? AND curso_id = ? AND modulo_num = ?");
-    $stmtIntSel->bind_param('sss', $userId, $cursoId, $mNumStr);
-    $stmtIntSel->execute();
-    $resInt = $stmtIntSel->get_result();
-    $numIntentos = 1;
-    if ($resInt && $rInt = $resInt->fetch_assoc()) {
-        $numIntentos = ((int)$rInt['intentos']) + 1;
-    }
+    $numIntentos = $prevIntentos + 1;
     $stmtIntUp = $conn->prepare("INSERT INTO `usuario_intentos` (usuario_id, curso_id, modulo_num, intentos) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE intentos = VALUES(intentos)");
     $stmtIntUp->bind_param('sssi', $userId, $cursoId, $mNumStr, $numIntentos);
     $stmtIntUp->execute();
@@ -2285,7 +2304,9 @@ function db_evaluar_modulo(mysqli $conn, string $userId, string $cursoId, int $m
         'aciertos'            => $aciertos,
         'total'               => $total,
         'minAprobacion'       => $minAprobacion,
+        'maxIntentos'         => $maxIntentos,
         'numIntentos'         => $numIntentos,
+        'bloqueado'           => ($maxIntentos > 0 && !$aprobado && $numIntentos >= $maxIntentos),
         'certificadoOtorgado' => $certificadoOtorgado,
         'carreraOtorgada'     => $carreraOtorgada,
         'preguntasDetalle'    => $preguntasDetalle,
@@ -2576,7 +2597,8 @@ function db_upsert_curso(mysqli $conn, array $c): void {
     $modOrd = 0;
     foreach (($c['modulos'] ?? []) as $mod) {
         $modTitulo = $conn->real_escape_string(trim((string)($mod['titulo'] ?? '')));
-        $conn->query("INSERT INTO `curso_modulos` (curso_id, orden, titulo) VALUES ('$safeId', $modOrd, '$modTitulo')");
+        $modMaxInt = (int)($mod['maxIntentos'] ?? $mod['max_intentos'] ?? 0);
+        $conn->query("INSERT INTO `curso_modulos` (curso_id, orden, titulo, max_intentos) VALUES ('$safeId', $modOrd, '$modTitulo', $modMaxInt)");
         $modId = (int)$conn->insert_id;
         $modOrd++;
 

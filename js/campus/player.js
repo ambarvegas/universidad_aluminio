@@ -394,7 +394,7 @@ window.mostrarEvaluacionModulo = (cursoID, mIdx) => {
     if (!visor) return;
 
     if (!sesion.progreso) sesion.progreso = {};
-    if (!sesion.progreso[curso.id]) sesion.progreso[curso.id] = { leccionesCompletadas: [], modulosAprobados: [] };
+    if (!sesion.progreso[curso.id]) sesion.progreso[curso.id] = { leccionesCompletadas: [], modulosAprobados: [], intentos: {} };
     const progreso = sesion.progreso[curso.id];
     const modulosAprobados = Array.isArray(progreso) ? [] : (progreso.modulosAprobados || []);
 
@@ -418,24 +418,60 @@ window.mostrarEvaluacionModulo = (cursoID, mIdx) => {
         return;
     }
 
+    // Verificar límite de intentos
+    const maxIntentos = (modulo.maxIntentos !== undefined) ? (parseInt(modulo.maxIntentos) || 0) : (parseInt(modulo.max_intentos) || 0);
+    const intentosActuales = (progreso.intentos && progreso.intentos[mIdx]) ? (parseInt(progreso.intentos[mIdx]) || 0) : 0;
+    const bloqueadoPorIntentos = (maxIntentos > 0 && intentosActuales >= maxIntentos);
+
+    if (bloqueadoPorIntentos) {
+        visor.innerHTML = `
+            <div class="quiz-card text-center p-5 border-danger shadow-sm">
+                <div class="quiz-score-badge fail mb-3"><i class="bi bi-lock-fill"></i></div>
+                <h2 class="fw-bold text-danger mb-2">Evaluación Bloqueada</h2>
+                <p class="lead text-muted mb-3">Has alcanzado el límite máximo de <strong>${maxIntentos} ${maxIntentos === 1 ? 'intento' : 'intentos'}</strong> permitidos para el módulo "${modulo.titulo}".</p>
+                <div class="alert alert-warning text-start mx-auto my-4" style="max-width: 550px;">
+                    <i class="bi bi-info-circle-fill me-2"></i>
+                    Para solicitar una nueva oportunidad o el restablecimiento de tus intentos en este módulo, ponte en contacto con el <strong>Administrador o Tutor</strong> de la plataforma.
+                </div>
+                <div class="d-flex justify-content-center gap-3">
+                    <button class="btn btn-primary px-4" onclick="location.reload()">
+                        <i class="bi bi-arrow-left me-1"></i>Volver al Curso
+                    </button>
+                </div>
+            </div>`;
+        return;
+    }
+
     const minAprobacion = (db && db.configuracion && db.configuracion.minAprobacion) || 70;
     const totalPreguntas = (modulo.evaluacion && modulo.evaluacion.preguntas) ? modulo.evaluacion.preguntas.length : 0;
 
+    const badgeIntentos = (maxIntentos > 0)
+        ? `<span class="badge bg-warning bg-opacity-25 text-dark border border-warning px-3 py-2 ms-2">
+            <i class="bi bi-arrow-repeat text-warning me-1"></i> Intento ${intentosActuales + 1} de ${maxIntentos}
+           </span>`
+        : `<span class="badge bg-light text-muted border px-3 py-2 ms-2">
+            <i class="bi bi-infinity me-1"></i> Intentos ilimitados
+           </span>`;
+
     visor.innerHTML = `
         <div class="quiz-card p-4 p-md-5">
-            <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom">
+            <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom flex-wrap gap-2">
                 <div>
                     <span class="badge-soft-warning mb-1 d-inline-block">Examen de Módulo ${mIdx + 1}</span>
                     <h3 class="fw-bold text-primary mb-0">${modulo.titulo}</h3>
                 </div>
-                <span class="badge bg-light text-dark border px-3 py-2">
-                    <i class="bi bi-check2-square text-primary me-1"></i> ${totalPreguntas} preguntas
-                </span>
+                <div class="d-flex align-items-center">
+                    <span class="badge bg-light text-dark border px-3 py-2">
+                        <i class="bi bi-check2-square text-primary me-1"></i> ${totalPreguntas} preguntas
+                    </span>
+                    ${badgeIntentos}
+                </div>
             </div>
 
             <p class="text-muted small mb-4">
                 <i class="bi bi-info-circle me-1 text-primary"></i> 
                 Responde todas las preguntas. Se requiere un puntaje mínimo de <strong>${minAprobacion}%</strong> para aprobar este módulo y desbloquear los siguientes contenidos.
+                ${maxIntentos > 0 ? `<br><strong class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>Atención:</strong> Tienes un máximo de <strong>${maxIntentos} ${maxIntentos === 1 ? 'intento' : 'intentos'}</strong> para aprobar.` : ''}
             </p>
 
             <div class="quiz-area mb-4">
@@ -556,6 +592,9 @@ window.validarEvaluacionModulo = async (mIdx) => {
         const porcentaje = res.calificacion;
         const aciertos = res.aciertos;
         const total = res.total;
+        const maxIntentos = res.maxIntentos !== undefined ? res.maxIntentos : ((modulo.maxIntentos !== undefined) ? (parseInt(modulo.maxIntentos) || 0) : (parseInt(modulo.max_intentos) || 0));
+        const numIntentos = res.numIntentos || 1;
+        const bloqueado = res.bloqueado || (maxIntentos > 0 && !res.aprobado && numIntentos >= maxIntentos);
 
         if (res.aprobado) {
             showToast('¡Felicitaciones! Has aprobado la evaluación del módulo.', 'success');
@@ -580,22 +619,46 @@ window.validarEvaluacionModulo = async (mIdx) => {
                     </div>`;
             }
         } else {
-            showToast(`Obtuviste ${porcentaje}%. Se requiere al menos un ${min}% para aprobar.`, 'warning');
-            if (feedback) {
-                feedback.innerHTML = `
-                    <div class="card border-danger bg-danger bg-opacity-10 text-center p-4">
-                        <div class="quiz-score-badge fail">${porcentaje}%</div>
-                        <h3 class="fw-bold text-danger mb-2">Módulo No Aprobado</h3>
-                        <p class="text-muted mb-3">Obtuviste <strong>${aciertos} de ${total}</strong> aciertos. Se requiere al menos un <strong>${min}%</strong> para aprobar.</p>
-                        <div class="d-flex justify-content-center gap-3">
-                            <button class="btn btn-warning px-4" onclick="reintentarEvaluacion('${cursoActualData.id}', ${mIdx})">
-                                <i class="bi bi-arrow-counterclockwise me-1"></i>Reintentar Evaluación
-                            </button>
-                            <button class="btn btn-outline-secondary" onclick="window.location.reload()">
-                                Volver al Curso
-                            </button>
-                        </div>
-                    </div>`;
+            if (bloqueado) {
+                showToast(`Evaluación no aprobada (${porcentaje}%). Has alcanzado el límite máximo de intentos permitidos (${maxIntentos}).`, 'danger');
+                if (feedback) {
+                    feedback.innerHTML = `
+                        <div class="card border-danger bg-danger bg-opacity-10 text-center p-4">
+                            <div class="quiz-score-badge fail">${porcentaje}%</div>
+                            <h3 class="fw-bold text-danger mb-2">Evaluación No Aprobada — Intentos Agotados</h3>
+                            <p class="text-muted mb-2">Obtuviste <strong>${aciertos} de ${total}</strong> aciertos (${porcentaje}%). Se requiere al menos un <strong>${min}%</strong> para aprobar.</p>
+                            <p class="text-danger fw-bold mb-3"><i class="bi bi-lock-fill me-1"></i>Has utilizado tus ${maxIntentos} intentos permitidos. Esta evaluación ha quedado bloqueada.</p>
+                            <div class="alert alert-warning text-start mx-auto mb-3" style="max-width: 550px;">
+                                <i class="bi bi-info-circle-fill me-2"></i>Por favor contacta a un administrador para evaluar tu caso o solicitar el restablecimiento de tus intentos.
+                            </div>
+                            <div class="d-flex justify-content-center gap-3">
+                                <button class="btn btn-primary px-4" onclick="window.location.reload()">
+                                    <i class="bi bi-arrow-left me-1"></i>Volver al Curso
+                                </button>
+                            </div>
+                        </div>`;
+                }
+            } else {
+                const intentosRestantes = maxIntentos > 0 ? (maxIntentos - numIntentos) : null;
+                const msgRestantes = (intentosRestantes !== null) ? ` Te quedan ${intentosRestantes} ${intentosRestantes === 1 ? 'intento' : 'intentos'}.` : '';
+                showToast(`Obtuviste ${porcentaje}%. Se requiere al menos un ${min}% para aprobar.${msgRestantes}`, 'warning');
+                if (feedback) {
+                    feedback.innerHTML = `
+                        <div class="card border-danger bg-danger bg-opacity-10 text-center p-4">
+                            <div class="quiz-score-badge fail">${porcentaje}%</div>
+                            <h3 class="fw-bold text-danger mb-2">Módulo No Aprobado</h3>
+                            <p class="text-muted mb-2">Obtuviste <strong>${aciertos} de ${total}</strong> aciertos. Se requiere al menos un <strong>${min}%</strong> para aprobar.</p>
+                            ${maxIntentos > 0 ? `<p class="badge bg-warning text-dark px-3 py-2 mb-3"><i class="bi bi-arrow-repeat me-1"></i>Intento ${numIntentos} de ${maxIntentos} — Te ${intentosRestantes === 1 ? 'queda' : 'quedan'} ${intentosRestantes} ${intentosRestantes === 1 ? 'intento' : 'intentos'}</p>` : ''}
+                            <div class="d-flex justify-content-center gap-3">
+                                <button class="btn btn-warning px-4" onclick="reintentarEvaluacion('${cursoActualData.id}', ${mIdx})">
+                                    <i class="bi bi-arrow-counterclockwise me-1"></i>Reintentar Evaluación
+                                </button>
+                                <button class="btn btn-outline-secondary" onclick="window.location.reload()">
+                                    Volver al Curso
+                                </button>
+                            </div>
+                        </div>`;
+                }
             }
         }
     } catch (error) {
@@ -743,9 +806,14 @@ function renderizarCursoTeachlr(curso) {
                             leccionesCompletadas.includes(`${idx}-${lIdx}`)
                         ) && !moduloAprobado;
 
+                        const intentosRealizados = progreso.intentos ? (parseInt(progreso.intentos[idx]) || 0) : 0;
+                        const intentosMaximos = (mod.maxIntentos !== undefined) ? (parseInt(mod.maxIntentos) || 0) : (parseInt(mod.max_intentos) || 0);
+                        const intentosAgotados = (intentosMaximos > 0 && intentosRealizados >= intentosMaximos && !moduloAprobado);
+
                         let estadoEvaluacion = 'pendiente';
                         if (modEnConstruccion) estadoEvaluacion = 'bloqueado';
                         else if (moduloAprobado) estadoEvaluacion = 'aprobado';
+                        else if (intentosAgotados) estadoEvaluacion = 'agotado';
                         else if (!tieneLecciones || !todasLeccionesMod) estadoEvaluacion = 'bloqueado';
                         else if (tieneEvaluacion) estadoEvaluacion = 'disponible';
 
@@ -798,18 +866,21 @@ function renderizarCursoTeachlr(curso) {
                                         <button class="btn btn-sm w-100 ${
                                             estadoEvaluacion === 'aprobado' ? 'btn-outline-success' :
                                             estadoEvaluacion === 'disponible' ? 'btn-primary shadow-sm' :
+                                            estadoEvaluacion === 'agotado' ? 'btn-outline-danger' :
                                             'btn-light text-muted disabled'
                                         }"
-                                        onclick="${estadoEvaluacion === 'disponible' ? `mostrarEvaluacionModulo('${curso.id}', ${idx})` : (estadoEvaluacion === 'aprobado' ? `mostrarEvaluacionModulo('${curso.id}', ${idx})` : 'return false')}"
+                                        onclick="${estadoEvaluacion === 'disponible' || estadoEvaluacion === 'aprobado' || estadoEvaluacion === 'agotado' ? `mostrarEvaluacionModulo('${curso.id}', ${idx})` : 'return false'}"
                                         ${estadoEvaluacion === 'bloqueado' || (estadoEvaluacion === 'pendiente' && !tieneEvaluacion) ? 'disabled' : ''}>
                                             <i class="bi ${
                                                 estadoEvaluacion === 'aprobado' ? 'bi-check-circle-fill text-success' :
                                                 estadoEvaluacion === 'disponible' ? 'bi-patch-question-fill' :
+                                                estadoEvaluacion === 'agotado' ? 'bi-lock-fill text-danger' :
                                                 'bi-lock-fill'
                                             } me-1"></i>
                                             ${
                                                 estadoEvaluacion === 'aprobado' ? 'Evaluación Aprobada ✓' :
                                                 estadoEvaluacion === 'disponible' ? 'Realizar Evaluación' :
+                                                estadoEvaluacion === 'agotado' ? 'Intentos Agotados (Bloqueada)' :
                                                 !tieneEvaluacion ? 'Sin Evaluación' : 'Evaluación Bloqueada'
                                             }
                                         </button>
