@@ -184,12 +184,12 @@ if ($format === 'json') {
     <!-- Header Navbar -->
     <nav class="navbar navbar-dark py-3" style="background: rgba(9, 26, 44, 0.85); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(255,255,255,0.08);">
         <div class="container d-flex justify-content-between align-items-center">
-            <a class="navbar-brand d-flex align-items-center gap-2 m-0" href="index.html">
+            <a class="navbar-brand d-flex align-items-center gap-2 m-0" href="index.php">
                 <i class="bi bi-shield-check text-warning fs-4"></i>
                 <span class="fw-bold">Universidad del Aluminio</span>
                 <span class="badge bg-white bg-opacity-10 text-white-50 ms-2 d-none d-sm-inline">Padrón de Verificación</span>
             </a>
-            <a href="index.html" class="btn btn-outline-light btn-sm">
+            <a href="index.php" class="btn btn-outline-light btn-sm">
                 <i class="bi bi-arrow-left me-1"></i>Ir al Campus
             </a>
         </div>
@@ -279,7 +279,7 @@ if ($format === 'json') {
                             <small class="text-muted d-block mb-3">
                                 <i class="bi bi-info-circle me-1"></i>Para soporte o consultas adicionales de auditoría técnica, contactar a la Rectoría de la Universidad del Aluminio.
                             </small>
-                            <a href="index.html" class="btn btn-primary px-4 py-2">
+                            <a href="index.php" class="btn btn-primary px-4 py-2">
                                 <i class="bi bi-arrow-left me-1"></i>Volver al Campus
                             </a>
                         </div>
@@ -310,7 +310,7 @@ if ($format === 'json') {
                         <a href="verificar.php" class="btn btn-outline-secondary me-2">
                             <i class="bi bi-arrow-repeat me-1"></i>Probar con otro código
                         </a>
-                        <a href="index.html" class="btn btn-primary">
+                        <a href="index.php" class="btn btn-primary">
                             <i class="bi bi-house-door-fill me-1"></i>Ir al Campus Virtual
                         </a>
                     </div>

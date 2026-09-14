@@ -68,7 +68,7 @@ async function gestionarSolicitudRegistro(id, aprobado) {
 
 async function solicitarAccesoCurso(cursoId) {
     if (!sesion) {
-        window.location.href = 'login.html';
+        window.location.href = 'login.php';
         return;
     }
 

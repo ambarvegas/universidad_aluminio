@@ -26,7 +26,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             window.verificarProteccion();
         }
 
-        // 4. Si estamos en detalle.html (aula virtual), inicializar el curso solicitado
+        // 4. Si estamos en detalle.php (aula virtual), inicializar el curso solicitado
         const urlParams = new URLSearchParams(window.location.search);
         const cursoId = urlParams.get('id');
         if (document.getElementById('contenido-curso') && cursoId) {
@@ -35,14 +35,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
-        // 5. Si estamos en index.html (campus principal), renderizar galería de cursos
+        // 5. Si estamos en index.php (campus principal), renderizar galería de cursos
         if (document.getElementById('galeria-cursos-row') || document.querySelector('#galeria-cursos .row')) {
             if (typeof renderizarGaleria === 'function') {
                 renderizarGaleria();
             }
         }
 
-        // 6. Si estamos en admin.html, renderizar tablas del dashboard
+        // 6. Si estamos en admin.php, renderizar tablas del dashboard
         if (document.getElementById('admin-kpi-cursos') || document.getElementById('tabla-cursos-body')) {
             if (typeof actualizarTablas === 'function') {
                 actualizarTablas();

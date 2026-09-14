@@ -19,7 +19,7 @@ async function resetCache() {
     }
     sessionStorage.clear();
     localStorage.clear();
-    window.location.href = 'login.html?t=' + Date.now();
+    window.location.href = 'login.php?t=' + Date.now();
 }
 resetCache();
 </script>

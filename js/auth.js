@@ -32,7 +32,7 @@ async function logout() {
     }
     sessionStorage.removeItem('aluSesion');
     window.sesion = null;
-    window.location.href = 'login.html';
+    window.location.href = 'login.php';
 }
 
 /**
@@ -42,13 +42,13 @@ function verificarProteccion() {
     const path = window.location.pathname;
     const currentSesion = JSON.parse(sessionStorage.getItem('aluSesion')) || null;
 
-    if (!currentSesion && !path.includes('login.html')) {
-        window.location.href = 'login.html';
+    if (!currentSesion && !path.includes('login.php') && !path.includes('login.html')) {
+        window.location.href = 'login.php';
         return;
     }
 
-    if (currentSesion && currentSesion.rol !== 'admin' && path.includes('admin.html')) {
-        window.location.href = 'index.html';
+    if (currentSesion && currentSesion.rol !== 'admin' && (path.includes('admin.php') || path.includes('admin.html'))) {
+        window.location.href = 'index.php';
         return;
     }
 }

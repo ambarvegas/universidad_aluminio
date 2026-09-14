@@ -268,7 +268,7 @@
         }
 
         try {
-            const isAdminPage = window.location.pathname.includes('admin.html');
+            const isAdminPage = window.location.pathname.includes('admin.php') || window.location.pathname.includes('admin.html');
             let data;
             if (isAdminPage) {
                 data = await window.API.cargarDB();

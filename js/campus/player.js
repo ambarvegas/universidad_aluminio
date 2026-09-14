@@ -623,7 +623,7 @@ function renderizarCursoTeachlr(curso) {
                 <h2 class="fw-bold text-dark mb-2">Curso en Construcción</h2>
                 <p class="text-muted fs-5 mb-4">El curso <strong>"${curso.titulo}"</strong> se encuentra actualmente en desarrollo y afinamiento. ¡Estará disponible para ti muy pronto!</p>
                 <div>
-                    <a href="index.html" class="btn btn-primary px-4 shadow-sm">
+                    <a href="index.php" class="btn btn-primary px-4 shadow-sm">
                         <i class="bi bi-arrow-left me-1"></i>Volver a Mis Cursos
                     </a>
                 </div>

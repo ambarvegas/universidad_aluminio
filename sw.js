@@ -10,10 +10,10 @@ const CACHE_DYNAMIC = 'unialuminio-dynamic-v23';
 // Assets estáticos que se cachean al instalar el SW
 const STATIC_ASSETS = [
     './',
-    './index.html',
-    './detalle.html',
-    './login.html',
-    './admin.html',
+    './index.php',
+    './detalle.php',
+    './login.php',
+    './admin.php',
     './style.css',
     './script.js',
     './manifest.json',
@@ -104,7 +104,7 @@ self.addEventListener('fetch', event => {
                     return caches.match(event.request).then(cached => {
                         if (cached) return cached;
                         if (event.request.headers.get('accept')?.includes('text/html')) {
-                            return caches.match('./login.html');
+                            return caches.match('./login.php');
                         }
                     });
                 })

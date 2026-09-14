@@ -235,17 +235,17 @@ function renderizarGaleria() {
                 </button>`;
         } else if (prog.completado) {
             btnAccion = `
-                <a href="detalle.html?id=${c.id}" class="btn btn-success w-100" style="font-size:0.875rem;">
+                <a href="detalle.php?id=${c.id}" class="btn btn-success w-100" style="font-size:0.875rem;">
                     <i class="bi bi-check2-circle me-1"></i>Repasar / Certificado
                 </a>`;
         } else if (prog.porcentaje > 0) {
             btnAccion = `
-                <a href="detalle.html?id=${c.id}" class="btn btn-primary w-100" style="font-size:0.875rem;">
+                <a href="detalle.php?id=${c.id}" class="btn btn-primary w-100" style="font-size:0.875rem;">
                     <i class="bi bi-play-circle-fill me-1"></i>Continuar (${prog.porcentaje}%)
                 </a>`;
         } else {
             btnAccion = `
-                <a href="detalle.html?id=${c.id}" class="btn btn-primary w-100" style="font-size:0.875rem;">
+                <a href="detalle.php?id=${c.id}" class="btn btn-primary w-100" style="font-size:0.875rem;">
                     <i class="bi bi-arrow-right-circle-fill me-1"></i>Comenzar Curso
                 </a>`;
         }
@@ -473,13 +473,13 @@ window.renderizarCarreras = function() {
 
             if (cd.aprobado) {
                 statusBadge = `<span class="badge bg-success bg-opacity-15 text-success border border-success border-opacity-25 px-2 py-1"><i class="bi bi-check-circle-fill me-1"></i>Aprobado</span>`;
-                btnAction = `<a href="detalle.html?id=${encodeURIComponent(cd.id)}" class="btn btn-sm btn-outline-success"><i class="bi bi-arrow-repeat me-1"></i>Repasar</a>`;
+                btnAction = `<a href="detalle.php?id=${encodeURIComponent(cd.id)}" class="btn btn-sm btn-outline-success"><i class="bi bi-arrow-repeat me-1"></i>Repasar</a>`;
             } else if (cd.porcentaje > 0) {
                 statusBadge = `<span class="badge bg-primary bg-opacity-15 text-primary border border-primary border-opacity-25 px-2 py-1"><i class="bi bi-hourglass-split me-1"></i>${cd.porcentaje}%</span>`;
-                btnAction = `<a href="detalle.html?id=${encodeURIComponent(cd.id)}" class="btn btn-sm btn-primary"><i class="bi bi-play-fill me-1"></i>Continuar</a>`;
+                btnAction = `<a href="detalle.php?id=${encodeURIComponent(cd.id)}" class="btn btn-sm btn-primary"><i class="bi bi-play-fill me-1"></i>Continuar</a>`;
             } else {
                 statusBadge = `<span class="badge bg-secondary bg-opacity-15 text-secondary border px-2 py-1"><i class="bi bi-circle me-1"></i>Pendiente</span>`;
-                btnAction = `<a href="detalle.html?id=${encodeURIComponent(cd.id)}" class="btn btn-sm btn-outline-primary"><i class="bi bi-play-fill me-1"></i>Iniciar</a>`;
+                btnAction = `<a href="detalle.php?id=${encodeURIComponent(cd.id)}" class="btn btn-sm btn-outline-primary"><i class="bi bi-play-fill me-1"></i>Iniciar</a>`;
             }
 
             coursesListHtml += `
