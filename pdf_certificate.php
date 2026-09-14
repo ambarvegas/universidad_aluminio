@@ -870,44 +870,32 @@ function generarPdfCertificadoBinario(array $datos): string {
     $tituloConComillas = "« " . $tituloProg . " »";
     $pdf->drawWrappedText($tituloConComillas, $centerX, 114, 215, 'F2', 17.5, 7.5);
 
-    // 10. Bloque Izquierdo: Registro Institucional con Código QR Escaneable
-    $boxX = 22.0;
-    $boxY = 135.0;
-    $boxW = 75.0;
-    $boxH = 41.0;
+    // 10. Bloque Izquierdo: Tarjeta con Código QR Escaneable (Exclusivo)
+    $boxX = 38.0;
+    $boxY = 135.5;
+    $boxW = 40.0;
+    $boxH = 40.0;
 
-    // Caja contenedora
-    $pdf->setFillColor(248, 250, 252);
+    // Tarjeta con fondo blanco y doble filete sutil
+    $pdf->setFillColor(255, 255, 255);
     $pdf->setStrokeColor(203, 213, 225);
-    $pdf->setLineWidth(0.5);
+    $pdf->setLineWidth(0.6);
     $pdf->drawRect($boxX, $boxY, $boxW, $boxH, 'B');
 
-    // Cabecera de la caja
-    $pdf->setFillColor(15, 43, 72);
-    $pdf->drawRect($boxX, $boxY, $boxW, 7.2, 'F');
-    $pdf->setFillColor(255, 255, 255);
-    $pdf->drawText("REGISTRO INSTITUCIONAL", $boxX + ($boxW / 2.0), $boxY + 5.2, 'F2', 7.5, 'center');
-
-    // Renderizado del Código QR vectorial en la mitad izquierda del bloque
-    $qrPlateX = $boxX + 2.5;
-    $qrPlateY = $boxY + 9.5;
-    $qrPlateSize = 29.0;
-
-    // Fondo blanco del QR con borde sutil
-    $pdf->setFillColor(255, 255, 255);
-    $pdf->setStrokeColor(226, 232, 240);
+    // Filete interior dorado fino
+    $pdf->setStrokeColor(212, 175, 55);
     $pdf->setLineWidth(0.3);
-    $pdf->drawRect($qrPlateX, $qrPlateY, $qrPlateSize, $qrPlateSize, 'B');
+    $pdf->drawRect($boxX + 1.2, $boxY + 1.2, $boxW - 2.4, $boxH - 2.4, 'S');
 
-    // Generar y dibujar matriz de módulos QR vectoriales
+    // Generar y dibujar matriz de módulos QR vectoriales centrado en la tarjeta
     $qrMatrix = UniAluminioQrEngine::encode($urlVerif);
     $qrCount = count($qrMatrix);
     if ($qrCount > 0) {
-        $qrPadding = 1.5;
-        $qrDrawSize = $qrPlateSize - ($qrPadding * 2);
+        $qrPadding = 3.5;
+        $qrDrawSize = $boxW - ($qrPadding * 2);
         $modSize = $qrDrawSize / $qrCount;
-        $qrStartX = $qrPlateX + $qrPadding;
-        $qrStartY = $qrPlateY + $qrPadding;
+        $qrStartX = $boxX + $qrPadding;
+        $qrStartY = $boxY + $qrPadding;
 
         $pdf->setFillColor(15, 43, 72); // Azul noche institucional
         for ($r = 0; $r < $qrCount; $r++) {
@@ -918,24 +906,6 @@ function generarPdfCertificadoBinario(array $datos): string {
             }
         }
     }
-
-    // Texto informativo en la mitad derecha del bloque
-    $textCenterX = $boxX + $qrPlateSize + (($boxW - $qrPlateSize) / 2.0);
-
-    $pdf->setFillColor(15, 43, 72);
-    $pdf->drawText("ESCANEAR PARA VALIDAR", $textCenterX, $boxY + 13.5, 'F2', 5.8, 'center');
-
-    $pdf->setFillColor(100, 116, 139);
-    $pdf->drawText("Código Oficial:", $textCenterX, $boxY + 19.5, 'F1', 5.8, 'center');
-
-    $pdf->setFillColor(15, 43, 72);
-    $pdf->drawText($codigo ?: 'ALU-CUR-OFICIAL', $textCenterX, $boxY + 25.5, 'F4', 7.2, 'center');
-
-    $pdf->setFillColor(100, 116, 139);
-    $pdf->drawText("Portal de Validación:", $textCenterX, $boxY + 31.5, 'F1', 5.8, 'center');
-
-    $pdf->setFillColor(2, 132, 199);
-    $pdf->drawText("verificar.php", $textCenterX, $boxY + 36.5, 'F2', 7.2, 'center');
 
     // 11. Bloque Central: Sello Oficial de Rectoría
     $pdf->setStrokeColor(212, 175, 55);
