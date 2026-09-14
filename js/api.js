@@ -202,6 +202,15 @@ window.API = (() => {
             return _post('eliminar_usuario', { id });
         },
 
+        async guardarPerfil(datos) {
+            _setSaving(true);
+            try {
+                const r = await _post('guardar_perfil', datos);
+                _setSaving(false);
+                return r;
+            } catch (e) { _setSaving(false); throw e; }
+        },
+
         // ---- CURSOS ----
         async guardarCurso(curso) {
             _setSaving(true);

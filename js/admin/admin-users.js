@@ -8,13 +8,16 @@ window.prepararFormularioUsuario = () => {
     if (form) form.reset();
     const uId = document.getElementById('u-id');
     if (uId) uId.disabled = false;
+    if (document.getElementById('u-email')) document.getElementById('u-email').value = '';
+    if (document.getElementById('u-telefono')) document.getElementById('u-telefono').value = '';
+    if (document.getElementById('u-fecha-nacimiento')) document.getElementById('u-fecha-nacimiento').value = '';
     const title = document.getElementById('userModalTitle');
     if (title) title.innerText = "Nuevo Colaborador";
     renderSelectRoles();
 };
 
 window.abrirEditorUsuario = (id) => {
-    const u = usuarios.find(user => user.id === id);
+    const u = usuarios.find(user => String(user.id) === String(id));
     if (!u) return;
 
     const title = document.getElementById('userModalTitle');
@@ -35,9 +38,19 @@ window.abrirEditorUsuario = (id) => {
     const uClave = document.getElementById('u-clave');
     if (uClave) uClave.value = '';
 
+    if (document.getElementById('u-email')) {
+        document.getElementById('u-email').value = u.email || '';
+    }
+    if (document.getElementById('u-telefono')) {
+        document.getElementById('u-telefono').value = u.telefono || '';
+    }
+    if (document.getElementById('u-fecha-nacimiento')) {
+        document.getElementById('u-fecha-nacimiento').value = u.fecha_nacimiento || u.fechaNacimiento || '';
+    }
+
     const modalEl = document.getElementById('userModal');
     if (modalEl && typeof bootstrap !== 'undefined') {
-        const modal = new bootstrap.Modal(modalEl);
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
         modal.show();
     }
 };
@@ -55,11 +68,18 @@ window.guardarUsuario = async (e) => {
 
     const btn = document.getElementById('btn-guardar-usuario');
     await withLoading(btn, async () => {
-        const id = document.getElementById('u-id').value;
-        const nombre = document.getElementById('u-nombre').value;
+        const id = document.getElementById('u-id').value.trim();
+        const nombre = document.getElementById('u-nombre').value.trim();
         const rol = document.getElementById('u-rol').value;
         const estado = document.getElementById('u-estado').value;
-        const claveNueva = document.getElementById('u-clave').value;
+        const claveNueva = document.getElementById('u-clave').value.trim();
+        const email = (document.getElementById('u-email')?.value || '').trim();
+        const telefono = (document.getElementById('u-telefono')?.value || '').trim();
+        const fechaNacimiento = (document.getElementById('u-fecha-nacimiento')?.value || '').trim();
+
+        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            throw new Error("El formato del correo electrónico es inválido.");
+        }
 
         const autoAssignCareerId = getCareerIdFromRole(rol);
         const userCareers = [];
@@ -69,12 +89,16 @@ window.guardarUsuario = async (e) => {
             }
         }
 
-        const idx = usuarios.findIndex(u => u.id === id);
+        const idx = usuarios.findIndex(u => String(u.id) === String(id));
         let userToSave = null;
         if (idx !== -1) {
             usuarios[idx].nombre = nombre;
             usuarios[idx].rol = rol;
             usuarios[idx].estado = estado;
+            usuarios[idx].email = email;
+            usuarios[idx].telefono = telefono;
+            usuarios[idx].fecha_nacimiento = fechaNacimiento;
+            usuarios[idx].fechaNacimiento = fechaNacimiento;
             if (claveNueva) {
                 usuarios[idx].clave = claveNueva;
             } else {
@@ -86,11 +110,11 @@ window.guardarUsuario = async (e) => {
             usuarios[idx] = crearEstructuraUsuario(usuarios[idx]);
             userToSave = usuarios[idx];
         } else {
-            if (usuarios.find(u => u.id === id)) throw new Error("ID ya registrado");
+            if (usuarios.find(u => String(u.id) === String(id))) throw new Error("ID ya registrado");
             const nuevoUsuario = crearEstructuraUsuario({
                 id, nombre, clave: claveNueva || "12345",
-                rol, estado, asignados: [],
-                carrerasAsignadas: userCareers,
+                rol, estado, email, telefono, fecha_nacimiento: fechaNacimiento,
+                asignados: [], carrerasAsignadas: userCareers,
                 progreso: {}, certificadosCurso: [], certificadosCarrera: []
             });
             usuarios.push(nuevoUsuario);
@@ -99,7 +123,7 @@ window.guardarUsuario = async (e) => {
 
         await window.API.guardarUsuario(userToSave);
         showToast('Usuario guardado con éxito.', 'success');
-        setTimeout(() => location.reload(), 1500);
+        setTimeout(() => location.reload(), 1200);
     }, 'Guardando usuario...');
 };
 

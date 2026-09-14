@@ -1064,6 +1064,27 @@ if (!function_exists('v_asset')) {
                                 <label class="form-label fw-bold small">Contraseña</label>
                                 <input type="password" id="u-clave" class="form-control" placeholder="Dejar en blanco para no cambiar">
                             </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold small">Correo Electrónico (Notificaciones)</label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-envelope"></i></span>
+                                    <input type="email" id="u-email" class="form-control" placeholder="usuario@correo.com">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold small">Teléfono / Celular</label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-telephone"></i></span>
+                                    <input type="tel" id="u-telefono" class="form-control" placeholder="Ej: 0414-1234567">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold small">Fecha de Nacimiento</label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-calendar-event"></i></span>
+                                    <input type="date" id="u-fecha-nacimiento" class="form-control">
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div class="modal-footer bg-light">

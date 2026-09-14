@@ -184,6 +184,14 @@ function actualizarTablas() {
                     ? '<span class="badge-soft-danger"><i class="bi bi-slash-circle me-1"></i>Suspendido</span>'
                     : '<span class="badge-soft-success"><i class="bi bi-check-circle-fill me-1"></i>Activo</span>';
 
+                const fNac = u.fecha_nacimiento || u.fechaNacimiento || '';
+                const contactHtml = (u.email || u.telefono || fNac) ? `
+                    <div class="small text-muted d-flex flex-wrap gap-2 align-items-center mt-1">
+                        ${u.email ? `<span><i class="bi bi-envelope me-1 text-primary"></i>${u.email}</span>` : ''}
+                        ${u.telefono ? `<span><i class="bi bi-telephone me-1 text-success"></i>${u.telefono}</span>` : ''}
+                        ${fNac ? `<span><i class="bi bi-cake2 me-1 text-warning"></i>${fNac}</span>` : ''}
+                    </div>` : '';
+
                 userTable.innerHTML += `
                     <tr>
                         <td>
@@ -193,7 +201,8 @@ function actualizarTablas() {
                                 </div>
                                 <div>
                                     <div class="fw-bold text-dark">${u.nombre}</div>
-                                    ${certCount > 0 ? `<small class="text-success fw-semibold"><i class="bi bi-award-fill me-1"></i>${certCount} certificado${certCount !== 1 ? 's' : ''}</small>` : ''}
+                                    ${contactHtml}
+                                    ${certCount > 0 ? `<small class="text-success fw-semibold d-block mt-1"><i class="bi bi-award-fill me-1"></i>${certCount} certificado${certCount !== 1 ? 's' : ''}</small>` : ''}
                                 </div>
                             </div>
                         </td>

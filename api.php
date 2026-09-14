@@ -338,6 +338,28 @@ switch ($action) {
         }
         break;
 
+    // ------ ACTUALIZAR DATOS DE PERFIL (TELÉFONO, CORREO, FECHA NAC.) -------
+    case 'guardar_perfil':
+        require_session();
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body = jsonBody();
+        $uid = $_SESSION['user_id'];
+        try {
+            $updated = db_actualizar_perfil($conn, $uid, $body);
+            echo json_encode([
+                'success' => true,
+                'message' => 'Tus datos de perfil han sido actualizados correctamente.',
+                'usuario' => $updated
+            ], JSON_UNESCAPED_UNICODE);
+        } catch (InvalidArgumentException $e) {
+            http_response_code(400);
+            echo json_encode(['error' => $e->getMessage()]);
+        } catch (Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Error al actualizar datos de perfil: ' . $e->getMessage()]);
+        }
+        break;
+
     // ------ MIGRACION CONTRASENAS --------------------------------
     case 'hash_passwords':
         require_admin();
@@ -498,11 +520,12 @@ switch ($action) {
             // Disparadores de Notificaciones Institucionales por Correo
             require_once __DIR__ . '/mailer.php';
 
-            $sU = $conn->prepare("SELECT nombre, rol FROM `usuarios` WHERE id = ?");
+            $sU = $conn->prepare("SELECT nombre, rol, email FROM `usuarios` WHERE id = ?");
             $sU->bind_param('s', $uid);
             $sU->execute();
             $rU = $sU->get_result()->fetch_assoc();
             $uName = $rU['nombre'] ?? $uid;
+            $userEmailDb = trim($rU['email'] ?? '');
 
             $cTitulo = $resultado['cursoTitulo'] ?? $cid;
             $mTitulo = $resultado['moduloTitulo'] ?? ("Módulo " . ($midx + 1));
@@ -523,7 +546,7 @@ switch ($action) {
             // 3. Notificar al Alumno y al Admin cuando completa un curso completo
             if (!empty($resultado['certificadoOtorgado'])) {
                 $codCert = "CERT-" . strtoupper(substr(md5($uid . $cid . 'SALT_2026'), 0, 10));
-                $emailUser = filter_var($uid, FILTER_VALIDATE_EMAIL) ? $uid : '';
+                $emailUser = ($userEmailDb && filter_var($userEmailDb, FILTER_VALIDATE_EMAIL)) ? $userEmailDb : (filter_var($uid, FILTER_VALIDATE_EMAIL) ? $uid : '');
                 if ($emailUser) {
                     @notificarCertificadoEmitido($conn, $emailUser, $uName, $cTitulo, $codCert);
                 }

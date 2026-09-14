@@ -729,6 +729,43 @@ window.abrirModalPerfil = function() {
     const elRol = document.getElementById('perfil-rol');
     if (elRol) elRol.textContent = (sesion.rol === 'admin') ? 'Administrador' : (sesion.rol || 'Estudiante').replace('_', ' ');
 
+    // Datos de contacto en resumen
+    const elResEmail = document.getElementById('perfil-resumen-email');
+    if (elResEmail) {
+        elResEmail.innerHTML = sesion.email
+            ? `<i class="bi bi-envelope-fill me-1 text-primary"></i>${sesion.email}`
+            : `<span class="text-muted"><i class="bi bi-envelope me-1"></i>Sin correo</span>`;
+    }
+    const elResTel = document.getElementById('perfil-resumen-telefono');
+    if (elResTel) {
+        elResTel.innerHTML = sesion.telefono
+            ? `<i class="bi bi-telephone-fill me-1 text-success"></i>${sesion.telefono}`
+            : `<span class="text-muted"><i class="bi bi-telephone me-1"></i>Sin teléfono</span>`;
+    }
+    const elResNac = document.getElementById('perfil-resumen-nacimiento');
+    if (elResNac) {
+        const fNac = sesion.fecha_nacimiento || sesion.fechaNacimiento || '';
+        elResNac.innerHTML = fNac
+            ? `<i class="bi bi-cake2-fill me-1 text-warning"></i>${fNac}`
+            : `<span class="text-muted"><i class="bi bi-cake2 me-1"></i>Sin fecha nac.</span>`;
+    }
+
+    // Cargar valores en formulario de datos personales (Pestaña 2)
+    const inCedula = document.getElementById('perfil-input-cedula');
+    if (inCedula) inCedula.value = sesion.id || '';
+
+    const inNombre = document.getElementById('perfil-input-nombre');
+    if (inNombre) inNombre.value = sesion.nombre || '';
+
+    const inEmail = document.getElementById('perfil-input-email');
+    if (inEmail) inEmail.value = sesion.email || '';
+
+    const inTel = document.getElementById('perfil-input-telefono');
+    if (inTel) inTel.value = sesion.telefono || '';
+
+    const inNac = document.getElementById('perfil-input-fecha-nacimiento');
+    if (inNac) inNac.value = sesion.fecha_nacimiento || sesion.fechaNacimiento || '';
+
     // 2. Calcular métricas del colaborador
     const userProg = sesion.progreso || {};
     let countIniciados = 0;
@@ -773,6 +810,97 @@ window.abrirModalPerfil = function() {
     if (window.bootstrap && window.bootstrap.Modal) {
         const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
         modal.show();
+    }
+};
+
+window.guardarDatosPerfil = async function(event) {
+    if (event) event.preventDefault();
+
+    const inNombre = document.getElementById('perfil-input-nombre');
+    const inEmail  = document.getElementById('perfil-input-email');
+    const inTel    = document.getElementById('perfil-input-telefono');
+    const inNac    = document.getElementById('perfil-input-fecha-nacimiento');
+    const btnSubmit = document.getElementById('btn-guardar-perfil');
+
+    const nombre   = (inNombre?.value || '').trim();
+    const email    = (inEmail?.value || '').trim();
+    const telefono = (inTel?.value || '').trim();
+    const fechaNac = (inNac?.value || '').trim();
+
+    if (!nombre) {
+        if (typeof showToast === 'function') showToast('El nombre es obligatorio.', 'warning');
+        if (inNombre) inNombre.focus();
+        return;
+    }
+
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        if (typeof showToast === 'function') showToast('Por favor introduce un correo electrónico válido.', 'warning');
+        if (inEmail) inEmail.focus();
+        return;
+    }
+
+    try {
+        if (btnSubmit) {
+            btnSubmit.disabled = true;
+            btnSubmit.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Guardando...';
+        }
+
+        const res = await window.API.guardarPerfil({
+            nombre: nombre,
+            email: email,
+            telefono: telefono,
+            fecha_nacimiento: fechaNac
+        });
+
+        // Actualizar datos en sesión local
+        if (sesion) {
+            sesion.nombre = nombre;
+            sesion.email = email;
+            sesion.telefono = telefono;
+            sesion.fecha_nacimiento = fechaNac;
+            sesion.fechaNacimiento = fechaNac;
+            sessionStorage.setItem('aluSesion', JSON.stringify(sesion));
+        }
+
+        // Actualizar visualizaciones en el campus
+        const elNombre = document.getElementById('perfil-nombre');
+        if (elNombre) elNombre.textContent = nombre;
+        const elUserGreeting = document.getElementById('user-greeting-title');
+        if (elUserGreeting) elUserGreeting.textContent = `¡Hola, ${nombre.split(' ')[0]}!`;
+
+        // Actualizar badges en resumen
+        const elResEmail = document.getElementById('perfil-resumen-email');
+        if (elResEmail) {
+            elResEmail.innerHTML = email ? `<i class="bi bi-envelope-fill me-1 text-primary"></i>${email}` : `<span class="text-muted"><i class="bi bi-envelope me-1"></i>Sin correo</span>`;
+        }
+        const elResTel = document.getElementById('perfil-resumen-telefono');
+        if (elResTel) {
+            elResTel.innerHTML = telefono ? `<i class="bi bi-telephone-fill me-1 text-success"></i>${telefono}` : `<span class="text-muted"><i class="bi bi-telephone me-1"></i>Sin teléfono</span>`;
+        }
+        const elResNac = document.getElementById('perfil-resumen-nacimiento');
+        if (elResNac) {
+            elResNac.innerHTML = fechaNac ? `<i class="bi bi-cake2-fill me-1 text-warning"></i>${fechaNac}` : `<span class="text-muted"><i class="bi bi-cake2 me-1"></i>Sin fecha nac.</span>`;
+        }
+
+        if (typeof showToast === 'function') {
+            showToast(res.message || 'Datos de perfil actualizados con éxito.', 'success');
+        }
+
+        // Cambiar a la pestaña de resumen
+        const tabResumenBtn = document.getElementById('tab-perfil-resumen-btn');
+        if (tabResumenBtn && window.bootstrap && window.bootstrap.Tab) {
+            new bootstrap.Tab(tabResumenBtn).show();
+        }
+    } catch (err) {
+        console.error('Error al guardar datos de perfil:', err);
+        if (typeof showToast === 'function') {
+            showToast('Error al actualizar datos: ' + err.message, 'danger');
+        }
+    } finally {
+        if (btnSubmit) {
+            btnSubmit.disabled = false;
+            btnSubmit.innerHTML = '<i class="bi bi-check2-circle me-1"></i>Guardar Mis Datos';
+        }
     }
 };
 

@@ -46,11 +46,14 @@ function db_create_tables(mysqli $conn): void {
 
         // Usuarios
         "CREATE TABLE IF NOT EXISTS `usuarios` (
-            `id`      VARCHAR(50)  NOT NULL,
-            `nombre`  VARCHAR(255) NOT NULL DEFAULT '',
-            `clave`   VARCHAR(255) NOT NULL DEFAULT '12345',
-            `rol`     VARCHAR(100) NOT NULL DEFAULT 'participante',
-            `estado`  VARCHAR(50)  NOT NULL DEFAULT 'activo',
+            `id`               VARCHAR(50)  NOT NULL,
+            `nombre`           VARCHAR(255) NOT NULL DEFAULT '',
+            `clave`            VARCHAR(255) NOT NULL DEFAULT '12345',
+            `rol`              VARCHAR(100) NOT NULL DEFAULT 'participante',
+            `estado`           VARCHAR(50)  NOT NULL DEFAULT 'activo',
+            `telefono`         VARCHAR(50)  NOT NULL DEFAULT '',
+            `email`            VARCHAR(255) NOT NULL DEFAULT '',
+            `fecha_nacimiento` VARCHAR(20)  NOT NULL DEFAULT '',
             PRIMARY KEY (`id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
@@ -385,7 +388,7 @@ function db_read_all(mysqli $conn): array {
     ];
 
     // --- Usuarios ---
-    $res = $conn->query("SELECT id, nombre, clave, rol, estado FROM `usuarios`");
+    $res = $conn->query("SELECT id, nombre, clave, rol, estado, telefono, email, fecha_nacimiento FROM `usuarios`");
     $usuariosMap = [];
     while ($row = $res->fetch_assoc()) {
         $row['asignados']              = [];
@@ -836,6 +839,9 @@ function db_write_all(mysqli $conn, array $data): void {
             $rawClave = trim((string)($u['clave'] ?? ''));
             $rol      = trim((string)($u['rol'] ?? 'participante'));
             $estado   = trim((string)($u['estado'] ?? 'activo'));
+            $telefono = trim((string)($u['telefono'] ?? ''));
+            $email    = trim((string)($u['email'] ?? ''));
+            $fechaNac = trim((string)($u['fecha_nacimiento'] ?? $u['fechaNacimiento'] ?? ''));
             if (!$id) continue;
 
             if (!empty($rawClave)) {
@@ -848,7 +854,7 @@ function db_write_all(mysqli $conn, array $data): void {
                 $clave = $existingHashes[$id] ?? password_hash('12345', PASSWORD_BCRYPT);
             }
 
-            $usuariosRows[] = [$id, $nombre, $clave, $rol, $estado];
+            $usuariosRows[] = [$id, $nombre, $clave, $rol, $estado, $telefono, $email, $fechaNac];
 
             // Asignados directos (deduplicar)
             $asignadosUnique = array_unique(array_filter((array)($u['asignados'] ?? [])));
@@ -967,8 +973,8 @@ function db_write_all(mysqli $conn, array $data): void {
         }
 
         // Ejecutar Bulk Inserts de Usuarios y sus relaciones
-        db_bulk_insert($conn, 'usuarios', ['id', 'nombre', 'clave', 'rol', 'estado'], $usuariosRows, 100,
-            "ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), clave=VALUES(clave), rol=VALUES(rol), estado=VALUES(estado)");
+        db_bulk_insert($conn, 'usuarios', ['id', 'nombre', 'clave', 'rol', 'estado', 'telefono', 'email', 'fecha_nacimiento'], $usuariosRows, 100,
+            "ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), clave=VALUES(clave), rol=VALUES(rol), estado=VALUES(estado), telefono=VALUES(telefono), email=VALUES(email), fecha_nacimiento=VALUES(fecha_nacimiento)");
 
         db_bulk_insert($conn, 'usuario_asignados', ['usuario_id', 'curso_id'], $asignadosRows, 200, '', true);
         db_bulk_insert($conn, 'usuario_carreras_asignadas', ['usuario_id', 'carrera_id', 'estado'], $carrerasAsignadasRows, 200, '', true);
@@ -1200,7 +1206,7 @@ function db_write_all(mysqli $conn, array $data): void {
  * Soporta claves en texto plano (legadas) y bcrypt.
  */
 function db_verify_login(mysqli $conn, string $id, string $clave): ?array {
-    $stmt = $conn->prepare("SELECT id, nombre, clave, rol, estado FROM `usuarios` WHERE id = ? AND estado = 'activo'");
+    $stmt = $conn->prepare("SELECT id, nombre, clave, rol, estado, telefono, email, fecha_nacimiento FROM `usuarios` WHERE id = ? AND estado = 'activo'");
     $stmt->bind_param('s', $id);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
@@ -1231,6 +1237,9 @@ function db_verify_login(mysqli $conn, string $id, string $clave): ?array {
         'nombre'              => $row['nombre'],
         'rol'                 => $row['rol'],
         'estado'              => $row['estado'],
+        'telefono'            => $row['telefono'] ?? '',
+        'email'               => $row['email'] ?? '',
+        'fecha_nacimiento'    => $row['fecha_nacimiento'] ?? '',
         'asignados'           => [],
         'carrerasAsignadas'   => [],
         'progreso'            => [],
@@ -1471,7 +1480,7 @@ function db_read_for_participant(mysqli $conn, string $userId, string $userRol):
  */
 function db_read_catalogo(mysqli $conn, string $userId, string $userRol): array {
     // 1. Obtener usuario autenticado
-    $stmtU = $conn->prepare("SELECT id, nombre, rol, estado FROM `usuarios` WHERE id = ?");
+    $stmtU = $conn->prepare("SELECT id, nombre, rol, estado, telefono, email, fecha_nacimiento FROM `usuarios` WHERE id = ?");
     $stmtU->bind_param('s', $userId);
     $stmtU->execute();
     $uRes = $stmtU->get_result();
@@ -1834,10 +1843,13 @@ function db_read_curso_detalle(mysqli $conn, string $cursoId, bool $esAdmin): ?a
 function db_upsert_usuario(mysqli $conn, array $u): void {
     $conn->begin_transaction();
     try {
-        $id     = trim((string)($u['id']     ?? ''));
-        $nombre = trim((string)($u['nombre'] ?? ''));
-        $rol    = trim((string)($u['rol']    ?? 'participante'));
-        $estado = trim((string)($u['estado'] ?? 'activo'));
+        $id       = trim((string)($u['id']     ?? ''));
+        $nombre   = trim((string)($u['nombre'] ?? ''));
+        $rol      = trim((string)($u['rol']    ?? 'participante'));
+        $estado   = trim((string)($u['estado'] ?? 'activo'));
+        $telefono = trim((string)($u['telefono'] ?? ''));
+        $email    = trim((string)($u['email']    ?? ''));
+        $fechaNac = trim((string)($u['fecha_nacimiento'] ?? $u['fechaNacimiento'] ?? ''));
         if (!$id) { $conn->rollback(); return; }
 
         $safeId = $conn->real_escape_string($id);
@@ -1864,10 +1876,10 @@ function db_upsert_usuario(mysqli $conn, array $u): void {
         }
 
         $stmt = $conn->prepare(
-            "INSERT INTO `usuarios` (id, nombre, clave, rol, estado) VALUES (?,?,?,?,?)
-             ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), clave=VALUES(clave), rol=VALUES(rol), estado=VALUES(estado)"
+            "INSERT INTO `usuarios` (id, nombre, clave, rol, estado, telefono, email, fecha_nacimiento) VALUES (?,?,?,?,?,?,?,?)
+             ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), clave=VALUES(clave), rol=VALUES(rol), estado=VALUES(estado), telefono=VALUES(telefono), email=VALUES(email), fecha_nacimiento=VALUES(fecha_nacimiento)"
         );
-        $stmt->bind_param('sssss', $id, $nombre, $nuevaClave, $rol, $estado);
+        $stmt->bind_param('ssssssss', $id, $nombre, $nuevaClave, $rol, $estado, $telefono, $email, $fechaNac);
         $stmt->execute();
 
         // Limpiar y reescribir solo relaciones de asignación directa de cursos y carreras
@@ -3237,10 +3249,12 @@ function db_read_usuarios_paginados(mysqli $conn, int $page = 1, int $limit = 25
 
     if ($search !== '') {
         $searchWild = '%' . $search . '%';
-        $where[] = "(id LIKE ? OR nombre LIKE ?)";
+        $where[] = "(id LIKE ? OR nombre LIKE ? OR email LIKE ? OR telefono LIKE ?)";
         $params[] = $searchWild;
         $params[] = $searchWild;
-        $types .= 'ss';
+        $params[] = $searchWild;
+        $params[] = $searchWild;
+        $types .= 'ssss';
     }
 
     if ($rol !== '') {
@@ -3267,7 +3281,7 @@ function db_read_usuarios_paginados(mysqli $conn, int $page = 1, int $limit = 25
     $totalRows = (int)($stmtCount->get_result()->fetch_assoc()['total'] ?? 0);
 
     // 2. Obtener usuarios de la página actual
-    $sql = "SELECT id, nombre, rol, estado FROM `usuarios` $whereSql ORDER BY nombre ASC LIMIT ? OFFSET ?";
+    $sql = "SELECT id, nombre, rol, estado, telefono, email, fecha_nacimiento FROM `usuarios` $whereSql ORDER BY nombre ASC LIMIT ? OFFSET ?";
     $stmt = $conn->prepare($sql);
     $paramsWithLimit = $params;
     $paramsWithLimit[] = $limit;
@@ -3549,6 +3563,46 @@ function db_format_bytes(int $bytes, int $precision = 2): string {
     $bytes /= (1 << (10 * $pow));
     return round($bytes, $precision) . ' ' . $units[$pow];
 }
+
+/**
+ * Permite a un colaborador actualizar sus datos de perfil (teléfono, correo, fecha de nacimiento y nombre).
+ */
+function db_actualizar_perfil(mysqli $conn, string $userId, array $datos): array {
+    $userId = trim($userId);
+    if (!$userId) throw new InvalidArgumentException("ID de usuario requerido.");
+
+    $telefono = trim((string)($datos['telefono'] ?? ''));
+    $email    = trim((string)($datos['email'] ?? ''));
+    $fechaNac = trim((string)($datos['fecha_nacimiento'] ?? $datos['fechaNacimiento'] ?? ''));
+    $nombre   = isset($datos['nombre']) ? trim((string)$datos['nombre']) : null;
+
+    if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        throw new InvalidArgumentException("El formato del correo electrónico es inválido.");
+    }
+
+    if ($nombre !== null && $nombre !== '') {
+        $stmt = $conn->prepare("UPDATE `usuarios` SET nombre = ?, telefono = ?, email = ?, fecha_nacimiento = ? WHERE id = ?");
+        $stmt->bind_param('sssss', $nombre, $telefono, $email, $fechaNac, $userId);
+    } else {
+        $stmt = $conn->prepare("UPDATE `usuarios` SET telefono = ?, email = ?, fecha_nacimiento = ? WHERE id = ?");
+        $stmt->bind_param('ssss', $telefono, $email, $fechaNac, $userId);
+    }
+    $stmt->execute();
+
+    $stmtGet = $conn->prepare("SELECT id, nombre, rol, estado, telefono, email, fecha_nacimiento FROM `usuarios` WHERE id = ?");
+    $stmtGet->bind_param('s', $userId);
+    $stmtGet->execute();
+    $row = $stmtGet->get_result()->fetch_assoc();
+
+    return $row ?: [
+        'id'               => $userId,
+        'nombre'           => $nombre ?: $userId,
+        'telefono'         => $telefono,
+        'email'            => $email,
+        'fecha_nacimiento' => $fechaNac
+    ];
+}
+
 
 
 

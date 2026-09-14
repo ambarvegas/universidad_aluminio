@@ -251,6 +251,11 @@ if (!function_exists('v_asset')) {
                             </button>
                         </li>
                         <li class="nav-item" role="presentation">
+                            <button class="nav-link fw-bold text-dark" id="tab-perfil-datos-btn" data-bs-toggle="tab" data-bs-target="#tab-perfil-datos" type="button" role="tab">
+                                <i class="bi bi-person-gear me-1 text-primary"></i>Mis Datos Personales
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
                             <button class="nav-link fw-bold text-dark" id="tab-perfil-seguridad-btn" data-bs-toggle="tab" data-bs-target="#tab-perfil-seguridad" type="button" role="tab">
                                 <i class="bi bi-shield-lock-fill me-1 text-primary"></i>Seguridad & Contraseña
                             </button>
@@ -278,7 +283,11 @@ if (!function_exists('v_asset')) {
                                         <span>•</span>
                                         <span class="badge bg-success bg-opacity-15 text-success border border-success border-opacity-25 px-2 py-1">Colaborador Activo</span>
                                     </div>
-                                    <p class="text-muted small mb-0">Miembro oficial de la plataforma de formación de la Universidad del Aluminio.</p>
+                                    <div class="d-flex flex-wrap gap-3 align-items-center text-muted small mt-1" id="perfil-resumen-contacto">
+                                        <span id="perfil-resumen-email"><i class="bi bi-envelope me-1 text-primary"></i><span class="val">Sin correo</span></span>
+                                        <span id="perfil-resumen-telefono"><i class="bi bi-telephone me-1 text-success"></i><span class="val">Sin teléfono</span></span>
+                                        <span id="perfil-resumen-nacimiento"><i class="bi bi-cake2 me-1 text-warning"></i><span class="val">Sin fecha</span></span>
+                                    </div>
                                 </div>
                             </div>
 
@@ -315,7 +324,69 @@ if (!function_exists('v_asset')) {
                             </div>
                         </div>
 
-                        <!-- Pestaña 2: Seguridad y Cambio de Contraseña -->
+                        <!-- Pestaña 2: Mis Datos Personales y de Contacto -->
+                        <div class="tab-pane fade" id="tab-perfil-datos" role="tabpanel">
+                            <div class="alert alert-primary border-0 bg-primary bg-opacity-10 d-flex gap-3 align-items-center p-3 rounded-3 mb-4">
+                                <i class="bi bi-person-lines-fill fs-2 text-primary"></i>
+                                <div>
+                                    <div class="fw-bold text-primary">Datos Personales y Notificaciones</div>
+                                    <small class="text-muted">Mantén actualizados tu correo electrónico, teléfono y fecha de nacimiento para recibir avisos de nuevos cursos, recordatorios y certificados oficiales.</small>
+                                </div>
+                            </div>
+
+                            <form id="form-datos-perfil" onsubmit="guardarDatosPerfil(event)">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small text-secondary">Cédula / Identificación</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-light"><i class="bi bi-card-heading text-muted"></i></span>
+                                            <input type="text" id="perfil-input-cedula" class="form-control bg-light" readonly disabled>
+                                        </div>
+                                        <div class="form-text small">La cédula es tu identificador único en el sistema.</div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small text-secondary">Nombre Completo <span class="text-danger">*</span></label>
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-light"><i class="bi bi-person-fill text-muted"></i></span>
+                                            <input type="text" id="perfil-input-nombre" class="form-control" required placeholder="Tu nombre y apellido">
+                                        </div>
+                                        <div class="form-text small">Este nombre aparecerá en tus certificados emitidos.</div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small text-secondary">Correo Electrónico <span class="text-primary">*</span></label>
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-light"><i class="bi bi-envelope-fill text-muted"></i></span>
+                                            <input type="email" id="perfil-input-email" class="form-control" placeholder="ejemplo@correo.com">
+                                        </div>
+                                        <div class="form-text small text-muted"><i class="bi bi-bell-fill me-1 text-primary"></i>Utilizado para notificarte tus certificados y calificaciones.</div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small text-secondary">Número de Teléfono / Celular</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-light"><i class="bi bi-telephone-fill text-muted"></i></span>
+                                            <input type="tel" id="perfil-input-telefono" class="form-control" placeholder="Ej: 0414-1234567">
+                                        </div>
+                                        <div class="form-text small">Para contacto institucional y soporte.</div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold small text-secondary">Fecha de Nacimiento</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-light"><i class="bi bi-calendar-event text-muted"></i></span>
+                                            <input type="date" id="perfil-input-fecha-nacimiento" class="form-control">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="d-flex justify-content-end gap-2 pt-4 mt-3 border-top">
+                                    <button type="button" class="btn btn-light px-4" data-bs-dismiss="modal">Cerrar</button>
+                                    <button type="submit" id="btn-guardar-perfil" class="btn btn-primary px-4 fw-bold shadow-sm">
+                                        <i class="bi bi-check2-circle me-1"></i>Guardar Mis Datos
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- Pestaña 3: Seguridad y Cambio de Contraseña -->
                         <div class="tab-pane fade" id="tab-perfil-seguridad" role="tabpanel">
                             <div class="alert alert-info border-0 bg-info bg-opacity-10 d-flex gap-3 align-items-center p-3 rounded-3 mb-4">
                                 <i class="bi bi-shield-check fs-2 text-info"></i>
