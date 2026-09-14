@@ -35,14 +35,14 @@ class SmtpMailer {
         $this->timeout   = (int)($config['timeout'] ?? 10);
     }
 
-    public function send(string $toEmail, string $subject, string $htmlBody, string $textBody = ''): bool {
+    public function send(string $toEmail, string $subject, string $htmlBody, string $textBody = '', array $attachments = []): bool {
         if (empty($toEmail) || !filter_var($toEmail, FILTER_VALIDATE_EMAIL)) {
             throw new InvalidArgumentException("Dirección de correo inválida: $toEmail");
         }
 
         // Si no hay host SMTP configurado o es localhost sin usuario, intentar fallback a mail() nativo
         if (empty($this->user) && ($this->host === 'localhost' || empty($this->host))) {
-            return $this->sendNativeMail($toEmail, $subject, $htmlBody);
+            return $this->sendNativeMail($toEmail, $subject, $htmlBody, $textBody, $attachments);
         }
 
         $prefix = ($this->secure === 'ssl') ? 'ssl://' : '';
@@ -51,7 +51,7 @@ class SmtpMailer {
         if (!$socket) {
             // Fallback a mail() si el socket no abre
             error_log("[SmtpMailer] Fallo de conexión socket ($errstr). Intentando mail() nativo.");
-            return $this->sendNativeMail($toEmail, $subject, $htmlBody);
+            return $this->sendNativeMail($toEmail, $subject, $htmlBody, $textBody, $attachments);
         }
 
         stream_set_timeout($socket, $this->timeout);
@@ -78,28 +78,75 @@ class SmtpMailer {
             $this->sendCommand($socket, "RCPT TO: <{$toEmail}>", '250');
             $this->sendCommand($socket, "DATA", '354');
 
-            $boundary = "----=_Part_" . md5(uniqid((string)time(), true));
+            $hasAttachments = !empty($attachments);
+            $plain = $textBody ?: strip_tags(str_replace(['<br>', '<br/>', '<br />', '</p>'], "\n", $htmlBody));
+
             $headers  = [];
             $headers[] = "From: =?UTF-8?B?" . base64_encode($this->fromName) . "?= <{$this->fromEmail}>";
             $headers[] = "To: <{$toEmail}>";
             $headers[] = "Subject: =?UTF-8?B?" . base64_encode($subject) . "?=";
             $headers[] = "MIME-Version: 1.0";
-            $headers[] = "Content-Type: multipart/alternative; boundary=\"{$boundary}\"";
             $headers[] = "X-Mailer: UniAluminio LMS Mailer v2.0";
             $headers[] = "Date: " . date('r');
 
-            $plain = $textBody ?: strip_tags(str_replace(['<br>', '<br/>', '</p>'], "\n", $htmlBody));
+            $boundaryAlt = "----=_Part_Alt_" . md5(uniqid((string)time(), true));
 
-            $body  = implode("\r\n", $headers) . "\r\n\r\n";
-            $body .= "--{$boundary}\r\n";
-            $body .= "Content-Type: text/plain; charset=UTF-8\r\n";
-            $body .= "Content-Transfer-Encoding: base64\r\n\r\n";
-            $body .= chunk_split(base64_encode($plain)) . "\r\n";
-            $body .= "--{$boundary}\r\n";
-            $body .= "Content-Type: text/html; charset=UTF-8\r\n";
-            $body .= "Content-Transfer-Encoding: base64\r\n\r\n";
-            $body .= chunk_split(base64_encode($htmlBody)) . "\r\n";
-            $body .= "--{$boundary}--\r\n";
+            if ($hasAttachments) {
+                $boundaryMixed = "----=_Part_Mixed_" . md5(uniqid((string)time() . '_mix', true));
+                $headers[] = "Content-Type: multipart/mixed; boundary=\"{$boundaryMixed}\"";
+
+                $body  = implode("\r\n", $headers) . "\r\n\r\n";
+
+                // Subparte alternativa (Plain + HTML)
+                $body .= "--{$boundaryMixed}\r\n";
+                $body .= "Content-Type: multipart/alternative; boundary=\"{$boundaryAlt}\"\r\n\r\n";
+
+                $body .= "--{$boundaryAlt}\r\n";
+                $body .= "Content-Type: text/plain; charset=UTF-8\r\n";
+                $body .= "Content-Transfer-Encoding: base64\r\n\r\n";
+                $body .= chunk_split(base64_encode($plain)) . "\r\n";
+
+                $body .= "--{$boundaryAlt}\r\n";
+                $body .= "Content-Type: text/html; charset=UTF-8\r\n";
+                $body .= "Content-Transfer-Encoding: base64\r\n\r\n";
+                $body .= chunk_split(base64_encode($htmlBody)) . "\r\n";
+
+                $body .= "--{$boundaryAlt}--\r\n";
+
+                // Adjuntos
+                foreach ($attachments as $att) {
+                    $attFilename = $att['filename'] ?? 'Certificado.pdf';
+                    $attMime     = $att['mime'] ?? 'application/pdf';
+                    $attContent  = $att['content'] ?? '';
+
+                    $safeFilename = basename($attFilename);
+                    $encodedFilename = "=?UTF-8?B?" . base64_encode($safeFilename) . "?=";
+
+                    $body .= "--{$boundaryMixed}\r\n";
+                    $body .= "Content-Type: {$attMime}; name=\"{$encodedFilename}\"\r\n";
+                    $body .= "Content-Transfer-Encoding: base64\r\n";
+                    $body .= "Content-Disposition: attachment; filename=\"{$encodedFilename}\"\r\n\r\n";
+                    $body .= chunk_split(base64_encode($attContent)) . "\r\n";
+                }
+
+                $body .= "--{$boundaryMixed}--\r\n";
+            } else {
+                $headers[] = "Content-Type: multipart/alternative; boundary=\"{$boundaryAlt}\"";
+
+                $body  = implode("\r\n", $headers) . "\r\n\r\n";
+                $body .= "--{$boundaryAlt}\r\n";
+                $body .= "Content-Type: text/plain; charset=UTF-8\r\n";
+                $body .= "Content-Transfer-Encoding: base64\r\n\r\n";
+                $body .= chunk_split(base64_encode($plain)) . "\r\n";
+
+                $body .= "--{$boundaryAlt}\r\n";
+                $body .= "Content-Type: text/html; charset=UTF-8\r\n";
+                $body .= "Content-Transfer-Encoding: base64\r\n\r\n";
+                $body .= chunk_split(base64_encode($htmlBody)) . "\r\n";
+
+                $body .= "--{$boundaryAlt}--\r\n";
+            }
+
             $body .= "\r\n.";
 
             $this->sendCommand($socket, $body, '250');
@@ -109,19 +156,65 @@ class SmtpMailer {
         } catch (Throwable $e) {
             if (is_resource($socket)) fclose($socket);
             error_log("[SmtpMailer] Error SMTP: " . $e->getMessage() . " — Ejecutando fallback mail()");
-            return $this->sendNativeMail($toEmail, $subject, $htmlBody);
+            return $this->sendNativeMail($toEmail, $subject, $htmlBody, $textBody, $attachments);
         }
     }
 
-    private function sendNativeMail(string $toEmail, string $subject, string $htmlBody): bool {
+    private function sendNativeMail(string $toEmail, string $subject, string $htmlBody, string $textBody = '', array $attachments = []): bool {
+        $encodedSubject = "=?UTF-8?B?" . base64_encode($subject) . "?=";
+        $plain = $textBody ?: strip_tags(str_replace(['<br>', '<br/>', '<br />', '</p>'], "\n", $htmlBody));
+
+        if (empty($attachments)) {
+            $headers  = "MIME-Version: 1.0\r\n";
+            $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
+            $headers .= "From: =?UTF-8?B?" . base64_encode($this->fromName) . "?= <{$this->fromEmail}>\r\n";
+            $headers .= "Reply-To: {$this->fromEmail}\r\n";
+            $headers .= "X-Mailer: PHP/" . phpversion();
+            return @mail($toEmail, $encodedSubject, $htmlBody, $headers);
+        }
+
+        $boundaryMixed = "----=_Part_Mixed_" . md5(uniqid((string)time() . '_mix_nat', true));
+        $boundaryAlt   = "----=_Part_Alt_" . md5(uniqid((string)time() . '_alt_nat', true));
+
         $headers  = "MIME-Version: 1.0\r\n";
-        $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
         $headers .= "From: =?UTF-8?B?" . base64_encode($this->fromName) . "?= <{$this->fromEmail}>\r\n";
         $headers .= "Reply-To: {$this->fromEmail}\r\n";
+        $headers .= "Content-Type: multipart/mixed; boundary=\"{$boundaryMixed}\"\r\n";
         $headers .= "X-Mailer: PHP/" . phpversion();
 
-        $encodedSubject = "=?UTF-8?B?" . base64_encode($subject) . "?=";
-        return @mail($toEmail, $encodedSubject, $htmlBody, $headers);
+        $body  = "--{$boundaryMixed}\r\n";
+        $body .= "Content-Type: multipart/alternative; boundary=\"{$boundaryAlt}\"\r\n\r\n";
+
+        $body .= "--{$boundaryAlt}\r\n";
+        $body .= "Content-Type: text/plain; charset=UTF-8\r\n";
+        $body .= "Content-Transfer-Encoding: base64\r\n\r\n";
+        $body .= chunk_split(base64_encode($plain)) . "\r\n";
+
+        $body .= "--{$boundaryAlt}\r\n";
+        $body .= "Content-Type: text/html; charset=UTF-8\r\n";
+        $body .= "Content-Transfer-Encoding: base64\r\n\r\n";
+        $body .= chunk_split(base64_encode($htmlBody)) . "\r\n";
+
+        $body .= "--{$boundaryAlt}--\r\n";
+
+        foreach ($attachments as $att) {
+            $attFilename = $att['filename'] ?? 'Certificado.pdf';
+            $attMime     = $att['mime'] ?? 'application/pdf';
+            $attContent  = $att['content'] ?? '';
+
+            $safeFilename = basename($attFilename);
+            $encodedFilename = "=?UTF-8?B?" . base64_encode($safeFilename) . "?=";
+
+            $body .= "--{$boundaryMixed}\r\n";
+            $body .= "Content-Type: {$attMime}; name=\"{$encodedFilename}\"\r\n";
+            $body .= "Content-Transfer-Encoding: base64\r\n";
+            $body .= "Content-Disposition: attachment; filename=\"{$encodedFilename}\"\r\n\r\n";
+            $body .= chunk_split(base64_encode($attContent)) . "\r\n";
+        }
+
+        $body .= "--{$boundaryMixed}--\r\n";
+
+        return @mail($toEmail, $encodedSubject, $body, $headers);
     }
 
     private function sendCommand($socket, string $cmd, string $expectedCode): string {
@@ -287,24 +380,58 @@ function notificarAdminNuevaSolicitud(mysqli $conn, string $tipo, string $nombre
 }
 
 /**
- * Notifica a un usuario que ha obtenido un certificado oficial.
+ * Notifica a un usuario que ha obtenido un certificado oficial, adjuntando el documento PDF oficial.
  */
-function notificarCertificadoEmitido(mysqli $conn, string $email, string $nombre, string $programaTitulo, string $codigoVerificacion): bool {
+function notificarCertificadoEmitido(mysqli $conn, string $email, string $nombre, string $programaTitulo, string $codigoVerificacion, string $cedula = '', string $itemId = '', string $tipo = 'curso'): bool {
     if (!$email || !filter_var($email, FILTER_VALIDATE_EMAIL)) return false;
 
-    $baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . "://" . ($_SERVER['HTTP_HOST'] ?? 'localhost') . dirname($_SERVER['SCRIPT_NAME'] ?? '');
-    $verifyUrl = rtrim($baseUrl, '/') . '/verificar.php?code=' . urlencode($codigoVerificacion);
+    require_once __DIR__ . '/pdf_certificate.php';
+
+    $fechaEmision = date('d/m/Y');
+    $pdfBinary = generarPdfCertificadoBinario([
+        'tipo'                => $tipo,
+        'nombre'              => $nombre,
+        'cedula'              => $cedula,
+        'titulo_programa'     => $programaTitulo,
+        'codigo_verificacion' => $codigoVerificacion,
+        'fecha_emision'       => $fechaEmision,
+        'institucion'         => 'Universidad del Aluminio'
+    ]);
+
+    $safeProg = preg_replace('/[^a-zA-Z0-9_\-]/', '_', $programaTitulo);
+    $safeNom  = preg_replace('/[^a-zA-Z0-9_\-]/', '_', $nombre);
+    $prefix   = ($tipo === 'carrera') ? 'Diploma_Carrera_' : 'Certificado_Curso_';
+    $filename = $prefix . $safeProg . '_' . $safeNom . '.pdf';
+
+    $attachments = [
+        [
+            'filename' => $filename,
+            'content'  => $pdfBinary,
+            'mime'     => 'application/pdf'
+        ]
+    ];
 
     $html = "<p>¡Felicitaciones, <strong>" . htmlspecialchars($nombre) . "</strong>!</p>
     <p>Has completado exitosamente todos los requerimientos académicos del programa:</p>
     <div style=\"background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 18px; margin: 18px 0; text-align: center;\">
         <h3 style=\"color: #166534; margin: 0 0 8px; font-size: 18px;\">" . htmlspecialchars($programaTitulo) . "</h3>
-        <p style=\"margin: 0; color: #15803d; font-size: 14px;\">Código Oficial de Verificación: <strong style=\"font-family: monospace; font-size: 16px; background: #dcfce7; padding: 2px 8px; border-radius: 4px;\">{$codigoVerificacion}</strong></p>
+        <p style=\"margin: 0; color: #15803d; font-size: 14px;\">Código Oficial de Registro: <strong style=\"font-family: monospace; font-size: 16px; background: #dcfce7; padding: 2px 8px; border-radius: 4px;\">{$codigoVerificacion}</strong></p>
     </div>
-    <p>Tu certificación ha sido registrada en el padrón institucional con firma criptográfica y código QR verificable.</p>";
+    <div style=\"background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 18px; margin: 18px 0; text-align: center;\">
+        <div style=\"font-size: 32px; margin-bottom: 6px;\">&#128196;</div>
+        <strong style=\"color: #1e40af; font-size: 16px;\">Tu Certificado Oficial en Formato PDF</strong>
+        <p style=\"margin: 8px 0 0; color: #3b82f6; font-size: 13.5px;\">Adjunto a este correo electrónico encontrarás tu documento oficial (<strong>{$filename}</strong>), emitido con plena validez académica por la Rectoría de la Universidad del Aluminio para su descarga, archivo o impresión.</p>
+    </div>
+    <p>Tu certificación ha sido asentada formalmente en el registro institucional de la plataforma educativa.</p>";
 
     $mailer = obtenerMailerInstance($conn);
-    return $mailer->send($email, "🎓 ¡Certificado Oficial Obtenido: $programaTitulo!", renderHtmlEmailTemplate("¡Felicitaciones por tu Certificación!", $html, "Verificar Certificado Oficial", $verifyUrl));
+    return $mailer->send(
+        $email,
+        "🎓 Tu Certificado Oficial en PDF: $programaTitulo",
+        renderHtmlEmailTemplate("¡Certificado Oficial Emitido!", $html),
+        '',
+        $attachments
+    );
 }
 
 /**
@@ -342,17 +469,39 @@ function notificarAdminModuloAprobado(mysqli $conn, string $userId, string $user
 }
 
 /**
- * 2. Notifica al administrador que un colaborador ha completado y certificado un curso completo.
+ * 2. Notifica al administrador que un colaborador ha completado y certificado un curso, adjuntando la copia del PDF.
  */
 function notificarAdminCursoCompletado(mysqli $conn, string $userId, string $userName, string $cursoId, string $cursoTitulo, string $codigoCertificado): bool {
     $res = $conn->query("SELECT valor FROM `configuracion` WHERE clave = 'email_admin'");
     $adminEmail = ($res && $r = $res->fetch_assoc()) ? trim($r['valor'] ?? '') : '';
     if (!$adminEmail || !filter_var($adminEmail, FILTER_VALIDATE_EMAIL)) return false;
 
-    $baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . "://" . ($_SERVER['HTTP_HOST'] ?? 'localhost') . dirname($_SERVER['SCRIPT_NAME'] ?? '');
-    $verifyUrl = rtrim($baseUrl, '/') . '/verificar.php?code=' . urlencode($codigoCertificado);
+    require_once __DIR__ . '/pdf_certificate.php';
 
     $fecha = date('d/m/Y H:i');
+    $fechaEmision = date('d/m/Y');
+
+    $pdfBinary = generarPdfCertificadoBinario([
+        'tipo'                => 'curso',
+        'nombre'              => $userName,
+        'cedula'              => $userId,
+        'titulo_programa'     => $cursoTitulo,
+        'codigo_verificacion' => $codigoCertificado,
+        'fecha_emision'       => $fechaEmision,
+        'institucion'         => 'Universidad del Aluminio'
+    ]);
+
+    $safeProg = preg_replace('/[^a-zA-Z0-9_\-]/', '_', $cursoTitulo);
+    $safeNom  = preg_replace('/[^a-zA-Z0-9_\-]/', '_', $userName);
+    $filename = 'Certificado_Curso_' . $safeProg . '_' . $safeNom . '.pdf';
+
+    $attachments = [
+        [
+            'filename' => $filename,
+            'content'  => $pdfBinary,
+            'mime'     => 'application/pdf'
+        ]
+    ];
 
     $html = "<p>Hola Administrador,</p>
     <p>¡Buenas noticias! El colaborador <strong>" . htmlspecialchars($userName) . "</strong> ha completado el <strong>100% de los requisitos</strong> y obtenido la certificación oficial del curso:</p>
@@ -360,15 +509,20 @@ function notificarAdminCursoCompletado(mysqli $conn, string $userId, string $use
         <h3 style=\"color: #166534; margin: 0 0 8px; font-size: 18px;\">" . htmlspecialchars($cursoTitulo) . "</h3>
         <p style=\"margin: 0 0 6px; color: #15803d;\">Colaborador: <strong>" . htmlspecialchars($userName) . "</strong> (C.I: {$userId})</p>
         <p style=\"margin: 0 0 6px; color: #15803d; font-size: 13px;\">Fecha de Certificación: {$fecha}</p>
-        <p style=\"margin: 0; color: #15803d; font-size: 14px;\">Código de Verificación: <strong style=\"font-family: monospace; font-size: 15px; background: #dcfce7; padding: 2px 8px; border-radius: 4px;\">{$codigoCertificado}</strong></p>
+        <p style=\"margin: 0; color: #15803d; font-size: 14px;\">Código de Registro: <strong style=\"font-family: monospace; font-size: 15px; background: #dcfce7; padding: 2px 8px; border-radius: 4px;\">{$codigoCertificado}</strong></p>
     </div>
-    <p>El certificado digital con firma criptográfica y código QR verificable se encuentra registrado en el sistema.</p>";
+    <div style=\"background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 14px; margin: 16px 0; text-align: center;\">
+        <strong style=\"color: #1e40af; font-size: 14px;\">&#128196; Certificado Oficial Adjunto ({$filename})</strong>
+        <p style=\"margin: 4px 0 0; color: #3b82f6; font-size: 12px;\">Se adjunta el archivo PDF oficial emitido para el expediente del colaborador.</p>
+    </div>";
 
     $mailer = obtenerMailerInstance($conn);
     return $mailer->send(
         $adminEmail,
-        "🎉 Curso Certificado: $userName culminó $cursoTitulo",
-        renderHtmlEmailTemplate("¡Curso Completado y Certificado!", $html, "Verificar Certificado Oficial", $verifyUrl)
+        "🎉 Certificado Oficial Emitido: $userName culminó $cursoTitulo",
+        renderHtmlEmailTemplate("¡Curso Completado y Certificado!", $html),
+        '',
+        $attachments
     );
 }
 
