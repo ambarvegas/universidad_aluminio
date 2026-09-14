@@ -179,6 +179,16 @@ window.API = (() => {
         },
 
         // ---- USUARIOS ----
+        async cargarUsuariosPaginados({ page = 1, limit = 25, search = '', rol = '', estado = '' } = {}) {
+            const params = new URLSearchParams();
+            params.set('page', page);
+            params.set('limit', limit);
+            if (search) params.set('search', search);
+            if (rol) params.set('rol', rol);
+            if (estado) params.set('estado', estado);
+            return _get('usuarios_paginados&' + params.toString());
+        },
+
         async guardarUsuario(usuario) {
             _setSaving(true);
             try {

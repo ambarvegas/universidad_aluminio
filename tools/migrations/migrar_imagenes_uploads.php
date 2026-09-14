@@ -5,7 +5,7 @@
  * hacia archivos físicos optimizados en el directorio /uploads/.
  */
 
-require_once __DIR__ . '/db_mysql.php';
+require_once dirname(__DIR__, 2) . '/db_mysql.php';
 
 header('Content-Type: text/plain; charset=utf-8');
 
@@ -15,7 +15,7 @@ echo "====================================================\n\n";
 
 $conn = db_connect();
 
-$uploadDir = __DIR__ . '/uploads/';
+$uploadDir = dirname(__DIR__, 2) . '/uploads/';
 if (!is_dir($uploadDir)) {
     if (!mkdir($uploadDir, 0755, true)) {
         die("Error: No se pudo crear el directorio 'uploads/'\n");

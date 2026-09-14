@@ -3033,4 +3033,138 @@ function db_cambiar_clave(mysqli $conn, string $userId, string $claveActual, str
     return ['success' => true, 'message' => 'Contraseña actualizada exitosamente.'];
 }
 
+// ============================================================
+// PAGINACIÓN SERVER-SIDE
+// ============================================================
+
+/**
+ * Consulta paginada y filtrada de usuarios para el panel de administración.
+ * Realiza una consulta eficiente con LIMIT/OFFSET y devuelve los metadatos de paginación.
+ */
+function db_read_usuarios_paginados(mysqli $conn, int $page = 1, int $limit = 25, string $search = '', string $rol = '', string $estado = ''): array {
+    $page = max(1, $page);
+    $limit = max(5, min(100, $limit));
+    $offset = ($page - 1) * $limit;
+
+    $where = [];
+    $params = [];
+    $types = '';
+
+    if ($search !== '') {
+        $searchWild = '%' . $search . '%';
+        $where[] = "(id LIKE ? OR nombre LIKE ?)";
+        $params[] = $searchWild;
+        $params[] = $searchWild;
+        $types .= 'ss';
+    }
+
+    if ($rol !== '') {
+        $where[] = "rol = ?";
+        $params[] = $rol;
+        $types .= 's';
+    }
+
+    if ($estado !== '') {
+        $where[] = "estado = ?";
+        $params[] = $estado;
+        $types .= 's';
+    }
+
+    $whereSql = !empty($where) ? ('WHERE ' . implode(' AND ', $where)) : '';
+
+    // 1. Contar total de registros coincidentes
+    $countSql = "SELECT COUNT(*) as total FROM `usuarios` $whereSql";
+    $stmtCount = $conn->prepare($countSql);
+    if (!empty($params)) {
+        $stmtCount->bind_param($types, ...$params);
+    }
+    $stmtCount->execute();
+    $totalRows = (int)($stmtCount->get_result()->fetch_assoc()['total'] ?? 0);
+
+    // 2. Obtener usuarios de la página actual
+    $sql = "SELECT id, nombre, rol, estado FROM `usuarios` $whereSql ORDER BY nombre ASC LIMIT ? OFFSET ?";
+    $stmt = $conn->prepare($sql);
+    $paramsWithLimit = $params;
+    $paramsWithLimit[] = $limit;
+    $paramsWithLimit[] = $offset;
+    $typesWithLimit = $types . 'ii';
+    $stmt->bind_param($typesWithLimit, ...$paramsWithLimit);
+    $stmt->execute();
+    $res = $stmt->get_result();
+
+    $usuariosMap = [];
+    $userIds = [];
+    while ($row = $res->fetch_assoc()) {
+        $row['asignados']           = [];
+        $row['carrerasAsignadas']   = [];
+        $row['progreso']            = (object)[];
+        $row['certificadosCurso']   = [];
+        $row['certificadosCarrera'] = [];
+        $usuariosMap[$row['id']] = $row;
+        $userIds[] = $row['id'];
+    }
+
+    // 3. Si hay usuarios en la página, enriquecer con asignaciones y certificados
+    if (!empty($userIds)) {
+        $inPlaceholders = implode(',', array_fill(0, count($userIds), '?'));
+        $inTypes = str_repeat('s', count($userIds));
+
+        // Carreras asignadas
+        $stmtCar = $conn->prepare("SELECT usuario_id, carrera_id, estado FROM `usuario_carreras_asignadas` WHERE usuario_id IN ($inPlaceholders)");
+        $stmtCar->bind_param($inTypes, ...$userIds);
+        $stmtCar->execute();
+        $resCar = $stmtCar->get_result();
+        while ($r = $resCar->fetch_assoc()) {
+            if (isset($usuariosMap[$r['usuario_id']])) {
+                $usuariosMap[$r['usuario_id']]['carrerasAsignadas'][] = [
+                    'id'     => $r['carrera_id'],
+                    'estado' => $r['estado']
+                ];
+            }
+        }
+
+        // Cursos asignados directamente
+        $stmtAsig = $conn->prepare("SELECT usuario_id, curso_id FROM `usuario_asignados` WHERE usuario_id IN ($inPlaceholders)");
+        $stmtAsig->bind_param($inTypes, ...$userIds);
+        $stmtAsig->execute();
+        $resAsig = $stmtAsig->get_result();
+        while ($r = $resAsig->fetch_assoc()) {
+            if (isset($usuariosMap[$r['usuario_id']])) {
+                $usuariosMap[$r['usuario_id']]['asignados'][] = $r['curso_id'];
+            }
+        }
+
+        // Certificados de curso
+        $stmtCert = $conn->prepare("SELECT usuario_id, curso_id FROM `usuario_certificados_curso` WHERE usuario_id IN ($inPlaceholders)");
+        $stmtCert->bind_param($inTypes, ...$userIds);
+        $stmtCert->execute();
+        $resCert = $stmtCert->get_result();
+        while ($r = $resCert->fetch_assoc()) {
+            if (isset($usuariosMap[$r['usuario_id']])) {
+                $usuariosMap[$r['usuario_id']]['certificadosCurso'][] = $r['curso_id'];
+            }
+        }
+
+        // Certificados de carrera
+        $stmtCertCar = $conn->prepare("SELECT usuario_id, carrera_id FROM `usuario_certificados_carrera` WHERE usuario_id IN ($inPlaceholders)");
+        $stmtCertCar->bind_param($inTypes, ...$userIds);
+        $stmtCertCar->execute();
+        $resCertCar = $stmtCertCar->get_result();
+        while ($r = $resCertCar->fetch_assoc()) {
+            if (isset($usuariosMap[$r['usuario_id']])) {
+                $usuariosMap[$r['usuario_id']]['certificadosCarrera'][] = $r['carrera_id'];
+            }
+        }
+    }
+
+    return [
+        'usuarios'   => array_values($usuariosMap),
+        'total'      => $totalRows,
+        'page'       => $page,
+        'limit'      => $limit,
+        'totalPages' => (int)ceil($totalRows / $limit) ?: 1
+    ];
+}
+
+
 

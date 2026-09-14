@@ -261,6 +261,23 @@ if (!function_exists('v_asset')) {
                         <tbody id="tabla-usuarios-body"></tbody>
                     </table>
                 </div>
+
+                <!-- Controles de Paginación de Usuarios -->
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 pt-3 mt-2 border-top" id="usuarios-paginacion-container">
+                    <div class="d-flex align-items-center gap-2">
+                        <label class="text-muted small mb-0" for="usuarios-per-page">Filas por página:</label>
+                        <select id="usuarios-per-page" class="form-select form-select-sm" style="width: auto;" onchange="cambiarLimiteUsuarios(this.value)">
+                            <option value="10">10</option>
+                            <option value="25" selected>25</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                        <span class="text-muted small ms-2" id="usuarios-info-paginacion">Mostrando 0 de 0</span>
+                    </div>
+                    <nav aria-label="Navegación de colaboradores">
+                        <ul class="pagination pagination-sm mb-0" id="usuarios-paginacion-nav"></ul>
+                    </nav>
+                </div>
             </div>
 
             <!-- Pestaña 3: Carreras -->

@@ -18,11 +18,26 @@ window.refrescarDatosAdmin = async (btn) => {
     }
 };
 
-window.filtrarTablaCursosAdmin = () => {
+let usuariosPaginaActual = 1;
+let usuariosPorPagina = 25;
+
+window.cambiarPaginaUsuarios = (nuevaPagina) => {
+    usuariosPaginaActual = nuevaPagina;
+    actualizarTablas();
+};
+
+window.cambiarLimiteUsuarios = (nuevoLimite) => {
+    usuariosPorPagina = parseInt(nuevoLimite, 10) || 25;
+    usuariosPaginaActual = 1;
     actualizarTablas();
 };
 
 window.filtrarTablaUsuariosAdmin = () => {
+    usuariosPaginaActual = 1;
+    actualizarTablas();
+};
+
+window.filtrarTablaCursosAdmin = () => {
     actualizarTablas();
 };
 
@@ -125,8 +140,12 @@ function actualizarTablas() {
         }
     }
 
-    // 3. Renderizar Tabla de Usuarios con Filtro en Vivo y Avatares
+    // 3. Renderizar Tabla de Usuarios con Filtro en Vivo, Avatares y Paginación
     const userTable = document.getElementById('tabla-usuarios-body');
+    const userPaginationContainer = document.getElementById('usuarios-paginacion-container');
+    const userPaginationNav = document.getElementById('usuarios-paginacion-nav');
+    const userPaginationInfo = document.getElementById('usuarios-info-paginacion');
+
     if (userTable) {
         userTable.innerHTML = '';
         const searchUserQuery = (document.getElementById('search-admin-usuarios')?.value || '').trim().toLowerCase();
@@ -138,10 +157,20 @@ function actualizarTablas() {
                    (u.rol || '').toLowerCase().includes(searchUserQuery);
         });
 
-        if (usuariosFiltrados.length === 0) {
+        const totalUsuarios = usuariosFiltrados.length;
+        const totalPaginas = Math.max(1, Math.ceil(totalUsuarios / usuariosPorPagina));
+        usuariosPaginaActual = Math.max(1, Math.min(usuariosPaginaActual, totalPaginas));
+
+        const inicio = (usuariosPaginaActual - 1) * usuariosPorPagina;
+        const fin = Math.min(inicio + usuariosPorPagina, totalUsuarios);
+        const usuariosPagina = usuariosFiltrados.slice(inicio, fin);
+
+        if (totalUsuarios === 0) {
             userTable.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4"><i class="bi bi-search me-1"></i>No se encontraron colaboradores coincidentes.</td></tr>';
+            if (userPaginationInfo) userPaginationInfo.textContent = 'Mostrando 0 de 0';
+            if (userPaginationNav) userPaginationNav.innerHTML = '';
         } else {
-            usuariosFiltrados.forEach(u => {
+            usuariosPagina.forEach(u => {
                 const assignedCareersNames = (u.carrerasAsignadas || []).map(ca => {
                     const car = carreras.find(c => c.id === ca.id);
                     const carNombre = car ? car.nombre : (ca.id || 'Desconocida');
@@ -191,6 +220,57 @@ function actualizarTablas() {
                         </td>
                     </tr>`;
             });
+
+            // Actualizar información de paginación
+            if (userPaginationInfo) {
+                userPaginationInfo.textContent = `Mostrando ${inicio + 1} - ${fin} de ${totalUsuarios} colaboradores`;
+            }
+
+            // Construir botones de paginación
+            if (userPaginationNav) {
+                let navHtml = `
+                    <li class="page-item ${usuariosPaginaActual === 1 ? 'disabled' : ''}">
+                        <button class="page-link" onclick="cambiarPaginaUsuarios(${usuariosPaginaActual - 1})" aria-label="Anterior">
+                            <i class="bi bi-chevron-left"></i>
+                        </button>
+                    </li>
+                `;
+
+                // Smart pagination window (hasta 5 botones de páginas visibles)
+                let startPage = Math.max(1, usuariosPaginaActual - 2);
+                let endPage = Math.min(totalPaginas, startPage + 4);
+                if (endPage - startPage < 4) {
+                    startPage = Math.max(1, endPage - 4);
+                }
+
+                if (startPage > 1) {
+                    navHtml += `<li class="page-item"><button class="page-link" onclick="cambiarPaginaUsuarios(1)">1</button></li>`;
+                    if (startPage > 2) navHtml += `<li class="page-item disabled"><span class="page-link">…</span></li>`;
+                }
+
+                for (let p = startPage; p <= endPage; p++) {
+                    navHtml += `
+                        <li class="page-item ${p === usuariosPaginaActual ? 'active' : ''}">
+                            <button class="page-link" onclick="cambiarPaginaUsuarios(${p})">${p}</button>
+                        </li>
+                    `;
+                }
+
+                if (endPage < totalPaginas) {
+                    if (endPage < totalPaginas - 1) navHtml += `<li class="page-item disabled"><span class="page-link">…</span></li>`;
+                    navHtml += `<li class="page-item"><button class="page-link" onclick="cambiarPaginaUsuarios(${totalPaginas})">${totalPaginas}</button></li>`;
+                }
+
+                navHtml += `
+                    <li class="page-item ${usuariosPaginaActual === totalPaginas ? 'disabled' : ''}">
+                        <button class="page-link" onclick="cambiarPaginaUsuarios(${usuariosPaginaActual + 1})" aria-label="Siguiente">
+                            <i class="bi bi-chevron-right"></i>
+                        </button>
+                    </li>
+                `;
+
+                userPaginationNav.innerHTML = navHtml;
+            }
         }
     }
 

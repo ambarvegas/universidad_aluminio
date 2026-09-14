@@ -1752,4 +1752,43 @@ details[open] .brecha-summary-icon { transform: rotate(90deg); }
     color: var(--text-muted);
     margin-top: 4px;
 }
+
+/* ============================================================
+   PAGINACIÓN MODERNA & ELEGANTE
+   ============================================================ */
+.pagination {
+    gap: 4px;
+}
+
+.pagination .page-item .page-link {
+    border: 1px solid var(--aluminum-border);
+    border-radius: var(--radius-sm);
+    color: var(--primary-color);
+    font-weight: 600;
+    font-size: 0.85rem;
+    padding: 0.35rem 0.65rem;
+    background-color: #ffffff;
+    transition: var(--transition);
+}
+
+.pagination .page-item .page-link:hover {
+    background-color: var(--aluminum-light);
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+}
+
+.pagination .page-item.active .page-link {
+    background: linear-gradient(135deg, var(--primary-color), var(--primary-light));
+    border-color: var(--primary-color);
+    color: #ffffff;
+    box-shadow: 0 2px 6px rgba(15, 43, 72, 0.25);
+}
+
+.pagination .page-item.disabled .page-link {
+    background-color: transparent;
+    border-color: transparent;
+    color: var(--aluminum-metallic);
+    opacity: 0.5;
+}
+
 

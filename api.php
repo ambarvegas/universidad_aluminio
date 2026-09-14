@@ -364,6 +364,24 @@ switch ($action) {
         break;
 
     // ------ USUARIOS ---------------------------------------------
+    case 'usuarios_paginados':
+        require_admin();
+        if ($method !== 'GET') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $page   = isset($_GET['page'])   ? (int)$_GET['page']   : 1;
+        $limit  = isset($_GET['limit'])  ? (int)$_GET['limit']  : 25;
+        $search = isset($_GET['search']) ? trim((string)$_GET['search']) : '';
+        $rol    = isset($_GET['rol'])    ? trim((string)$_GET['rol'])    : '';
+        $estado = isset($_GET['estado']) ? trim((string)$_GET['estado']) : '';
+
+        try {
+            $data = db_read_usuarios_paginados($conn, $page, $limit, $search, $rol, $estado);
+            echo json_encode($data, JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Error al consultar usuarios: ' . $e->getMessage()]);
+        }
+        break;
+
     case 'guardar_usuario':
         require_admin();
         if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }

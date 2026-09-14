@@ -18,7 +18,7 @@
 @ini_set('memory_limit', '512M');
 @set_time_limit(0);
 
-require_once __DIR__ . '/db_mysql.php';
+require_once dirname(__DIR__, 2) . '/db_mysql.php';
 
 $isCli = (php_sapi_name() === 'cli');
 

@@ -15,3 +15,9 @@ scratch/
 *.log
 .DS_Store
 Thumbs.db
+
+# Archivos comprimidos y paquetes
+*.rar
+*.zip
+*.tar.gz
+*.7z

@@ -53,7 +53,7 @@ function log_msg(string $msg, string $type = 'info'): void {
 // ============================================================
 // Cargar módulo de base de datos
 // ============================================================
-require_once __DIR__ . '/db_mysql.php';
+require_once dirname(__DIR__, 2) . '/db_mysql.php';
 
 // ============================================================
 // Paso 1: Conectar a MySQL
