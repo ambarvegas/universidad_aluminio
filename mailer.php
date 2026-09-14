@@ -388,12 +388,20 @@ function notificarCertificadoEmitido(mysqli $conn, string $email, string $nombre
     require_once __DIR__ . '/pdf_certificate.php';
 
     $fechaEmision = date('d/m/Y');
+    $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? 'aluminiologo.oo.gd';
+    $dir = dirname($_SERVER['SCRIPT_NAME'] ?? '/universidad');
+    $dir = ($dir === '/' || $dir === '\\') ? '' : $dir;
+    $baseUrl = $proto . '://' . $host . $dir;
+    $verifyUrl = rtrim($baseUrl, '/') . '/verificar.php?codigo=' . urlencode($codigoVerificacion);
+
     $pdfBinary = generarPdfCertificadoBinario([
         'tipo'                => $tipo,
         'nombre'              => $nombre,
         'cedula'              => $cedula,
         'titulo_programa'     => $programaTitulo,
         'codigo_verificacion' => $codigoVerificacion,
+        'url_verificacion'    => $verifyUrl,
         'fecha_emision'       => $fechaEmision,
         'institucion'         => 'Universidad del Aluminio'
     ]);
@@ -480,6 +488,12 @@ function notificarAdminCursoCompletado(mysqli $conn, string $userId, string $use
 
     $fecha = date('d/m/Y H:i');
     $fechaEmision = date('d/m/Y');
+    $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? 'aluminiologo.oo.gd';
+    $dir = dirname($_SERVER['SCRIPT_NAME'] ?? '/universidad');
+    $dir = ($dir === '/' || $dir === '\\') ? '' : $dir;
+    $baseUrl = $proto . '://' . $host . $dir;
+    $verifyUrl = rtrim($baseUrl, '/') . '/verificar.php?codigo=' . urlencode($codigoCertificado);
 
     $pdfBinary = generarPdfCertificadoBinario([
         'tipo'                => 'curso',
@@ -487,6 +501,7 @@ function notificarAdminCursoCompletado(mysqli $conn, string $userId, string $use
         'cedula'              => $userId,
         'titulo_programa'     => $cursoTitulo,
         'codigo_verificacion' => $codigoCertificado,
+        'url_verificacion'    => $verifyUrl,
         'fecha_emision'       => $fechaEmision,
         'institucion'         => 'Universidad del Aluminio'
     ]);

@@ -283,6 +283,473 @@ class UniAluminioPdfEngine {
 }
 
 // ============================================================
+// MOTOR AUTÓNOMO DE CÓDIGOS QR (ISO/IEC 18004 COMPLIANT)
+// ============================================================
+
+/**
+ * Generador nativo y puro de matrices QR para validación institucional.
+ * Soporta modo Byte de 8 bits, control de errores Reed-Solomon (Level M),
+ * intercalado estándar de bloques, patrones de alineación y evaluación de máscaras.
+ */
+class UniAluminioQrEngine {
+    public const ECC_M = 1; // 15% error correction
+    private const MODE_BYTE = 0b0100;
+
+    private static ?array $gfExp = null;
+    private static ?array $gfLog = null;
+
+    private static array $eccTableM = [
+        1  => [26,  10, [[1, 16]]],
+        2  => [44,  16, [[1, 28]]],
+        3  => [70,  26, [[1, 44]]],
+        4  => [100, 18, [[2, 32]]],
+        5  => [134, 24, [[2, 43]]],
+        6  => [172, 16, [[4, 27]]],
+        7  => [196, 18, [[4, 31]]],
+        8  => [242, 22, [[2, 38], [2, 39]]],
+        9  => [292, 22, [[3, 36], [2, 37]]],
+        10 => [346, 26, [[4, 43], [1, 44]]],
+    ];
+
+    private static array $alignmentPatternCoords = [
+        1 => [],
+        2 => [6, 18],
+        3 => [6, 22],
+        4 => [6, 26],
+        5 => [6, 30],
+        6 => [6, 34],
+        7 => [6, 22, 38],
+        8 => [6, 24, 42],
+        9 => [6, 26, 46],
+        10 => [6, 28, 50],
+    ];
+
+    private static array $formatInfoM = [
+        0 => 0b101010000010010,
+        1 => 0b101000100100101,
+        2 => 0b101111001111100,
+        3 => 0b101101101001011,
+        4 => 0b100010111111001,
+        5 => 0b100000011001110,
+        6 => 0b100111110010111,
+        7 => 0b100101010100000
+    ];
+
+    private static array $versionInfo = [
+        7  => 0x07C94,
+        8  => 0x085BC,
+        9  => 0x09A99,
+        10 => 0x0A4D3,
+    ];
+
+    private static function initGF(): void {
+        if (self::$gfExp !== null) return;
+        self::$gfExp = array_fill(0, 512, 0);
+        self::$gfLog = array_fill(0, 256, 0);
+        $val = 1;
+        for ($i = 0; $i < 255; $i++) {
+            self::$gfExp[$i] = $val;
+            self::$gfExp[$i + 255] = $val;
+            self::$gfLog[$val] = $i;
+            $val = $val << 1;
+            if ($val & 0x100) $val ^= 0x11D;
+        }
+    }
+
+    public static function encode(string $text): array {
+        self::initGF();
+
+        $dataLen = strlen($text);
+        $version = self::pickVersion($dataLen);
+        $spec = self::$eccTableM[$version];
+        $totalCodewords = $spec[0];
+        $eccPerBlock = $spec[1];
+        $blockDefs = $spec[2];
+
+        $totalDataCodewords = 0;
+        foreach ($blockDefs as [$numB, $dataPerB]) {
+            $totalDataCodewords += $numB * $dataPerB;
+        }
+
+        $bits = [];
+        self::appendBits($bits, 4, self::MODE_BYTE);
+        $countBits = ($version < 10) ? 8 : 16;
+        self::appendBits($bits, $countBits, $dataLen);
+        for ($i = 0; $i < $dataLen; $i++) {
+            self::appendBits($bits, 8, ord($text[$i]));
+        }
+
+        $maxBits = $totalDataCodewords * 8;
+        $termLen = min(4, $maxBits - count($bits));
+        for ($i = 0; $i < $termLen; $i++) $bits[] = 0;
+
+        while (count($bits) % 8 !== 0) $bits[] = 0;
+
+        $padBytes = [0xEC, 0x11];
+        $pIdx = 0;
+        while (count($bits) < $maxBits) {
+            self::appendBits($bits, 8, $padBytes[$pIdx]);
+            $pIdx = 1 - $pIdx;
+        }
+
+        $allDataCodewords = [];
+        for ($i = 0; $i < count($bits); $i += 8) {
+            $b = 0;
+            for ($k = 0; $k < 8; $k++) $b = ($b << 1) | $bits[$i + $k];
+            $allDataCodewords[] = $b;
+        }
+
+        $dataBlocks = [];
+        $eccBlocks = [];
+        $offset = 0;
+        foreach ($blockDefs as [$numB, $dataPerB]) {
+            for ($b = 0; $b < $numB; $b++) {
+                $blockData = array_slice($allDataCodewords, $offset, $dataPerB);
+                $offset += $dataPerB;
+                $dataBlocks[] = $blockData;
+                $eccBlocks[] = self::calculateReedSolomon($blockData, $eccPerBlock);
+            }
+        }
+
+        $finalCodewords = [];
+        $maxDataLenInBlock = 0;
+        foreach ($dataBlocks as $db) $maxDataLenInBlock = max($maxDataLenInBlock, count($db));
+
+        for ($i = 0; $i < $maxDataLenInBlock; $i++) {
+            foreach ($dataBlocks as $db) {
+                if ($i < count($db)) $finalCodewords[] = $db[$i];
+            }
+        }
+        for ($i = 0; $i < $eccPerBlock; $i++) {
+            foreach ($eccBlocks as $eb) {
+                $finalCodewords[] = $eb[$i];
+            }
+        }
+
+        $remainderBitsCount = [1 => 0, 2 => 7, 3 => 7, 4 => 7, 5 => 7, 6 => 7, 7 => 0, 8 => 0, 9 => 0, 10 => 0][$version] ?? 0;
+        $finalBitstream = [];
+        foreach ($finalCodewords as $cw) {
+            self::appendBits($finalBitstream, 8, $cw);
+        }
+        for ($i = 0; $i < $remainderBitsCount; $i++) {
+            $finalBitstream[] = 0;
+        }
+
+        $size = 17 + 4 * $version;
+        $matrix = array_fill(0, $size, array_fill(0, $size, null));
+        $isFunction = array_fill(0, $size, array_fill(0, $size, false));
+
+        self::placeFunctionPatterns($matrix, $isFunction, $version, $size);
+        self::placeDataBitsInMatrix($matrix, $isFunction, $finalBitstream, $size);
+
+        $bestScore = PHP_INT_MAX;
+        $bestMatrix = null;
+
+        for ($mask = 0; $mask < 8; $mask++) {
+            $testMatrix = $matrix;
+            self::applyMask($testMatrix, $isFunction, $size, $mask);
+            self::embedFormatInformation($testMatrix, $size, $mask);
+            $score = self::calculatePenaltyScore($testMatrix, $size);
+            if ($score < $bestScore) {
+                $bestScore = $score;
+                $bestMatrix = $testMatrix;
+            }
+        }
+
+        return $bestMatrix;
+    }
+
+    private static function pickVersion(int $dataLen): int {
+        foreach (self::$eccTableM as $v => $spec) {
+            $totalData = 0;
+            foreach ($spec[2] as [$numB, $dataPerB]) $totalData += $numB * $dataPerB;
+            $headerBits = ($v < 10) ? (4 + 8) : (4 + 16);
+            $maxPayloadBytes = intdiv($totalData * 8 - $headerBits - 4, 8);
+            if ($dataLen <= $maxPayloadBytes) return $v;
+        }
+        return 10;
+    }
+
+    private static function appendBits(array &$arr, int $count, int $value): void {
+        for ($i = $count - 1; $i >= 0; $i--) {
+            $arr[] = ($value >> $i) & 1;
+        }
+    }
+
+    private static function calculateReedSolomon(array $data, int $eccCount): array {
+        $gen = [1];
+        for ($i = 0; $i < $eccCount; $i++) {
+            $root = self::$gfExp[$i];
+            $temp = array_fill(0, count($gen) + 1, 0);
+            for ($j = 0; $j < count($gen); $j++) {
+                $temp[$j] ^= $gen[$j];
+                $temp[$j + 1] ^= self::$gfExp[(self::$gfLog[$gen[$j]] + $i) % 255];
+            }
+            $gen = $temp;
+        }
+
+        $remainder = array_fill(0, $eccCount, 0);
+        foreach ($data as $byte) {
+            $factor = $byte ^ $remainder[0];
+            array_shift($remainder);
+            $remainder[] = 0;
+            if ($factor !== 0) {
+                $logFactor = self::$gfLog[$factor];
+                for ($i = 0; $i < $eccCount; $i++) {
+                    if ($gen[$i + 1] !== 0) {
+                        $remainder[$i] ^= self::$gfExp[(self::$gfLog[$gen[$i + 1]] + $logFactor) % 255];
+                    }
+                }
+            }
+        }
+        return $remainder;
+    }
+
+    private static function placeFunctionPatterns(array &$m, array &$fn, int $version, int $size): void {
+        self::placeFinder($m, $fn, 0, 0);
+        self::placeFinder($m, $fn, $size - 7, 0);
+        self::placeFinder($m, $fn, 0, $size - 7);
+
+        self::placeSeparators($m, $fn, $size);
+
+        $coords = self::$alignmentPatternCoords[$version] ?? [];
+        foreach ($coords as $y) {
+            foreach ($coords as $x) {
+                if ($fn[$y][$x]) continue;
+                self::placeAlignment($m, $fn, $x, $y);
+            }
+        }
+
+        for ($i = 8; $i < $size - 8; $i++) {
+            if (!$fn[6][$i]) {
+                $m[6][$i] = ($i % 2 === 0);
+                $fn[6][$i] = true;
+            }
+            if (!$fn[$i][6]) {
+                $m[$i][6] = ($i % 2 === 0);
+                $fn[$i][6] = true;
+            }
+        }
+
+        $m[$size - 8][8] = true;
+        $fn[$size - 8][8] = true;
+
+        for ($i = 0; $i < 9; $i++) {
+            $fn[8][$i] = true;
+            $fn[$i][8] = true;
+        }
+        for ($i = 0; $i < 8; $i++) {
+            $fn[8][$size - 1 - $i] = true;
+            $fn[$size - 1 - $i][8] = true;
+        }
+
+        if ($version >= 7 && isset(self::$versionInfo[$version])) {
+            $bits = self::$versionInfo[$version];
+            for ($i = 0; $i < 18; $i++) {
+                $mod = (($bits >> $i) & 1) === 1;
+                $rTR = intdiv($i, 3);
+                $cTR = ($i % 3) + $size - 11;
+                $m[$rTR][$cTR] = $mod;
+                $fn[$rTR][$cTR] = true;
+
+                $rBL = ($i % 3) + $size - 11;
+                $cBL = intdiv($i, 3);
+                $m[$rBL][$cBL] = $mod;
+                $fn[$rBL][$cBL] = true;
+            }
+        }
+    }
+
+    private static function placeFinder(array &$m, array &$fn, int $x, int $y): void {
+        for ($r = 0; $r < 7; $r++) {
+            for ($c = 0; $c < 7; $c++) {
+                $isBlack = ($r === 0 || $r === 6 || $c === 0 || $c === 6 || ($r >= 2 && $r <= 4 && $c >= 2 && $c <= 4));
+                $m[$y + $r][$x + $c] = $isBlack;
+                $fn[$y + $r][$x + $c] = true;
+            }
+        }
+    }
+
+    private static function placeSeparators(array &$m, array &$fn, int $size): void {
+        for ($i = 0; $i < 8; $i++) {
+            if ($i < 7) {
+                $m[$i][7] = false; $fn[$i][7] = true;
+                $m[7][$i] = false; $fn[7][$i] = true;
+                $m[$size - 1 - $i][7] = false; $fn[$size - 1 - $i][7] = true;
+                $m[$size - 8][$i] = false; $fn[$size - 8][$i] = true;
+                $m[$i][$size - 8] = false; $fn[$i][$size - 8] = true;
+                $m[7][$size - 1 - $i] = false; $fn[7][$size - 1 - $i] = true;
+            }
+        }
+        $m[7][7] = false; $fn[7][7] = true;
+        $m[$size - 8][7] = false; $fn[$size - 8][7] = true;
+        $m[7][$size - 8] = false; $fn[7][$size - 8] = true;
+    }
+
+    private static function placeAlignment(array &$m, array &$fn, int $cx, int $cy): void {
+        for ($r = -2; $r <= 2; $r++) {
+            for ($c = -2; $c <= 2; $c++) {
+                $isBlack = (abs($r) === 2 || abs($c) === 2 || ($r === 0 && $c === 0));
+                $m[$cy + $r][$cx + $c] = $isBlack;
+                $fn[$cy + $r][$cx + $c] = true;
+            }
+        }
+    }
+
+    private static function placeDataBitsInMatrix(array &$m, array $fn, array $bits, int $size): void {
+        $bitIdx = 0;
+        $numBits = count($bits);
+        $up = true;
+
+        for ($right = $size - 1; $right > 0; $right -= 2) {
+            if ($right === 6) $right = 5;
+
+            for ($vert = 0; $vert < $size; $vert++) {
+                $r = $up ? ($size - 1 - $vert) : $vert;
+                for ($col = 0; $col < 2; $col++) {
+                    $c = $right - $col;
+                    if (!$fn[$r][$c]) {
+                        $m[$r][$c] = ($bitIdx < $numBits) ? ($bits[$bitIdx++] === 1) : false;
+                    }
+                }
+            }
+            $up = !$up;
+        }
+    }
+
+    private static function applyMask(array &$m, array $fn, int $size, int $mask): void {
+        for ($r = 0; $r < $size; $r++) {
+            for ($c = 0; $c < $size; $c++) {
+                if ($fn[$r][$c]) continue;
+                $invert = match ($mask) {
+                    0 => ($r + $c) % 2 === 0,
+                    1 => $r % 2 === 0,
+                    2 => $c % 3 === 0,
+                    3 => ($r + $c) % 3 === 0,
+                    4 => (intdiv($r, 2) + intdiv($c, 3)) % 2 === 0,
+                    5 => (($r * $c) % 2) + (($r * $c) % 3) === 0,
+                    6 => ((($r * $c) % 2) + (($r * $c) % 3)) % 2 === 0,
+                    7 => ((($r + $c) % 2) + (($r * $c) % 3)) % 2 === 0,
+                    default => false
+                };
+                if ($invert) $m[$r][$c] = !$m[$r][$c];
+            }
+        }
+    }
+
+    private static function embedFormatInformation(array &$m, int $size, int $mask): void {
+        $formatInt = self::$formatInfoM[$mask];
+        $bits = [];
+        for ($i = 14; $i >= 0; $i--) {
+            $bits[] = ($formatInt >> $i) & 1;
+        }
+
+        $coordsTopLeft = [
+            [8, 0], [8, 1], [8, 2], [8, 3], [8, 4], [8, 5], [8, 7], [8, 8],
+            [7, 8], [5, 8], [4, 8], [3, 8], [2, 8], [1, 8], [0, 8]
+        ];
+        foreach ($coordsTopLeft as $idx => [$r, $c]) {
+            $m[$r][$c] = ($bits[$idx] === 1);
+        }
+
+        for ($i = 0; $i < 7; $i++) {
+            $m[$size - 1 - $i][8] = ($bits[$i] === 1);
+        }
+        for ($i = 0; $i < 8; $i++) {
+            $m[8][$size - 8 + $i] = ($bits[7 + $i] === 1);
+        }
+    }
+
+    private static function calculatePenaltyScore(array $m, int $size): int {
+        $penalty = 0;
+
+        for ($r = 0; $r < $size; $r++) {
+            $count = 0;
+            $last = null;
+            for ($c = 0; $c < $size; $c++) {
+                $val = $m[$r][$c];
+                if ($val === $last) {
+                    $count++;
+                } else {
+                    if ($count >= 5) $penalty += 3 + ($count - 5);
+                    $last = $val;
+                    $count = 1;
+                }
+            }
+            if ($count >= 5) $penalty += 3 + ($count - 5);
+        }
+
+        for ($c = 0; $c < $size; $c++) {
+            $count = 0;
+            $last = null;
+            for ($r = 0; $r < $size; $r++) {
+                $val = $m[$r][$c];
+                if ($val === $last) {
+                    $count++;
+                } else {
+                    if ($count >= 5) $penalty += 3 + ($count - 5);
+                    $last = $val;
+                    $count = 1;
+                }
+            }
+            if ($count >= 5) $penalty += 3 + ($count - 5);
+        }
+
+        for ($r = 0; $r < $size - 1; $r++) {
+            for ($c = 0; $c < $size - 1; $c++) {
+                $v = $m[$r][$c];
+                if ($v === $m[$r + 1][$c] && $v === $m[$r][$c + 1] && $v === $m[$r + 1][$c + 1]) {
+                    $penalty += 3;
+                }
+            }
+        }
+
+        $p1 = [true, false, true, true, true, false, true, false, false, false, false];
+        $p2 = [false, false, false, false, true, false, true, true, true, false, true];
+
+        for ($r = 0; $r < $size; $r++) {
+            for ($c = 0; $c <= $size - 11; $c++) {
+                $match1 = true;
+                $match2 = true;
+                for ($k = 0; $k < 11; $k++) {
+                    if ($m[$r][$c + $k] !== $p1[$k]) $match1 = false;
+                    if ($m[$r][$c + $k] !== $p2[$k]) $match2 = false;
+                }
+                if ($match1 || $match2) $penalty += 40;
+            }
+        }
+
+        for ($c = 0; $c < $size; $c++) {
+            for ($r = 0; $r <= $size - 11; $r++) {
+                $match1 = true;
+                $match2 = true;
+                for ($k = 0; $k < 11; $k++) {
+                    if ($m[$r + $k][$c] !== $p1[$k]) $match1 = false;
+                    if ($m[$r + $k][$c] !== $p2[$k]) $match2 = false;
+                }
+                if ($match1 || $match2) $penalty += 40;
+            }
+        }
+
+        $darkCount = 0;
+        for ($r = 0; $r < $size; $r++) {
+            for ($c = 0; $c < $size; $c++) {
+                if ($m[$r][$c]) $darkCount++;
+            }
+        }
+        $total = $size * $size;
+        $pct = ($darkCount * 100) / $total;
+        $prev5 = intval(floor($pct / 5)) * 5;
+        $next5 = $prev5 + 5;
+        $k1 = abs($prev5 - 50) / 5;
+        $k2 = abs($next5 - 50) / 5;
+        $penalty += intval(min($k1, $k2) * 10);
+
+        return $penalty;
+    }
+}
+
+// ============================================================
 // FUNCIÓN PRINCIPAL DE RENDERIZADO INSTITUCIONAL
 // ============================================================
 
@@ -295,6 +762,7 @@ class UniAluminioPdfEngine {
  *    'cedula'              => string (Cédula / Documento de identidad),
  *    'titulo_programa'     => string (Nombre del curso o carrera),
  *    'codigo_verificacion' => string (Código oficial ej. ALU-CUR-1234567890),
+ *    'url_verificacion'    => string (Opcional, URL completa de verificación con QR),
  *    'fecha_emision'       => string (Opcional, dd/mm/aaaa),
  *    'institucion'         => string (Opcional)
  * ]
@@ -309,6 +777,17 @@ function generarPdfCertificadoBinario(array $datos): string {
     $codigo      = trim($datos['codigo_verificacion'] ?? '');
     $fecha       = trim($datos['fecha_emision'] ?? date('d/m/Y'));
     $institucion = trim($datos['institucion'] ?? 'Universidad del Aluminio');
+
+    // Construcción de la URL oficial de verificación para el código QR
+    $urlVerif = trim($datos['url_verificacion'] ?? '');
+    if ($urlVerif === '') {
+        $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+        $host = $_SERVER['HTTP_HOST'] ?? 'aluminiologo.oo.gd';
+        $dir = dirname($_SERVER['SCRIPT_NAME'] ?? '/universidad');
+        $dir = ($dir === '/' || $dir === '\\') ? '' : $dir;
+        $baseUrl = $proto . '://' . $host . $dir;
+        $urlVerif = rtrim($baseUrl, '/') . '/verificar.php?codigo=' . urlencode($codigo ?: 'ALU-CUR-OFICIAL');
+    }
 
     $pdf = new UniAluminioPdfEngine();
 
@@ -391,55 +870,98 @@ function generarPdfCertificadoBinario(array $datos): string {
     $tituloConComillas = "« " . $tituloProg . " »";
     $pdf->drawWrappedText($tituloConComillas, $centerX, 114, 215, 'F2', 17.5, 7.5);
 
-    // 10. Bloque Izquierdo: Código Oficial de Verificación
+    // 10. Bloque Izquierdo: Registro Institucional con Código QR Escaneable
+    $boxX = 22.0;
+    $boxY = 135.0;
+    $boxW = 75.0;
+    $boxH = 41.0;
+
+    // Caja contenedora
     $pdf->setFillColor(248, 250, 252);
-    $pdf->setStrokeColor(226, 232, 240);
+    $pdf->setStrokeColor(203, 213, 225);
     $pdf->setLineWidth(0.5);
-    $pdf->drawRect(24, 136, 68, 38, 'B');
+    $pdf->drawRect($boxX, $boxY, $boxW, $boxH, 'B');
 
-    // Cabecera del bloque de verificación
+    // Cabecera de la caja
     $pdf->setFillColor(15, 43, 72);
-    $pdf->setStrokeColor(15, 43, 72);
-    $pdf->drawRect(24, 136, 68, 7.5, 'F');
+    $pdf->drawRect($boxX, $boxY, $boxW, 7.2, 'F');
     $pdf->setFillColor(255, 255, 255);
-    $pdf->drawText("REGISTRO INSTITUCIONAL", 58, 141.5, 'F2', 7.5, 'center');
+    $pdf->drawText("REGISTRO INSTITUCIONAL", $boxX + ($boxW / 2.0), $boxY + 5.2, 'F2', 7.5, 'center');
 
-    $pdf->setFillColor(100, 116, 139);
-    $pdf->drawText("Código Oficial de Verificación:", 58, 148.5, 'F1', 7.5, 'center');
+    // Renderizado del Código QR vectorial en la mitad izquierda del bloque
+    $qrPlateX = $boxX + 2.5;
+    $qrPlateY = $boxY + 9.5;
+    $qrPlateSize = 29.0;
+
+    // Fondo blanco del QR con borde sutil
+    $pdf->setFillColor(255, 255, 255);
+    $pdf->setStrokeColor(226, 232, 240);
+    $pdf->setLineWidth(0.3);
+    $pdf->drawRect($qrPlateX, $qrPlateY, $qrPlateSize, $qrPlateSize, 'B');
+
+    // Generar y dibujar matriz de módulos QR vectoriales
+    $qrMatrix = UniAluminioQrEngine::encode($urlVerif);
+    $qrCount = count($qrMatrix);
+    if ($qrCount > 0) {
+        $qrPadding = 1.5;
+        $qrDrawSize = $qrPlateSize - ($qrPadding * 2);
+        $modSize = $qrDrawSize / $qrCount;
+        $qrStartX = $qrPlateX + $qrPadding;
+        $qrStartY = $qrPlateY + $qrPadding;
+
+        $pdf->setFillColor(15, 43, 72); // Azul noche institucional
+        for ($r = 0; $r < $qrCount; $r++) {
+            for ($c = 0; $c < $qrCount; $c++) {
+                if ($qrMatrix[$r][$c]) {
+                    $pdf->drawRect($qrStartX + ($c * $modSize), $qrStartY + ($r * $modSize), $modSize, $modSize, 'F');
+                }
+            }
+        }
+    }
+
+    // Texto informativo en la mitad derecha del bloque
+    $textCenterX = $boxX + $qrPlateSize + (($boxW - $qrPlateSize) / 2.0);
 
     $pdf->setFillColor(15, 43, 72);
-    $pdf->drawText($codigo ?: 'ALU-CUR-OFICIAL', 58, 155.5, 'F4', 9.5, 'center');
+    $pdf->drawText("ESCANEAR PARA VALIDAR", $textCenterX, $boxY + 13.5, 'F2', 5.8, 'center');
 
     $pdf->setFillColor(100, 116, 139);
-    $pdf->drawText("Validez pública consultable en el portal", 58, 163, 'F1', 6.5, 'center');
+    $pdf->drawText("Código Oficial:", $textCenterX, $boxY + 19.5, 'F1', 5.8, 'center');
+
+    $pdf->setFillColor(15, 43, 72);
+    $pdf->drawText($codigo ?: 'ALU-CUR-OFICIAL', $textCenterX, $boxY + 25.5, 'F4', 7.2, 'center');
+
+    $pdf->setFillColor(100, 116, 139);
+    $pdf->drawText("Portal de Validación:", $textCenterX, $boxY + 31.5, 'F1', 5.8, 'center');
+
     $pdf->setFillColor(2, 132, 199);
-    $pdf->drawText("verificar.php", 58, 168.5, 'F2', 7.5, 'center');
+    $pdf->drawText("verificar.php", $textCenterX, $boxY + 36.5, 'F2', 7.2, 'center');
 
     // 11. Bloque Central: Sello Oficial de Rectoría
     $pdf->setStrokeColor(212, 175, 55);
     $pdf->setLineWidth(1.4);
-    $pdf->drawCircle($centerX, 154, 13.5, 'S');
+    $pdf->drawCircle($centerX, 155.5, 13.5, 'S');
     $pdf->setLineWidth(0.6);
-    $pdf->drawCircle($centerX, 154, 11.5, 'S');
+    $pdf->drawCircle($centerX, 155.5, 11.5, 'S');
 
     $pdf->setFillColor(212, 175, 55);
-    $pdf->drawText("VALIDEZ OFICIAL", $centerX, 151, 'F2', 7, 'center');
-    $pdf->drawText("RECTORÍA", $centerX, 155, 'F2', 6.5, 'center');
-    $pdf->drawText("ACADÉMICA", $centerX, 158.5, 'F2', 6.5, 'center');
-    $pdf->drawText("★ ★ ★", $centerX, 162.5, 'F1', 5.5, 'center');
+    $pdf->drawText("VALIDEZ OFICIAL", $centerX, 152.5, 'F2', 7, 'center');
+    $pdf->drawText("RECTORÍA", $centerX, 156.5, 'F2', 6.5, 'center');
+    $pdf->drawText("ACADÉMICA", $centerX, 160.0, 'F2', 6.5, 'center');
+    $pdf->drawText("★ ★ ★", $centerX, 164.0, 'F1', 5.5, 'center');
 
     // 12. Bloque Derecho: Firma de Rectoría y Fecha
     $firmaX = $pageW - 55;
     $pdf->setStrokeColor(100, 116, 139);
     $pdf->setLineWidth(0.6);
-    $pdf->drawLine($pageW - 85, 154, $pageW - 25, 154);
+    $pdf->drawLine($pageW - 85, 155.5, $pageW - 25, 155.5);
 
     $pdf->setFillColor(15, 43, 72);
-    $pdf->drawText("Rectoría Académica", $firmaX, 160, 'F2', 10, 'center');
+    $pdf->drawText("Rectoría Académica", $firmaX, 161.5, 'F2', 10, 'center');
 
     $pdf->setFillColor(100, 116, 139);
-    $pdf->drawText("Universidad del Aluminio", $firmaX, 165, 'F1', 8, 'center');
-    $pdf->drawText("Fecha de Emisión: " . $fecha, $firmaX, 170, 'F1', 8, 'center');
+    $pdf->drawText("Universidad del Aluminio", $firmaX, 166.5, 'F1', 8, 'center');
+    $pdf->drawText("Fecha de Emisión: " . $fecha, $firmaX, 171.5, 'F1', 8, 'center');
 
     return $pdf->compile();
 }

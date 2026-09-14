@@ -10,7 +10,7 @@
 
 require_once __DIR__ . '/db_mysql.php';
 
-$codigo = trim($_GET['codigo'] ?? $_POST['codigo'] ?? '');
+$codigo = trim($_GET['codigo'] ?? $_GET['code'] ?? $_POST['codigo'] ?? $_POST['code'] ?? '');
 $format = trim($_GET['format'] ?? '');
 
 $resultado = null;
