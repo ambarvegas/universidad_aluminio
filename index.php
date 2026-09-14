@@ -1,4 +1,8 @@
 <?php
+header("Cache-Control: no-cache, no-store, must-revalidate, max-age=0");
+header("Pragma: no-cache");
+header("Expires: 0");
+
 if (!function_exists('v_asset')) {
     function v_asset($path) {
         $file = __DIR__ . '/' . ltrim($path, '/');
@@ -373,7 +377,7 @@ if (!function_exists('v_asset')) {
 
     <footer class="py-4 text-center mt-5">
         <div class="container">
-            <p class="mb-0 text-white-50">© 2026 Universidad del Aluminio • Desarrollado por Ambar Vegas</p>
+            <p class="mb-0 text-white-50">© 2026 Universidad del Aluminio • Desarrollado por Ambar Vegas &bull; <a href="clear_cache.php?to=index.php" class="text-white-50 text-decoration-none small" title="Limpiar Caché y Actualizar a la última versión"><i class="bi bi-arrow-repeat me-1"></i>Actualizar Plataforma</a></p>
         </div>
     </footer>
 

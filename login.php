@@ -1,4 +1,8 @@
 <?php
+header("Cache-Control: no-cache, no-store, must-revalidate, max-age=0");
+header("Pragma: no-cache");
+header("Expires: 0");
+
 if (!function_exists('v_asset')) {
     function v_asset($path) {
         $file = __DIR__ . '/' . ltrim($path, '/');
@@ -156,9 +160,14 @@ if (!function_exists('v_asset')) {
 
             <div class="text-center mt-4 pt-3 border-top">
                 <p class="small text-muted mb-2">¿No tienes credenciales de acceso?</p>
-                <button type="button" class="btn btn-outline-primary btn-sm px-3" data-bs-toggle="modal" data-bs-target="#registroModal">
+                <button type="button" class="btn btn-outline-primary btn-sm px-3 mb-3" data-bs-toggle="modal" data-bs-target="#registroModal">
                     <i class="bi bi-person-plus me-1"></i> Solicitar Cuenta de Acceso
                 </button>
+                <div>
+                    <a href="clear_cache.php?to=login.php" class="text-decoration-none text-muted small" title="Forzar actualización de la aplicación">
+                        <i class="bi bi-arrow-repeat me-1"></i>Actualizar / Limpiar Caché
+                    </a>
+                </div>
             </div>
         </form>
     </div>

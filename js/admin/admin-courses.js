@@ -86,42 +86,70 @@
         if (fileInput) fileInput.value = "";
     };
 
+    function escapeAttr(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
     window.abrirEditor = (id) => {
-        const c = (window.cursos || []).find(item => item.id === id);
-        if (!c) return;
+        try {
+            const c = (window.cursos || []).find(item => String(item.id) === String(id));
+            if (!c) {
+                showToast('No se encontró el curso seleccionado.', 'warning');
+                return;
+            }
 
-        document.getElementById('edit-id').value = c.id;
-        document.getElementById('titulo').value = c.titulo || '';
-        document.getElementById('descripcion').value = c.descripcion || '';
-        if (document.getElementById('curso-prelacion')) {
-            document.getElementById('curso-prelacion').value = c.prelacion || '';
+            const editId = document.getElementById('edit-id');
+            const titulo = document.getElementById('titulo');
+            const desc = document.getElementById('descripcion');
+            if (editId) editId.value = c.id || '';
+            if (titulo) titulo.value = c.titulo || '';
+            if (desc) desc.value = c.descripcion || '';
+
+            if (document.getElementById('curso-prelacion')) {
+                document.getElementById('curso-prelacion').value = c.prelacion || '';
+            }
+            if (document.getElementById('curso-tipo')) {
+                document.getElementById('curso-tipo').value = (c.tipo === 'publico' || c.tipo === 'libre') ? 'publico' : ((c.tipo === 'pruebas') ? 'pruebas' : 'especializado');
+            }
+            if (document.getElementById('curso-en-construccion')) {
+                document.getElementById('curso-en-construccion').checked = !!c.enConstruccion;
+            }
+            window.tempImagenPortada = c.imagen || "";
+            window.mostrarVistaPreviaPortada();
+
+            window.tempModulos = (c.modulos || []).map(m => ({
+                ...JSON.parse(JSON.stringify(m)),
+                maxIntentos: (m.maxIntentos !== undefined) ? (parseInt(m.maxIntentos) || 0) : (parseInt(m.max_intentos) || 0)
+            }));
+            window.renderModulosEditor();
+
+            if (document.getElementById('modalTitulo')) {
+                document.getElementById('modalTitulo').innerText = "Editar Curso: " + (c.titulo || '');
+            }
+
+            const selPrelacion = document.getElementById('curso-prelacion');
+            if (selPrelacion) {
+                selPrelacion.innerHTML = '<option value="">Ninguno</option>' + (window.cursos || []).filter(item => String(item.id) !== String(id)).map(cp => `<option value="${cp.id}">${escapeAttr(cp.titulo)}</option>`).join('');
+                selPrelacion.value = c.prelacion || '';
+            }
+
+            const modalElement = document.getElementById('cursoModal');
+            if (modalElement && typeof bootstrap !== 'undefined') {
+                const bModal = bootstrap.Modal.getOrCreateInstance(modalElement);
+                bModal.show();
+            }
+        } catch (err) {
+            console.error('Error al abrir editor de curso:', err);
+            if (typeof showToast === 'function') {
+                showToast('Error al abrir el editor: ' + err.message, 'danger');
+            }
         }
-        if (document.getElementById('curso-tipo')) {
-            document.getElementById('curso-tipo').value = (c.tipo === 'publico' || c.tipo === 'libre') ? 'publico' : ((c.tipo === 'pruebas') ? 'pruebas' : 'especializado');
-        }
-        if (document.getElementById('curso-en-construccion')) {
-            document.getElementById('curso-en-construccion').checked = !!c.enConstruccion;
-        }
-        window.tempImagenPortada = c.imagen || "";
-        window.mostrarVistaPreviaPortada();
-
-        window.tempModulos = (c.modulos || []).map(m => ({
-            ...JSON.parse(JSON.stringify(m)),
-            maxIntentos: (m.maxIntentos !== undefined) ? (parseInt(m.maxIntentos) || 0) : (parseInt(m.max_intentos) || 0)
-        }));
-        window.renderModulosEditor();
-
-        document.getElementById('modalTitulo').innerText = "Editar Curso";
-
-        const selPrelacion = document.getElementById('curso-prelacion');
-        if (selPrelacion) {
-            selPrelacion.innerHTML = '<option value="">Ninguno</option>' + (window.cursos || []).filter(item => item.id !== id).map(c => `<option value="${c.id}">${c.titulo}</option>`).join('');
-            selPrelacion.value = c.prelacion || '';
-        }
-
-        const modalElement = document.getElementById('cursoModal');
-        const bModal = new bootstrap.Modal(modalElement);
-        bModal.show();
     };
 
     window.guardarCurso = async (e) => {
@@ -253,59 +281,63 @@
     };
 
     window.renderModulosEditor = function () {
-        const container = document.getElementById('contenedor-modulos-editor');
-        if (!container) return;
-        container.innerHTML = (window.tempModulos || []).map((mod, mIdx) => `
-            <div class="border p-3 mb-3 ${mod.enConstruccion ? 'bg-warning bg-opacity-10 border-warning' : 'bg-light'} rounded shadow-sm">
-                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                    <div class="btn-group me-1">
-                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="subirModulo(${mIdx})" ${mIdx === 0 ? 'disabled' : ''} title="Subir Módulo"><i class="bi bi-arrow-up"></i></button>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="bajarModulo(${mIdx})" ${mIdx === window.tempModulos.length - 1 ? 'disabled' : ''} title="Bajar Módulo"><i class="bi bi-arrow-down"></i></button>
-                    </div>
-                    <input type="text" class="form-control fw-bold flex-grow-1" style="min-width: 200px;" placeholder="Título del Módulo" value="${mod.titulo}" oninput="window.tempModulos[${mIdx}].titulo = this.value">
-                    
-                    <div class="form-check form-switch ms-2 me-2" title="Marcar este módulo como en construcción">
-                        <input class="form-check-input" type="checkbox" role="switch" id="mod-const-${mIdx}" ${mod.enConstruccion ? 'checked' : ''} onchange="window.tempModulos[${mIdx}].enConstruccion = this.checked; window.renderModulosEditor();">
-                        <label class="form-check-label small fw-bold text-warning" for="mod-const-${mIdx}">
-                            <i class="bi bi-cone-striped me-1"></i>En Construcción
-                        </label>
-                    </div>
-
-                    <div class="input-group" style="width: 130px;" title="Intentos máximos para la evaluación (0 o vacío para ilimitados)">
-                        <span class="input-group-text"><i class="bi bi-arrow-repeat"></i></span>
-                        <input type="number" class="form-control form-control-sm" placeholder="Intentos" value="${mod.maxIntentos || ''}" oninput="window.tempModulos[${mIdx}].maxIntentos = parseInt(this.value) || 0">
-                    </div>
-                    <button type="button" class="btn btn-sm btn-primary" onclick="abrirEditorModuloEvaluacion(${mIdx})">
-                        <i class="bi bi-clipboard-check"></i> Evaluación
-                    </button>
-                    <button type="button" class="btn btn-sm btn-danger" onclick="eliminarModulo(${mIdx})" title="Eliminar Módulo">
-                        <i class="bi bi-trash"></i>
-                    </button>
-                </div>
-                <div class="ms-4 border-start ps-3">
-                    ${(mod.lecciones || []).map((lec, lIdx) => `
-                        <div class="card p-2 mb-2 bg-white">
-                            <input type="text" class="form-control form-control-sm mb-1" placeholder="Título Lección" value="${lec.titulo}" oninput="window.tempModulos[${mIdx}].lecciones[${lIdx}].titulo = this.value">
-                            <div class="row g-2">
-                                <div class="col-8">
-                                    <input type="text" class="form-control form-control-sm mb-1" placeholder="URL de YouTube" value="${lec.videoID ? 'https://www.youtube.com/watch?v=' + lec.videoID : ''}" oninput="window.tempModulos[${mIdx}].lecciones[${lIdx}].videoID = window.extraerID(this.value)">
-                                </div>
-                                <div class="col-4">
-                                    ${lec.videoID ? `<button type="button" class="btn btn-sm btn-dark w-100" onclick="window.open('https://youtube.com/embed/${lec.videoID}')">Ver</button>` : ''}
-                                </div>
-                            </div>
-                            <textarea class="form-control form-control-sm mb-1" placeholder="Contenido..." oninput="window.tempModulos[${mIdx}].lecciones[${lIdx}].contenido = this.value">${lec.contenido || ''}</textarea>
-                            <div class="d-flex justify-content-between align-items-center">
-                                <input type="file" class="form-control form-control-sm" style="max-width: 200px;" onchange="cargarArchivoLeccion(event, ${mIdx}, ${lIdx})">
-                                <button type="button" class="btn btn-link btn-sm text-danger" onclick="eliminarLeccion(${mIdx}, ${lIdx})">Eliminar</button>
-                            </div>
-                            ${lec.nombreAdjunto ? `<div class="small text-success mt-1"><i class="bi bi-paperclip"></i> ${lec.nombreAdjunto}</div>` : ''}
+        try {
+            const container = document.getElementById('contenedor-modulos-editor');
+            if (!container) return;
+            container.innerHTML = (window.tempModulos || []).map((mod, mIdx) => `
+                <div class="border p-3 mb-3 ${mod.enConstruccion ? 'bg-warning bg-opacity-10 border-warning' : 'bg-light'} rounded shadow-sm">
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                        <div class="btn-group me-1">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="subirModulo(${mIdx})" ${mIdx === 0 ? 'disabled' : ''} title="Subir Módulo"><i class="bi bi-arrow-up"></i></button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="bajarModulo(${mIdx})" ${mIdx === window.tempModulos.length - 1 ? 'disabled' : ''} title="Bajar Módulo"><i class="bi bi-arrow-down"></i></button>
                         </div>
-                    `).join('')}
-                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="agregarLeccion(${mIdx})">+ Añadir Lección</button>
+                        <input type="text" class="form-control fw-bold flex-grow-1" style="min-width: 200px;" placeholder="Título del Módulo" value="${escapeAttr(mod.titulo || '')}" oninput="window.tempModulos[${mIdx}].titulo = this.value">
+                        
+                        <div class="form-check form-switch ms-2 me-2" title="Marcar este módulo como en construcción">
+                            <input class="form-check-input" type="checkbox" role="switch" id="mod-const-${mIdx}" ${mod.enConstruccion ? 'checked' : ''} onchange="window.tempModulos[${mIdx}].enConstruccion = this.checked; window.renderModulosEditor();">
+                            <label class="form-check-label small fw-bold text-warning" for="mod-const-${mIdx}">
+                                <i class="bi bi-cone-striped me-1"></i>En Construcción
+                            </label>
+                        </div>
+
+                        <div class="input-group" style="width: 130px;" title="Intentos máximos para la evaluación (0 o vacío para ilimitados)">
+                            <span class="input-group-text"><i class="bi bi-arrow-repeat"></i></span>
+                            <input type="number" class="form-control form-control-sm" placeholder="Intentos" value="${mod.maxIntentos || ''}" oninput="window.tempModulos[${mIdx}].maxIntentos = parseInt(this.value) || 0">
+                        </div>
+                        <button type="button" class="btn btn-sm btn-primary" onclick="abrirEditorModuloEvaluacion(${mIdx})">
+                            <i class="bi bi-clipboard-check"></i> Evaluación
+                        </button>
+                        <button type="button" class="btn btn-sm btn-danger" onclick="eliminarModulo(${mIdx})" title="Eliminar Módulo">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                    <div class="ms-4 border-start ps-3">
+                        ${(mod.lecciones || []).map((lec, lIdx) => `
+                            <div class="card p-2 mb-2 bg-white">
+                                <input type="text" class="form-control form-control-sm mb-1" placeholder="Título Lección" value="${escapeAttr(lec.titulo || '')}" oninput="window.tempModulos[${mIdx}].lecciones[${lIdx}].titulo = this.value">
+                                <div class="row g-2">
+                                    <div class="col-8">
+                                        <input type="text" class="form-control form-control-sm mb-1" placeholder="URL de YouTube" value="${lec.videoID ? escapeAttr('https://www.youtube.com/watch?v=' + lec.videoID) : ''}" oninput="window.tempModulos[${mIdx}].lecciones[${lIdx}].videoID = window.extraerID(this.value)">
+                                    </div>
+                                    <div class="col-4">
+                                        ${lec.videoID ? `<button type="button" class="btn btn-sm btn-dark w-100" onclick="window.open('https://youtube.com/embed/${escapeAttr(lec.videoID)}')">Ver</button>` : ''}
+                                    </div>
+                                </div>
+                                <textarea class="form-control form-control-sm mb-1" placeholder="Contenido..." oninput="window.tempModulos[${mIdx}].lecciones[${lIdx}].contenido = this.value">${escapeAttr(lec.contenido || '')}</textarea>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <input type="file" class="form-control form-control-sm" style="max-width: 200px;" onchange="cargarArchivoLeccion(event, ${mIdx}, ${lIdx})">
+                                    <button type="button" class="btn btn-link btn-sm text-danger" onclick="eliminarLeccion(${mIdx}, ${lIdx})">Eliminar</button>
+                                </div>
+                                ${lec.nombreAdjunto ? `<div class="small text-success mt-1"><i class="bi bi-paperclip"></i> ${escapeAttr(lec.nombreAdjunto)}</div>` : ''}
+                            </div>
+                        `).join('')}
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="agregarLeccion(${mIdx})">+ Añadir Lección</button>
+                    </div>
                 </div>
-            </div>
-        `).join('') + `<button type="button" class="btn btn-primary w-100 mt-2" onclick="agregarModulo()">+ Añadir Nuevo Módulo</button>`;
+            `).join('') + `<button type="button" class="btn btn-primary w-100 mt-2" onclick="agregarModulo()">+ Añadir Nuevo Módulo</button>`;
+        } catch (err) {
+            console.error('Error al renderizar módulos:', err);
+        }
     };
 
     // ------------------------------------------------------------

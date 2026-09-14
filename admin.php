@@ -1,4 +1,8 @@
 <?php
+header("Cache-Control: no-cache, no-store, must-revalidate, max-age=0");
+header("Pragma: no-cache");
+header("Expires: 0");
+
 if (!function_exists('v_asset')) {
     function v_asset($path) {
         $file = __DIR__ . '/' . ltrim($path, '/');
@@ -95,7 +99,10 @@ if (!function_exists('v_asset')) {
                     <h2 class="fw-bold text-primary mb-1">Panel de Control Académico</h2>
                     <p class="text-muted small mb-0">Gestión de cursos, colaboradores, estructura curricular y métricas institucionales.</p>
                 </div>
-                <div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-secondary btn-sm shadow-sm" onclick="window.forzarHardReset(this)" title="Limpiar caché del navegador, desregistrar Service Worker y recargar última versión">
+                        <i class="bi bi-arrow-repeat me-1"></i>Limpiar Caché / Forzar Actualización
+                    </button>
                     <button class="btn btn-outline-primary btn-sm shadow-sm" onclick="refrescarDatosAdmin(this)" title="Sincronizar todo con el servidor">
                         <i class="bi bi-arrow-clockwise me-1"></i>Sincronizar Servidor
                     </button>
@@ -1295,9 +1302,12 @@ if (!function_exists('v_asset')) {
                         <p class="mb-0">Consultando métricas de salud del servidor en tiempo real...</p>
                     </div>
                 </div>
-                <div class="modal-footer bg-light">
-                    <button type="button" class="btn btn-outline-secondary" onclick="cargarEstadoSistemaModal()"><i class="bi bi-arrow-clockwise me-1"></i>Actualizar Métricas</button>
-                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Cerrar</button>
+                <div class="modal-footer bg-light d-flex justify-content-between">
+                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="window.forzarHardReset(this)"><i class="bi bi-trash3 me-1"></i>Purgar Caché y Forzar Hard Reset</button>
+                    <div>
+                        <button type="button" class="btn btn-outline-secondary" onclick="cargarEstadoSistemaModal()"><i class="bi bi-arrow-clockwise me-1"></i>Actualizar Métricas</button>
+                        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Cerrar</button>
+                    </div>
                 </div>
             </div>
         </div>
