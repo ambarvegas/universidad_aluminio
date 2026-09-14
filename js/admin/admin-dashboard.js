@@ -78,7 +78,14 @@ function actualizarTablas() {
     const tablaCursosBody = document.getElementById('tabla-cursos-body');
     if (tablaCursosBody) {
         tablaCursosBody.innerHTML = '';
-        const searchCursoQuery = (document.getElementById('search-admin-cursos')?.value || '').trim().toLowerCase();
+        const searchInputEl = document.getElementById('search-admin-cursos');
+        const clearBtnEl = document.getElementById('btn-clear-search-cursos');
+        const rawSearchVal = searchInputEl?.value || '';
+        const searchCursoQuery = rawSearchVal.trim().toLowerCase();
+
+        if (clearBtnEl) {
+            clearBtnEl.style.display = rawSearchVal ? 'flex' : 'none';
+        }
 
         const cursosFiltrados = (cursos || []).filter(c => {
             if (!searchCursoQuery) return true;
@@ -87,7 +94,9 @@ function actualizarTablas() {
         });
 
         if (cursosFiltrados.length === 0) {
-            tablaCursosBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4"><i class="bi bi-search me-1"></i>No se encontraron cursos coincidentes.</td></tr>';
+            tablaCursosBody.innerHTML = searchCursoQuery
+                ? `<tr><td colspan="5" class="text-center text-muted py-4"><i class="bi bi-search me-1"></i>No se encontraron cursos coincidentes con "<strong>${escapeAttr(rawSearchVal)}</strong>". <button type="button" class="btn btn-sm btn-link text-primary p-0 ms-2 text-decoration-none" onclick="document.getElementById('search-admin-cursos').value=''; filtrarTablaCursosAdmin();"><i class="bi bi-x-circle me-1"></i>Limpiar búsqueda</button></td></tr>`
+                : '<tr><td colspan="5" class="text-center text-muted py-4"><i class="bi bi-journal-x me-1"></i>No hay cursos registrados en el catálogo.</td></tr>';
         } else {
             cursosFiltrados.forEach(c => {
                 const badgeTipo = (c.tipo === 'pruebas')
@@ -149,7 +158,14 @@ function actualizarTablas() {
 
     if (userTable) {
         userTable.innerHTML = '';
-        const searchUserQuery = (document.getElementById('search-admin-usuarios')?.value || '').trim().toLowerCase();
+        const searchUserInputEl = document.getElementById('search-admin-usuarios');
+        const clearUserBtnEl = document.getElementById('btn-clear-search-usuarios');
+        const rawUserSearchVal = searchUserInputEl?.value || '';
+        const searchUserQuery = rawUserSearchVal.trim().toLowerCase();
+
+        if (clearUserBtnEl) {
+            clearUserBtnEl.style.display = rawUserSearchVal ? 'flex' : 'none';
+        }
 
         const usuariosFiltrados = (usuarios || []).filter(u => {
             if (!searchUserQuery) return true;
@@ -167,7 +183,9 @@ function actualizarTablas() {
         const usuariosPagina = usuariosFiltrados.slice(inicio, fin);
 
         if (totalUsuarios === 0) {
-            userTable.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4"><i class="bi bi-search me-1"></i>No se encontraron colaboradores coincidentes.</td></tr>';
+            userTable.innerHTML = searchUserQuery
+                ? `<tr><td colspan="5" class="text-center text-muted py-4"><i class="bi bi-search me-1"></i>No se encontraron colaboradores coincidentes con "<strong>${escapeAttr(rawUserSearchVal)}</strong>". <button type="button" class="btn btn-sm btn-link text-primary p-0 ms-2 text-decoration-none" onclick="document.getElementById('search-admin-usuarios').value=''; filtrarTablaUsuariosAdmin();"><i class="bi bi-x-circle me-1"></i>Limpiar búsqueda</button></td></tr>`
+                : '<tr><td colspan="5" class="text-center text-muted py-4"><i class="bi bi-people me-1"></i>No hay colaboradores registrados.</td></tr>';
             if (userPaginationInfo) userPaginationInfo.textContent = 'Mostrando 0 de 0';
             if (userPaginationNav) userPaginationNav.innerHTML = '';
         } else {

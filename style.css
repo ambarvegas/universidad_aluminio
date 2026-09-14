@@ -232,9 +232,36 @@ h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6, .navbar-brand {
 
 .search-input-group input {
     padding-left: 2.75rem !important;
+    padding-right: 2rem !important;
     border-radius: var(--radius-full);
     border: 1px solid var(--aluminum-border);
     font-size: 0.925rem;
+}
+
+.search-input-group .search-clear-btn {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    background: #e2e8f0;
+    border: none;
+    color: #64748b;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    transition: var(--transition);
+}
+
+.search-input-group .search-clear-btn:hover {
+    background: #cbd5e1;
+    color: #0f172a;
 }
 
 .filter-pill-btn {

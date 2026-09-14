@@ -4,16 +4,13 @@
  * se reflejen de inmediato mientras se mantiene la capacidad offline.
  */
 
-const CACHE_NAME    = 'unialuminio-v26';
-const CACHE_DYNAMIC = 'unialuminio-dynamic-v26';
+const CACHE_NAME    = 'unialuminio-v28';
+const CACHE_DYNAMIC = 'unialuminio-dynamic-v28';
 
 // Assets estáticos que se cachean al instalar el SW
 const STATIC_ASSETS = [
     './',
-    './index.php',
-    './detalle.php',
     './login.php',
-    './admin.php',
     './style.css',
     './script.js',
     './manifest.json',
@@ -44,19 +41,24 @@ const STATIC_ASSETS = [
 ];
 
 // ============================================================
-// INSTALL — Pre-cachear assets estáticos
+// INSTALL — Pre-cachear assets estáticos de forma resiliente
 // ============================================================
 self.addEventListener('install', event => {
     event.waitUntil(
-        caches.open(CACHE_NAME).then(cache => {
-            return cache.addAll(STATIC_ASSETS.map(url => {
-                if (url.startsWith('http')) {
-                    return new Request(url, { mode: 'no-cors' });
-                }
-                return url;
-            })).catch(err => {
-                console.warn('[SW] Error al pre-cachear algunos assets:', err);
-            });
+        caches.open(CACHE_NAME).then(async cache => {
+            await Promise.allSettled(
+                STATIC_ASSETS.map(async url => {
+                    try {
+                        const req = url.startsWith('http') ? new Request(url, { mode: 'no-cors' }) : new Request(url, { cache: 'reload' });
+                        const res = await fetch(req);
+                        if (res && (res.ok || res.type === 'opaque')) {
+                            await cache.put(req, res);
+                        }
+                    } catch (_) {
+                        // Fallo individual ignorado para no abortar el ciclo de vida del SW
+                    }
+                })
+            );
         })
     );
     self.skipWaiting();

@@ -171,9 +171,10 @@ if (!function_exists('v_asset')) {
             <div class="filter-toolbar">
                 <div class="row align-items-center g-3">
                     <div class="col-md-5">
-                        <div class="search-input-group">
+                        <div class="search-input-group position-relative">
                             <i class="bi bi-search"></i>
-                            <input type="text" id="input-buscar-cursos" class="form-control" placeholder="Buscar cursos por título o tema..." oninput="filtrarGaleriaCursos()">
+                            <input type="search" id="input-buscar-cursos" name="search_no_autofill_campus" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other" class="form-control" placeholder="Buscar cursos por título o tema..." oninput="filtrarGaleriaCursos()">
+                            <button type="button" class="search-clear-btn" id="btn-clear-search-campus" onclick="document.getElementById('input-buscar-cursos').value=''; filtrarGaleriaCursos();" title="Limpiar búsqueda">&times;</button>
                         </div>
                     </div>
                     <div class="col-md-7">

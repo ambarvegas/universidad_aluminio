@@ -204,9 +204,10 @@ if (!function_exists('v_asset')) {
                         <button class="btn btn-outline-secondary btn-sm shadow-sm" onclick="refrescarDatosAdmin(this)" title="Refrescar catálogo">
                             <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
                         </button>
-                        <div class="search-input-group" style="width: 230px;">
+                        <div class="search-input-group position-relative" style="width: 230px;">
                             <i class="bi bi-search"></i>
-                            <input type="text" id="search-admin-cursos" class="form-control form-control-sm" placeholder="Buscar curso..." oninput="filtrarTablaCursosAdmin()">
+                            <input type="search" id="search-admin-cursos" name="search_no_autofill_cursos" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other" class="form-control form-control-sm" placeholder="Buscar curso..." oninput="filtrarTablaCursosAdmin()">
+                            <button type="button" class="search-clear-btn" id="btn-clear-search-cursos" onclick="document.getElementById('search-admin-cursos').value=''; filtrarTablaCursosAdmin();" title="Limpiar búsqueda">&times;</button>
                         </div>
                         <button class="btn btn-primary btn-sm" onclick="prepararFormulario()" data-bs-toggle="modal" data-bs-target="#cursoModal">
                             <i class="bi bi-plus-circle me-1"></i>Nuevo Curso
@@ -241,9 +242,10 @@ if (!function_exists('v_asset')) {
                         <button class="btn btn-outline-secondary btn-sm shadow-sm" onclick="refrescarDatosAdmin(this)" title="Refrescar colaboradores">
                             <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
                         </button>
-                        <div class="search-input-group" style="width: 230px;">
+                        <div class="search-input-group position-relative" style="width: 230px;">
                             <i class="bi bi-search"></i>
-                            <input type="text" id="search-admin-usuarios" class="form-control form-control-sm" placeholder="Buscar por nombre o cédula..." oninput="filtrarTablaUsuariosAdmin()">
+                            <input type="search" id="search-admin-usuarios" name="search_no_autofill_usuarios" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other" class="form-control form-control-sm" placeholder="Buscar por nombre o cédula..." oninput="filtrarTablaUsuariosAdmin()">
+                            <button type="button" class="search-clear-btn" id="btn-clear-search-usuarios" onclick="document.getElementById('search-admin-usuarios').value=''; filtrarTablaUsuariosAdmin();" title="Limpiar búsqueda">&times;</button>
                         </div>
                         <button class="btn btn-outline-success btn-sm" onclick="exportarUsuariosCSV()">
                             <i class="bi bi-file-earmark-spreadsheet-fill me-1"></i>Exportar CSV
@@ -423,7 +425,7 @@ if (!function_exists('v_asset')) {
                             <div class="col-12 col-md-4">
                                 <div class="input-group input-group-sm">
                                     <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
-                                    <input type="text" id="filtro-eval-search" class="form-control" placeholder="Buscar colaborador, cédula, curso..." oninput="filtrarTablaEvaluaciones()">
+                                    <input type="search" id="filtro-eval-search" name="search_no_autofill_eval" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other" class="form-control" placeholder="Buscar colaborador, cédula, curso..." oninput="filtrarTablaEvaluaciones()">
                                 </div>
                             </div>
                             <div class="col-6 col-md-2">
@@ -962,17 +964,17 @@ if (!function_exists('v_asset')) {
     <div class="modal fade" id="cursoModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
         <div class="modal-dialog modal-lg">
             <div class="modal-content border-0 shadow">
-                <form id="form-curso" onsubmit="guardarCurso(event)">
+                <form id="form-curso" onsubmit="guardarCurso(event)" autocomplete="off">
                     <div class="modal-header bg-primary text-white">
                         <h5 class="modal-title" id="modalTitulo">Nuevo Curso</h5>
                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body p-4">
-                        <input type="hidden" id="edit-id">
+                        <input type="hidden" id="edit-id" autocomplete="off">
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label fw-bold small">Título del Curso</label>
-                                <input type="text" id="titulo" class="form-control" placeholder="Ej: Extrusión y Aleaciones" required>
+                                <input type="text" id="titulo" class="form-control" placeholder="Ej: Extrusión y Aleaciones" required autocomplete="off">
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label fw-bold small">Tipo de Acceso</label>
@@ -1012,7 +1014,7 @@ if (!function_exists('v_asset')) {
                             </div>
                             <div class="col-12">
                                 <label class="form-label fw-bold small">Descripción General</label>
-                                <textarea id="descripcion" class="form-control" rows="2" placeholder="Resumen del contenido y objetivos de aprendizaje..."></textarea>
+                                <textarea id="descripcion" class="form-control" rows="2" placeholder="Resumen del contenido y objetivos de aprendizaje..." autocomplete="off"></textarea>
                             </div>
                             <div class="col-12">
                                 <hr>
@@ -1034,7 +1036,7 @@ if (!function_exists('v_asset')) {
     <div class="modal fade" id="userModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
             <div class="modal-content border-0 shadow">
-                <form id="form-usuario-integral" onsubmit="guardarUsuario(event)">
+                <form id="form-usuario-integral" onsubmit="guardarUsuario(event)" autocomplete="off">
                     <div class="modal-header bg-primary text-white">
                         <h5 class="modal-title" id="userModalTitle">Perfil de Usuario</h5>
                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
@@ -1043,11 +1045,11 @@ if (!function_exists('v_asset')) {
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label fw-bold small">Identificación (Cédula)</label>
-                                <input type="text" id="u-id" class="form-control" required>
+                                <input type="text" id="u-id" class="form-control" required autocomplete="off">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label fw-bold small">Nombre Completo</label>
-                                <input type="text" id="u-nombre" class="form-control" required>
+                                <input type="text" id="u-nombre" class="form-control" required autocomplete="off">
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label fw-bold small">Rol Académico</label>
@@ -1062,7 +1064,7 @@ if (!function_exists('v_asset')) {
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label fw-bold small">Contraseña</label>
-                                <input type="password" id="u-clave" class="form-control" placeholder="Dejar en blanco para no cambiar">
+                                <input type="password" id="u-clave" class="form-control" autocomplete="new-password" placeholder="Dejar en blanco para no cambiar">
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label fw-bold small">Correo Electrónico (Notificaciones)</label>
