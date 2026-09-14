@@ -55,6 +55,29 @@ function cargarConfiguracion() {
         if (alert) alert.style.display = cfg.modoMantenimiento ? 'block' : 'none';
     }
 
+    // Rellenar controles SMTP & Alertas
+    const elSmtpHost = document.getElementById('cfg-smtp-host');
+    if (elSmtpHost) elSmtpHost.value = cfg.smtp_host || '';
+
+    const elSmtpPort = document.getElementById('cfg-smtp-port');
+    if (elSmtpPort) elSmtpPort.value = cfg.smtp_port || '587';
+
+    const elSmtpUser = document.getElementById('cfg-smtp-user');
+    if (elSmtpUser) elSmtpUser.value = cfg.smtp_user || '';
+
+    const elSmtpPass = document.getElementById('cfg-smtp-pass');
+    if (elSmtpPass) elSmtpPass.value = cfg.smtp_pass || '';
+
+    const elSmtpSecure = document.getElementById('cfg-smtp-secure');
+    if (elSmtpSecure) elSmtpSecure.value = cfg.smtp_secure || 'tls';
+
+    const elEmailAdmin = document.getElementById('cfg-email-admin');
+    if (elEmailAdmin) elEmailAdmin.value = cfg.email_admin || '';
+
+    if (document.getElementById('tabla-respaldos-body')) {
+        cargarListaRespaldos();
+    }
+
     // Color pickers
     const elPrimario = document.getElementById('cfg-color-primario');
     const elPrimarioHex = document.getElementById('cfg-color-primario-hex');
@@ -382,11 +405,25 @@ async function guardarTodasLasConfiguraciones() {
         const accent  = document.getElementById('cfg-color-acento')?.value  || DEFAULT_COLORS.accent;
         const msg     = document.getElementById('cfg-mensaje-bienvenida')?.value;
 
+        // SMTP & Email
+        const smtpHost   = document.getElementById('cfg-smtp-host')?.value?.trim();
+        const smtpPort   = document.getElementById('cfg-smtp-port')?.value?.trim();
+        const smtpUser   = document.getElementById('cfg-smtp-user')?.value?.trim();
+        const smtpPass   = document.getElementById('cfg-smtp-pass')?.value;
+        const smtpSecure = document.getElementById('cfg-smtp-secure')?.value;
+        const emailAdmin = document.getElementById('cfg-email-admin')?.value?.trim();
+
         if (!db.configuracion) db.configuracion = {};
         if (nombre) db.configuracion.nombreInstitucion = nombre;
         db.configuracion.colorPrimario = primary;
         db.configuracion.colorAcento   = accent;
         if (msg !== undefined) db.configuracion.mensajeBienvenida = msg;
+        if (smtpHost !== undefined) db.configuracion.smtp_host = smtpHost;
+        if (smtpPort !== undefined) db.configuracion.smtp_port = smtpPort;
+        if (smtpUser !== undefined) db.configuracion.smtp_user = smtpUser;
+        if (smtpPass !== undefined) db.configuracion.smtp_pass = smtpPass;
+        if (smtpSecure !== undefined) db.configuracion.smtp_secure = smtpSecure;
+        if (emailAdmin !== undefined) db.configuracion.email_admin = emailAdmin;
 
         const batch = {
             colorPrimario: primary,
@@ -394,6 +431,12 @@ async function guardarTodasLasConfiguraciones() {
         };
         if (nombre) batch.nombreInstitucion = nombre;
         if (msg !== undefined) batch.mensajeBienvenida = msg;
+        if (smtpHost !== undefined) batch.smtp_host = smtpHost;
+        if (smtpPort !== undefined) batch.smtp_port = smtpPort;
+        if (smtpUser !== undefined) batch.smtp_user = smtpUser;
+        if (smtpPass !== undefined) batch.smtp_pass = smtpPass;
+        if (smtpSecure !== undefined) batch.smtp_secure = smtpSecure;
+        if (emailAdmin !== undefined) batch.email_admin = emailAdmin;
 
         await window.API.guardarConfigBatch(batch);
 
@@ -406,6 +449,255 @@ async function guardarTodasLasConfiguraciones() {
 
         showToast('✅ Configuración guardada correctamente.', 'success');
     }, 'Guardando...');
+}
+
+// -------------------------------------------------------
+// SERVIDOR DE CORREO (SMTP) & PRUEBAS
+// -------------------------------------------------------
+
+async function probarConfiguracionEmail() {
+    const inputDest = document.getElementById('cfg-test-email-dest');
+    const emailAdminInput = document.getElementById('cfg-email-admin');
+    const resultDiv = document.getElementById('test-email-result');
+    const btn = document.getElementById('btn-probar-email');
+
+    const dest = inputDest?.value?.trim() || emailAdminInput?.value?.trim();
+    if (!dest) {
+        showToast('Ingresa un correo electrónico de destino para la prueba.', 'warning');
+        if (inputDest) inputDest.focus();
+        return;
+    }
+
+    if (resultDiv) {
+        resultDiv.style.display = 'block';
+        resultDiv.className = 'alert alert-info py-2 px-3 small mt-2 mb-0';
+        resultDiv.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Conectando con el servidor SMTP y enviando correo de diagnóstico...';
+    }
+
+    await withLoading(btn, async () => {
+        try {
+            const smtpHost = document.getElementById('cfg-smtp-host')?.value?.trim() || '';
+            const smtpPort = document.getElementById('cfg-smtp-port')?.value?.trim() || '587';
+            const smtpUser = document.getElementById('cfg-smtp-user')?.value?.trim() || '';
+            const smtpPass = document.getElementById('cfg-smtp-pass')?.value || '';
+            const smtpSecure = document.getElementById('cfg-smtp-secure')?.value || 'tls';
+
+            if (smtpHost || smtpUser) {
+                await window.API.guardarConfigBatch({
+                    smtp_host: smtpHost,
+                    smtp_port: smtpPort,
+                    smtp_user: smtpUser,
+                    smtp_pass: smtpPass,
+                    smtp_secure: smtpSecure,
+                    email_admin: dest
+                });
+            }
+
+            const res = await window.API.probarEmail(dest);
+            if (resultDiv) {
+                resultDiv.className = 'alert alert-success py-2 px-3 small mt-2 mb-0';
+                resultDiv.innerHTML = `<i class="bi bi-check-circle-fill me-1"></i> ${res.message || 'Correo de prueba enviado satisfactoriamente.'}`;
+            }
+            showToast('✅ Correo de prueba enviado con éxito.', 'success');
+        } catch (e) {
+            if (resultDiv) {
+                resultDiv.className = 'alert alert-danger py-2 px-3 small mt-2 mb-0';
+                resultDiv.innerHTML = `<i class="bi bi-x-circle-fill me-1"></i> ${e.message || 'Fallo en la entrega del correo.'}`;
+            }
+            showToast(`Error al probar correo: ${e.message}`, 'danger');
+        }
+    }, 'Enviando...');
+}
+
+// -------------------------------------------------------
+// GESTIÓN DE RESPALDOS AUTOMATIZADOS
+// -------------------------------------------------------
+
+async function cargarListaRespaldos() {
+    const tbody = document.getElementById('tabla-respaldos-body');
+    const badge = document.getElementById('badge-total-respaldos');
+    if (!tbody) return;
+
+    try {
+        const data = await window.API.obtenerListaRespaldos();
+        const lista = data.respaldos || [];
+
+        if (badge) {
+            badge.textContent = `${lista.length} copia${lista.length === 1 ? '' : 's'}`;
+        }
+
+        if (lista.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="4" class="text-center py-3 text-muted">
+                        <i class="bi bi-info-circle me-1"></i>No hay respaldos generados aún. Haz clic en "Generar Respaldo Ahora".
+                    </td>
+                </tr>`;
+            return;
+        }
+
+        tbody.innerHTML = lista.map(b => `
+            <tr>
+                <td class="fw-semibold text-primary">
+                    <i class="bi bi-file-earmark-zip-fill text-warning me-1"></i>${b.archivo}
+                </td>
+                <td class="text-muted">${b.fecha}</td>
+                <td><span class="badge bg-light text-dark border">${b.tamano}</span></td>
+                <td><span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25">${b.tipo}</span></td>
+            </tr>
+        `).join('');
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="4" class="text-center py-3 text-danger"><i class="bi bi-exclamation-triangle me-1"></i>Error al consultar respaldos: ${e.message}</td></tr>`;
+    }
+}
+
+async function ejecutarBackupManual() {
+    const btn = document.getElementById('btn-generar-backup');
+    await withLoading(btn, async () => {
+        try {
+            const res = await window.API.ejecutarRespaldoServidor();
+            showToast(`✅ Respaldo generado: ${res.archivo} (${res.tamano}) en ${res.duracion_segundos}s`, 'success');
+            await cargarListaRespaldos();
+        } catch (e) {
+            showToast(`Error al generar respaldo: ${e.message}`, 'danger');
+        }
+    }, 'Generando...');
+}
+
+// -------------------------------------------------------
+// ESTADO DE SALUD DEL SISTEMA & DIAGNÓSTICO
+// -------------------------------------------------------
+
+function abrirModalDiagnostico() {
+    const modalEl = document.getElementById('modalDiagnostico');
+    if (!modalEl) return;
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+    cargarEstadoSistemaModal();
+}
+
+async function cargarEstadoSistemaModal() {
+    const body = document.getElementById('modal-diagnostico-body');
+    if (!body) return;
+
+    body.innerHTML = `
+        <div class="text-center py-5 text-muted">
+            <div class="spinner-border text-primary mb-2"></div>
+            <p class="mb-0">Consultando métricas de salud del servidor en tiempo real...</p>
+        </div>`;
+
+    try {
+        const h = await window.API.obtenerEstadoSistema();
+        const db = h.database || {};
+        const storage = h.storage || {};
+        const php = h.php || {};
+        const mailer = h.mailer || {};
+        const statusBadge = h.status === 'healthy' 
+            ? '<span class="badge bg-success px-3 py-2 fs-6"><i class="bi bi-check-circle-fill me-1"></i>Sistema Saludable & Operativo</span>'
+            : (h.status === 'warning'
+                ? '<span class="badge bg-warning text-dark px-3 py-2 fs-6"><i class="bi bi-exclamation-triangle-fill me-1"></i>Advertencias Detectadas</span>'
+                : '<span class="badge bg-danger px-3 py-2 fs-6"><i class="bi bi-x-circle-fill me-1"></i>Atención Crítica Requerida</span>');
+
+        let warningsHtml = '';
+        if (h.warnings && h.warnings.length > 0) {
+            warningsHtml = `
+                <div class="alert alert-warning mb-3">
+                    <h6 class="fw-bold mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i>Recomendaciones / Alertas:</h6>
+                    <ul class="mb-0 ps-3 small">
+                        ${h.warnings.map(w => `<li>${w}</li>`).join('')}
+                    </ul>
+                </div>`;
+        }
+
+        const extBadges = Object.entries(php.extensiones || {}).map(([ext, active]) => `
+            <span class="badge ${active ? 'bg-success bg-opacity-10 text-success border border-success border-opacity-25' : 'bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25'} me-1 mb-1">
+                ${active ? '✓' : '✗'} ${ext}
+            </span>
+        `).join('');
+
+        body.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom">
+                <div>
+                    <h5 class="fw-bold text-primary mb-1">Diagnóstico Operativo en Tiempo Real</h5>
+                    <p class="text-muted small mb-0">Servidor: <strong>${db.host || 'N/D'}</strong> &bull; Verificado: ${new Date(h.timestamp).toLocaleTimeString()}</p>
+                </div>
+                <div>${statusBadge}</div>
+            </div>
+
+            ${warningsHtml}
+
+            <div class="row g-3">
+                <!-- MySQL Database -->
+                <div class="col-md-6">
+                    <div class="p-3 bg-light rounded-3 border h-100">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <i class="bi bi-database-fill text-primary fs-5"></i>
+                            <h6 class="fw-bold mb-0 text-dark">Base de Datos MySQL</h6>
+                        </div>
+                        <ul class="list-unstyled small mb-0 text-muted">
+                            <li class="mb-1"><strong>Base de Datos:</strong> <code class="text-primary">${db.name}</code></li>
+                            <li class="mb-1"><strong>Versión Motor:</strong> ${db.server_version}</li>
+                            <li class="mb-1"><strong>Latencia Ping:</strong> <span class="badge ${db.latencia_ms < 200 ? 'bg-success' : 'bg-warning'}">${db.latencia_ms} ms</span></li>
+                            <li class="mb-1"><strong>Tablas / Registros:</strong> ${db.tablas_total} tablas (~${(db.filas_estimadas || 0).toLocaleString()} filas)</li>
+                            <li><strong>Tamaño en Disco:</strong> <span class="fw-semibold text-dark">${db.tamano_formato}</span></li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Storage & Disk -->
+                <div class="col-md-6">
+                    <div class="p-3 bg-light rounded-3 border h-100">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <i class="bi bi-hdd-network-fill text-info fs-5"></i>
+                            <h6 class="fw-bold mb-0 text-dark">Almacenamiento & Respaldos</h6>
+                        </div>
+                        <ul class="list-unstyled small mb-0 text-muted">
+                            <li class="mb-1"><strong>Espacio Libre Servidor:</strong> ${storage.disk_free_formato} / ${storage.disk_total_formato}</li>
+                            <li class="mb-1"><strong>Archivos en /uploads/:</strong> ${storage.uploads?.archivos_total || 0} (${storage.uploads?.tamano_formato || '0 B'})</li>
+                            <li class="mb-1"><strong>Respaldos Conservados:</strong> ${storage.backups?.archivos_total || 0} (${storage.backups?.tamano_formato || '0 B'})</li>
+                            <li><strong>Último Respaldo:</strong> <span class="fw-semibold text-dark">${storage.backups?.ultimo_backup || 'Sin respaldos'}</span></li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- PHP Runtime -->
+                <div class="col-md-6">
+                    <div class="p-3 bg-light rounded-3 border h-100">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <i class="bi bi-code-slash text-purple fs-5"></i>
+                            <h6 class="fw-bold mb-0 text-dark">Entorno PHP</h6>
+                        </div>
+                        <ul class="list-unstyled small mb-2 text-muted">
+                            <li class="mb-1"><strong>Versión PHP:</strong> ${php.version} (${php.sapi})</li>
+                            <li class="mb-1"><strong>Límites:</strong> Mem: ${php.memory_limit} &bull; Max Exec: ${php.max_execution_time}s &bull; Max Upload: ${php.upload_max_filesize}</li>
+                        </ul>
+                        <div class="d-flex flex-wrap">${extBadges}</div>
+                    </div>
+                </div>
+
+                <!-- Mailer Status -->
+                <div class="col-md-6">
+                    <div class="p-3 bg-light rounded-3 border h-100">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <i class="bi bi-envelope-check-fill text-success fs-5"></i>
+                            <h6 class="fw-bold mb-0 text-dark">Servicio de Correo</h6>
+                        </div>
+                        <ul class="list-unstyled small mb-0 text-muted">
+                            <li class="mb-1"><strong>Servidor SMTP:</strong> ${mailer.smtp_host}</li>
+                            <li class="mb-1"><strong>Puerto & Cifrado:</strong> Puerto ${mailer.smtp_port} (${mailer.smtp_secure})</li>
+                            <li class="mb-1"><strong>Correo de Alertas:</strong> <code class="text-dark">${mailer.email_admin}</code></li>
+                            <li><strong>Estado:</strong> <span class="badge ${mailer.smtp_configurado ? 'bg-success' : 'bg-warning'}">${mailer.smtp_configurado ? 'SMTP Configurado' : 'Fallback mail() Activo'}</span></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        `;
+    } catch (e) {
+        body.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-triangle-fill me-2"></i>Error al consultar el diagnóstico de salud: ${e.message}
+            </div>`;
+    }
 }
 
 // -------------------------------------------------------
@@ -449,4 +741,10 @@ window.restablecerColores          = restablecerColores;
 window.actualizarMensajeBienvenida = actualizarMensajeBienvenida;
 window.actualizarModoMantenimiento = actualizarModoMantenimiento;
 window.guardarTodasLasConfiguraciones = guardarTodasLasConfiguraciones;
+window.probarConfiguracionEmail    = probarConfiguracionEmail;
+window.cargarListaRespaldos        = cargarListaRespaldos;
+window.ejecutarBackupManual        = ejecutarBackupManual;
+window.abrirModalDiagnostico       = abrirModalDiagnostico;
+window.cargarEstadoSistemaModal    = cargarEstadoSistemaModal;
+
 

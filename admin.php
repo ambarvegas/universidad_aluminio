@@ -824,6 +824,128 @@ if (!function_exists('v_asset')) {
                     </div>
 
                 </div>
+
+                <!-- Fila 2: Notificaciones por Correo (SMTP) y Respaldos Automatizados -->
+                <div class="row g-4 mt-1">
+
+                    <!-- Card 4: Notificaciones y Servidor SMTP -->
+                    <div class="col-lg-6">
+                        <div class="config-card h-100">
+                            <div class="config-card-header">
+                                <div class="config-card-icon" style="background: rgba(2,132,199,0.12); color: #0284c7;">
+                                    <i class="bi bi-envelope-at-fill"></i>
+                                </div>
+                                <div>
+                                    <h6 class="fw-bold mb-0">Servidor de Correo & Notificaciones (SMTP)</h6>
+                                    <p class="text-muted small mb-0">Envío automático de accesos, certificados y alertas</p>
+                                </div>
+                            </div>
+
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-8">
+                                    <label class="form-label fw-semibold small text-uppercase text-muted ls-1">Servidor SMTP (Host)</label>
+                                    <input type="text" class="form-control form-control-sm" id="cfg-smtp-host" placeholder="mail.ejemplo.com o smtp.gmail.com">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold small text-uppercase text-muted ls-1">Puerto</label>
+                                    <input type="number" class="form-control form-control-sm" id="cfg-smtp-port" placeholder="587" value="587">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold small text-uppercase text-muted ls-1">Usuario / Cuenta SMTP</label>
+                                    <input type="text" class="form-control form-control-sm" id="cfg-smtp-user" placeholder="rectoria@universidaddelaluminio.com">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold small text-uppercase text-muted ls-1">Contraseña SMTP</label>
+                                    <input type="password" class="form-control form-control-sm" id="cfg-smtp-pass" placeholder="••••••••••••">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold small text-uppercase text-muted ls-1">Seguridad</label>
+                                    <select class="form-select form-select-sm" id="cfg-smtp-secure">
+                                        <option value="tls">TLS / STARTTLS (587)</option>
+                                        <option value="ssl">SSL (465)</option>
+                                        <option value="none">Sin cifrado (25)</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-8">
+                                    <label class="form-label fw-semibold small text-uppercase text-muted ls-1">Email del Administrador (Alertas)</label>
+                                    <input type="email" class="form-control form-control-sm" id="cfg-email-admin" placeholder="admin@universidaddelaluminio.com">
+                                </div>
+                            </div>
+
+                            <!-- Panel de Prueba de Correo -->
+                            <div class="p-3 bg-light rounded-3 border mt-3">
+                                <label class="form-label fw-bold small text-dark mb-1">
+                                    <i class="bi bi-send-check-fill text-primary me-1"></i>Probar Envío de Correo
+                                </label>
+                                <div class="input-group input-group-sm">
+                                    <input type="email" id="cfg-test-email-dest" class="form-control" placeholder="destinatario@correo.com">
+                                    <button type="button" class="btn btn-outline-primary" id="btn-probar-email" onclick="probarConfiguracionEmail()">
+                                        <i class="bi bi-send me-1"></i>Enviar Prueba
+                                    </button>
+                                </div>
+                                <div id="test-email-result" class="small mt-2" style="display:none;"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Card 5: Respaldos Automatizados & Diagnóstico -->
+                    <div class="col-lg-6">
+                        <div class="config-card h-100">
+                            <div class="config-card-header">
+                                <div class="config-card-icon" style="background: rgba(16,185,129,0.12); color: #10b981;">
+                                    <i class="bi bi-database-check"></i>
+                                </div>
+                                <div>
+                                    <h6 class="fw-bold mb-0">Respaldos Automatizados & Mantenimiento</h6>
+                                    <p class="text-muted small mb-0">Copias de seguridad del sistema y diagnóstico integral</p>
+                                </div>
+                            </div>
+
+                            <!-- Acciones Rápidas -->
+                            <div class="d-flex flex-wrap gap-2 mb-3">
+                                <button type="button" class="btn btn-sm btn-primary shadow-sm" id="btn-generar-backup" onclick="ejecutarBackupManual()">
+                                    <i class="bi bi-cloud-arrow-up-fill me-1"></i>Generar Respaldo Ahora
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary shadow-sm" onclick="abrirModalDiagnostico()">
+                                    <i class="bi bi-activity me-1"></i>Diagnóstico del Sistema
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-info shadow-sm" onclick="cargarListaRespaldos()">
+                                    <i class="bi bi-arrow-clockwise me-1"></i>Refrescar
+                                </button>
+                            </div>
+
+                            <!-- Historial de Respaldos Recientes -->
+                            <div class="table-responsive rounded-3 border" style="max-height: 220px; overflow-y: auto;">
+                                <table class="table table-sm table-hover align-middle mb-0" style="font-size: 0.82rem;">
+                                    <thead class="table-light sticky-top">
+                                        <tr>
+                                            <th>Archivo de Respaldo</th>
+                                            <th>Fecha</th>
+                                            <th>Tamaño</th>
+                                            <th>Tipo</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tabla-respaldos-body">
+                                        <tr>
+                                            <td colspan="4" class="text-center py-3 text-muted">
+                                                <div class="spinner-border spinner-border-sm text-primary me-1"></div>Cargando lista de respaldos...
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div class="mt-3 p-2 bg-light rounded border text-muted small d-flex align-items-center justify-content-between">
+                                <div>
+                                    <i class="bi bi-shield-lock-fill text-success me-1"></i>
+                                    <strong>Protección Activa:</strong> Retención de últimas 7 copias en carpeta protegida.
+                                </div>
+                                <span class="badge bg-secondary" id="badge-total-respaldos">0 copias</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
 
         </div>
@@ -1121,6 +1243,28 @@ if (!function_exists('v_asset')) {
                 <div class="modal-footer bg-light">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                     <button type="button" class="btn btn-success" id="btn-marcar-completado" onclick="confirmarMarcarCompletado()">Marcar como Completados</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Diagnóstico y Salud del Sistema -->
+    <div class="modal fade" id="modalDiagnostico" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-activity me-2"></i>Estado Integral del Sistema & Diagnóstico</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4" id="modal-diagnostico-body">
+                    <div class="text-center py-5 text-muted">
+                        <div class="spinner-border text-primary mb-2"></div>
+                        <p class="mb-0">Consultando métricas de salud del servidor en tiempo real...</p>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-outline-secondary" onclick="cargarEstadoSistemaModal()"><i class="bi bi-arrow-clockwise me-1"></i>Actualizar Métricas</button>
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Cerrar</button>
                 </div>
             </div>
         </div>

@@ -359,7 +359,12 @@ switch ($action) {
         if (!$sol['id'] || !$sol['nombre'] || !$sol['clave']) {
             http_response_code(400); echo json_encode(['error' => 'Campos requeridos: id, nombre, clave']); break;
         }
-        try { db_add_solicitud_registro($conn, $sol); echo json_encode(['message' => 'Solicitud enviada']); }
+        try { 
+            db_add_solicitud_registro($conn, $sol); 
+            require_once __DIR__ . '/mailer.php';
+            @notificarAdminNuevaSolicitud($conn, 'Registro de Nuevo Usuario', $sol['nombre'], $sol['id']);
+            echo json_encode(['message' => 'Solicitud enviada']); 
+        }
         catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 
@@ -476,6 +481,26 @@ switch ($action) {
 
         try {
             $resultado = db_evaluar_modulo($conn, $uid, $cid, $midx, $resp);
+            if (!empty($resultado['certificadoOtorgado'])) {
+                require_once __DIR__ . '/mailer.php';
+                $sU = $conn->prepare("SELECT nombre FROM `usuarios` WHERE id = ?");
+                $sU->bind_param('s', $uid);
+                $sU->execute();
+                $rU = $sU->get_result()->fetch_assoc();
+                $uName = $rU['nombre'] ?? $uid;
+
+                $sC = $conn->prepare("SELECT titulo FROM `cursos` WHERE id = ?");
+                $sC->bind_param('s', $cid);
+                $sC->execute();
+                $rC = $sC->get_result()->fetch_assoc();
+                $cTitulo = $rC['titulo'] ?? $cid;
+
+                $codCert = "CERT-" . strtoupper(substr(md5($uid . $cid . 'SALT_2026'), 0, 10));
+                $emailUser = filter_var($uid, FILTER_VALIDATE_EMAIL) ? $uid : '';
+                if ($emailUser) {
+                    @notificarCertificadoEmitido($conn, $emailUser, $uName, $cTitulo, $codCert);
+                }
+            }
             echo json_encode($resultado, JSON_UNESCAPED_UNICODE);
         } catch (InvalidArgumentException $e) {
             http_response_code(400);
@@ -596,7 +621,12 @@ switch ($action) {
         require_session();
         if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
         $body = jsonBody();
-        try { db_add_solicitud_curso($conn, $body); echo json_encode(['message' => 'Solicitud enviada']); }
+        try { 
+            db_add_solicitud_curso($conn, $body); 
+            require_once __DIR__ . '/mailer.php';
+            @notificarAdminNuevaSolicitud($conn, 'Acceso a Curso Especializado', $body['userName'] ?? $body['user_name'] ?? $_SESSION['user_id'], $body['cursoId'] ?? $body['curso_id'] ?? '');
+            echo json_encode(['message' => 'Solicitud enviada']); 
+        }
         catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 
@@ -735,7 +765,146 @@ switch ($action) {
         }
         break;
 
-    // ------ HEALTH CHECK -----------------------------------------
+    // ------ ESTADO DE SALUD DEL SISTEMA (DIAGNÓSTICO INTEGRAL) ---
+    case 'health':
+        require_admin();
+        if ($method !== 'GET') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        try {
+            $health = db_get_health_status($conn);
+            echo json_encode($health, JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Error al obtener estado de salud: ' . $e->getMessage()]);
+        }
+        break;
+
+    // ------ PRUEBA DE SERVIDOR SMTP / CORREO ---------------------
+    case 'test_email':
+        require_admin();
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body = jsonBody();
+        $destinatario = trim((string)($body['email'] ?? ''));
+        if (!$destinatario || !filter_var($destinatario, FILTER_VALIDATE_EMAIL)) {
+            $res = $conn->query("SELECT valor FROM `configuracion` WHERE clave = 'email_admin'");
+            $destinatario = ($res && $r = $res->fetch_assoc()) ? trim((string)$r['valor']) : '';
+        }
+        if (!$destinatario || !filter_var($destinatario, FILTER_VALIDATE_EMAIL)) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Se requiere una dirección de correo válida para la prueba (o configure el email_admin en configuración).']);
+            break;
+        }
+
+        require_once __DIR__ . '/mailer.php';
+        try {
+            $mailer = obtenerMailerInstance($conn);
+            $horaActual = date('d/m/Y H:i:s');
+            $cuerpoHtml = "<p>Hola Administrador,</p>
+            <p>Este es un correo de prueba emitido desde el <strong>Panel de Administración de la Universidad del Aluminio LMS</strong>.</p>
+            <div style=\"background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:16px; margin:16px 0;\">
+                <p style=\"margin:0 0 6px;\"><strong>Fecha y Hora:</strong> {$horaActual}</p>
+                <p style=\"margin:0 0 6px;\"><strong>Destinatario de Prueba:</strong> <code style=\"color:#0284c7; font-weight:bold;\">{$destinatario}</code></p>
+                <p style=\"margin:0;\"><strong>Estado del Servicio SMTP:</strong> <span style=\"color:#10b981; font-weight:bold;\">&#10004; Operativo</span></p>
+            </div>
+            <p>Si has recibido este mensaje, las notificaciones automáticas para aprobaciones de cuentas, certificados oficiales y alertas de solicitudes están correctamente enlazadas.</p>";
+
+            $enviado = $mailer->send($destinatario, "Prueba de Configuración de Correo — Universidad del Aluminio", renderHtmlEmailTemplate("Diagnóstico de Correo Institucional", $cuerpoHtml));
+
+            if ($enviado) {
+                db_log_activity($conn, $_SESSION['user_id'] ?? 'admin', 'TEST_EMAIL', "Correo de prueba enviado a $destinatario", $_SERVER['REMOTE_ADDR'] ?? '');
+                echo json_encode(['success' => true, 'message' => "Correo de prueba enviado exitosamente a $destinatario."]);
+            } else {
+                http_response_code(500);
+                echo json_encode(['success' => false, 'error' => "No se pudo entregar el correo a $destinatario. Verifique los parámetros SMTP o la conectividad del servidor."]);
+            }
+        } catch (Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['success' => false, 'error' => 'Excepción durante el envío: ' . $e->getMessage()]);
+        }
+        break;
+
+    // ------ EJECUTAR RESPALDO MANUAL COMPLETO --------------------
+    case 'trigger_backup':
+        require_admin();
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        require_once __DIR__ . '/tools/cron_backup.php';
+        try {
+            $resultado = ejecutarRespaldo($conn);
+            db_log_activity($conn, $_SESSION['user_id'] ?? 'admin', 'BACKUP_MANUAL', "Generado respaldo: " . $resultado['archivo'], $_SERVER['REMOTE_ADDR'] ?? '');
+            echo json_encode($resultado, JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Error al generar respaldo: ' . $e->getMessage()]);
+        }
+        break;
+
+    // ------ LISTADO DE RESPALDOS GENERADOS -----------------------
+    case 'lista_respaldos':
+        require_admin();
+        if ($method !== 'GET') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $backupDir = __DIR__ . '/backups/';
+        $lista = [];
+        if (is_dir($backupDir)) {
+            $archivos = glob($backupDir . "respaldo_unialuminio_*.*");
+            if ($archivos) {
+                usort($archivos, function($a, $b) {
+                    return filemtime($b) - filemtime($a);
+                });
+                foreach ($archivos as $arch) {
+                    $bytes = filesize($arch);
+                    $lista[] = [
+                        'archivo'      => basename($arch),
+                        'fecha'        => date('Y-m-d H:i:s', filemtime($arch)),
+                        'tamano_bytes' => $bytes,
+                        'tamano'       => db_format_bytes($bytes),
+                        'tipo'         => pathinfo($arch, PATHINFO_EXTENSION) === 'zip' ? 'ZIP (Base de Datos + Uploads)' : 'SQL Plano'
+                    ];
+                }
+            }
+        }
+        echo json_encode(['respaldos' => $lista], JSON_UNESCAPED_UNICODE);
+        break;
+
+    // ------ NOTIFICAR USUARIO (MANUAL O APROBACION) --------------
+    case 'notificar_usuario':
+        require_admin();
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body = jsonBody();
+        $email  = trim((string)($body['email'] ?? ''));
+        $nombre = trim((string)($body['nombre'] ?? 'Usuario'));
+        $id     = trim((string)($body['id'] ?? ''));
+        $clave  = trim((string)($body['clave'] ?? ''));
+        $tipo   = trim((string)($body['tipo'] ?? 'aprobacion'));
+
+        if (!$email || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Se requiere un correo electrónico válido del destinatario.']);
+            break;
+        }
+
+        require_once __DIR__ . '/mailer.php';
+        try {
+            if ($tipo === 'aprobacion') {
+                $enviado = notificarCuentaAprobada($conn, $email, $nombre, $id, $clave);
+            } else {
+                $asunto = trim((string)($body['asunto'] ?? 'Notificación Oficial — Universidad del Aluminio'));
+                $mensaje = trim((string)($body['mensaje'] ?? ''));
+                $mailer = obtenerMailerInstance($conn);
+                $enviado = $mailer->send($email, $asunto, renderHtmlEmailTemplate($asunto, "<p>" . nl2br(htmlspecialchars($mensaje)) . "</p>"));
+            }
+
+            if ($enviado) {
+                echo json_encode(['success' => true, 'message' => "Notificación enviada a $email"]);
+            } else {
+                http_response_code(500);
+                echo json_encode(['success' => false, 'error' => "No se pudo entregar el correo a $email"]);
+            }
+        } catch (Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Error al enviar notificación: ' . $e->getMessage()]);
+        }
+        break;
+
+    // ------ HEALTH CHECK (PING BASICO) ---------------------------
     case 'ping':
         echo json_encode([
             'status'       => 'ok',
@@ -755,3 +924,4 @@ switch ($action) {
 }
 
 $conn->close();
+

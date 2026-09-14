@@ -277,9 +277,29 @@ window.API = (() => {
             }
         },
 
-        // ---- HEALTH CHECK ----
+        // ---- HEALTH CHECK & DIAGNÓSTICO ----
         async ping() {
             return _get('ping');
+        },
+
+        async obtenerEstadoSistema() {
+            return _get('health');
+        },
+
+        async probarEmail(email) {
+            return _post('test_email', { email });
+        },
+
+        async ejecutarRespaldoServidor() {
+            return _post('trigger_backup', {});
+        },
+
+        async obtenerListaRespaldos() {
+            return _get('lista_respaldos');
+        },
+
+        async notificarUsuario(payload) {
+            return _post('notificar_usuario', payload);
         }
     };
 })();

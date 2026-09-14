@@ -1,0 +1,308 @@
+<?php
+/**
+ * mailer.php — Universidad del Aluminio
+ * Módulo centralizado de envío de correos electrónicos y notificaciones institucionales.
+ *
+ * Características:
+ *  - Soporte para SMTP autenticado (SSL/TLS/STARTTLS) vía sockets nativos (sin dependencias externas).
+ *  - Fallback automático a mail() de PHP si SMTP no está configurado.
+ *  - Plantillas HTML institucionales responsivas con paleta oficial (#0f2b48 y #0284c7).
+ *  - Manejo de cola segura y registro de eventos de notificación.
+ */
+
+// ============================================================
+// 1. CLIENTE SMTP LIGERO BASADO EN SOCKETS
+// ============================================================
+
+class SmtpMailer {
+    private string $host;
+    private int $port;
+    private string $user;
+    private string $pass;
+    private string $secure; // 'tls', 'ssl', 'none'
+    private string $fromEmail;
+    private string $fromName;
+    private int $timeout;
+
+    public function __construct(array $config = []) {
+        $this->host      = $config['host']      ?? 'localhost';
+        $this->port      = (int)($config['port'] ?? 587);
+        $this->user      = $config['user']      ?? '';
+        $this->pass      = $config['pass']      ?? '';
+        $this->secure    = strtolower($config['secure'] ?? 'tls');
+        $this->fromEmail = $config['from_email'] ?? ($config['user'] ?: 'rectoria@universidaddelaluminio.com');
+        $this->fromName  = $config['from_name']  ?? 'Universidad del Aluminio';
+        $this->timeout   = (int)($config['timeout'] ?? 10);
+    }
+
+    public function send(string $toEmail, string $subject, string $htmlBody, string $textBody = ''): bool {
+        if (empty($toEmail) || !filter_var($toEmail, FILTER_VALIDATE_EMAIL)) {
+            throw new InvalidArgumentException("Dirección de correo inválida: $toEmail");
+        }
+
+        // Si no hay host SMTP configurado o es localhost sin usuario, intentar fallback a mail() nativo
+        if (empty($this->user) && ($this->host === 'localhost' || empty($this->host))) {
+            return $this->sendNativeMail($toEmail, $subject, $htmlBody);
+        }
+
+        $prefix = ($this->secure === 'ssl') ? 'ssl://' : '';
+        $socket = @fsockopen($prefix . $this->host, $this->port, $errno, $errstr, $this->timeout);
+
+        if (!$socket) {
+            // Fallback a mail() si el socket no abre
+            error_log("[SmtpMailer] Fallo de conexión socket ($errstr). Intentando mail() nativo.");
+            return $this->sendNativeMail($toEmail, $subject, $htmlBody);
+        }
+
+        stream_set_timeout($socket, $this->timeout);
+
+        try {
+            $this->readExpectedResponse($socket, '220');
+            $this->sendCommand($socket, "EHLO " . gethostname(), '250');
+
+            if ($this->secure === 'tls') {
+                $this->sendCommand($socket, "STARTTLS", '220');
+                if (!stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
+                    throw new RuntimeException("Fallo al negociar cifrado TLS");
+                }
+                $this->sendCommand($socket, "EHLO " . gethostname(), '250');
+            }
+
+            if (!empty($this->user)) {
+                $this->sendCommand($socket, "AUTH LOGIN", '334');
+                $this->sendCommand($socket, base64_encode($this->user), '334');
+                $this->sendCommand($socket, base64_encode($this->pass), '235');
+            }
+
+            $this->sendCommand($socket, "MAIL FROM: <{$this->fromEmail}>", '250');
+            $this->sendCommand($socket, "RCPT TO: <{$toEmail}>", '250');
+            $this->sendCommand($socket, "DATA", '354');
+
+            $boundary = "----=_Part_" . md5(uniqid((string)time(), true));
+            $headers  = [];
+            $headers[] = "From: =?UTF-8?B?" . base64_encode($this->fromName) . "?= <{$this->fromEmail}>";
+            $headers[] = "To: <{$toEmail}>";
+            $headers[] = "Subject: =?UTF-8?B?" . base64_encode($subject) . "?=";
+            $headers[] = "MIME-Version: 1.0";
+            $headers[] = "Content-Type: multipart/alternative; boundary=\"{$boundary}\"";
+            $headers[] = "X-Mailer: UniAluminio LMS Mailer v2.0";
+            $headers[] = "Date: " . date('r');
+
+            $plain = $textBody ?: strip_tags(str_replace(['<br>', '<br/>', '</p>'], "\n", $htmlBody));
+
+            $body  = implode("\r\n", $headers) . "\r\n\r\n";
+            $body .= "--{$boundary}\r\n";
+            $body .= "Content-Type: text/plain; charset=UTF-8\r\n";
+            $body .= "Content-Transfer-Encoding: base64\r\n\r\n";
+            $body .= chunk_split(base64_encode($plain)) . "\r\n";
+            $body .= "--{$boundary}\r\n";
+            $body .= "Content-Type: text/html; charset=UTF-8\r\n";
+            $body .= "Content-Transfer-Encoding: base64\r\n\r\n";
+            $body .= chunk_split(base64_encode($htmlBody)) . "\r\n";
+            $body .= "--{$boundary}--\r\n";
+            $body .= "\r\n.";
+
+            $this->sendCommand($socket, $body, '250');
+            $this->sendCommand($socket, "QUIT", '221');
+            fclose($socket);
+            return true;
+        } catch (Throwable $e) {
+            if (is_resource($socket)) fclose($socket);
+            error_log("[SmtpMailer] Error SMTP: " . $e->getMessage() . " — Ejecutando fallback mail()");
+            return $this->sendNativeMail($toEmail, $subject, $htmlBody);
+        }
+    }
+
+    private function sendNativeMail(string $toEmail, string $subject, string $htmlBody): bool {
+        $headers  = "MIME-Version: 1.0\r\n";
+        $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
+        $headers .= "From: =?UTF-8?B?" . base64_encode($this->fromName) . "?= <{$this->fromEmail}>\r\n";
+        $headers .= "Reply-To: {$this->fromEmail}\r\n";
+        $headers .= "X-Mailer: PHP/" . phpversion();
+
+        $encodedSubject = "=?UTF-8?B?" . base64_encode($subject) . "?=";
+        return @mail($toEmail, $encodedSubject, $htmlBody, $headers);
+    }
+
+    private function sendCommand($socket, string $cmd, string $expectedCode): string {
+        fwrite($socket, $cmd . "\r\n");
+        return $this->readExpectedResponse($socket, $expectedCode);
+    }
+
+    private function readExpectedResponse($socket, string $expectedCode): string {
+        $response = "";
+        while ($line = fgets($socket, 515)) {
+            $response .= $line;
+            if (isset($line[3]) && $line[3] === ' ') break;
+        }
+        $code = substr($response, 0, 3);
+        if ($code !== $expectedCode) {
+            throw new RuntimeException("Respuesta SMTP inesperada: [$code] " . trim($response));
+        }
+        return $response;
+    }
+}
+
+// ============================================================
+// 2. GENERADOR DE PLANTILLAS INSTITUCIONALES HTML
+// ============================================================
+
+function renderHtmlEmailTemplate(string $titulo, string $contenidoHtml, string $botonTexto = '', string $botonUrl = ''): string {
+    $botonHtml = '';
+    if ($botonTexto && $botonUrl) {
+        $botonHtml = "
+        <div style=\"margin: 28px 0; text-align: center;\">
+            <a href=\"{$botonUrl}\" style=\"background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 700; font-size: 15px; display: inline-block; box-shadow: 0 4px 12px rgba(2,132,199,0.3); letter-spacing: 0.3px;\">
+                {$botonTexto} &rarr;
+            </a>
+        </div>";
+    }
+
+    $year = date('Y');
+
+    return "<!DOCTYPE html>
+<html lang=\"es\">
+<head>
+    <meta charset=\"UTF-8\">
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
+    <title>{$titulo}</title>
+</head>
+<body style=\"margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; color: #0f172a;\">
+    <table border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\" style=\"background-color: #f1f5f9; padding: 30px 10px;\">
+        <tr>
+            <td align=\"center\">
+                <table border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\" style=\"max-width: 600px; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(15,43,72,0.08); border: 1px solid #e2e8f0;\">
+                    <!-- Header Institucional -->
+                    <tr>
+                        <td style=\"background: linear-gradient(135deg, #0f2b48 0%, #1e3a8a 100%); padding: 32px 30px; text-align: center;\">
+                            <div style=\"width: 48px; height: 48px; background: rgba(255,255,255,0.15); border-radius: 12px; margin: 0 auto 12px; line-height: 48px; font-size: 24px; color: #38bdf8; border: 1px solid rgba(255,255,255,0.25);\">
+                                &#127891;
+                            </div>
+                            <h1 style=\"color: #ffffff; font-size: 22px; font-weight: 800; margin: 0; letter-spacing: -0.5px;\">Universidad del Aluminio</h1>
+                            <p style=\"color: #94a3b8; font-size: 13px; margin: 4px 0 0; font-weight: 500;\">Plataforma Académica y Formación Técnica</p>
+                        </td>
+                    </tr>
+                    <!-- Contenido Principal -->
+                    <tr>
+                        <td style=\"padding: 36px 32px; font-size: 15px; line-height: 1.65; color: #334155;\">
+                            <h2 style=\"color: #0f2b48; font-size: 19px; font-weight: 700; margin-top: 0; margin-bottom: 16px;\">{$titulo}</h2>
+                            {$contenidoHtml}
+                            {$botonHtml}
+                        </td>
+                    </tr>
+                    <!-- Footer Institucional -->
+                    <tr>
+                        <td style=\"background-color: #f8fafc; padding: 24px 30px; text-align: center; border-top: 1px solid #e2e8f0; font-size: 12px; color: #64748b;\">
+                            <p style=\"margin: 0 0 6px;\">&copy; {$year} <strong>Universidad del Aluminio</strong> &bull; Rectoría Académica</p>
+                            <p style=\"margin: 0; color: #94a3b8;\">Este es un mensaje automático del sistema LMS. Por favor, no respondas directamente a este correo.</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>";
+}
+
+// ============================================================
+// 3. HELPERS DE OBTENCIÓN DE CONFIGURACIÓN Y SERVICIO
+// ============================================================
+
+function obtenerMailerInstance(mysqli $conn): SmtpMailer {
+    $cfg = [];
+    $res = $conn->query("SELECT clave, valor FROM `configuracion` WHERE clave LIKE 'smtp_%' OR clave IN ('email_remitente', 'email_nombre', 'email_admin')");
+    if ($res) {
+        while ($row = $res->fetch_assoc()) {
+            $k = $row['clave'];
+            $v = $row['valor'];
+            $cfg[$k] = $v;
+        }
+    }
+
+    $smtpConfig = [
+        'host'       => $cfg['smtp_host']       ?? (getenv('SMTP_HOST') ?: 'localhost'),
+        'port'       => (int)($cfg['smtp_port'] ?? (getenv('SMTP_PORT') ?: 587)),
+        'user'       => $cfg['smtp_user']       ?? (getenv('SMTP_USER') ?: ''),
+        'pass'       => $cfg['smtp_pass']       ?? (getenv('SMTP_PASS') ?: ''),
+        'secure'     => $cfg['smtp_secure']     ?? (getenv('SMTP_SECURE') ?: 'tls'),
+        'from_email' => $cfg['email_remitente'] ?? ($cfg['smtp_user'] ?? 'no-reply@universidaddelaluminio.com'),
+        'from_name'  => $cfg['email_nombre']    ?? 'Universidad del Aluminio',
+    ];
+
+    return new SmtpMailer($smtpConfig);
+}
+
+// ============================================================
+// 4. DISPARADORES DE EVENTOS DE NOTIFICACIÓN
+// ============================================================
+
+/**
+ * Notifica a un usuario que su cuenta ha sido aprobada.
+ */
+function notificarCuentaAprobada(mysqli $conn, string $email, string $nombre, string $id, string $clave = ''): bool {
+    if (!$email || !filter_var($email, FILTER_VALIDATE_EMAIL)) return false;
+
+    $baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . "://" . ($_SERVER['HTTP_HOST'] ?? 'localhost') . dirname($_SERVER['SCRIPT_NAME'] ?? '');
+    $loginUrl = rtrim($baseUrl, '/') . '/login.php';
+
+    $credencialesHtml = "<div style=\"background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 16px 0;\">
+        <p style=\"margin: 0 0 6px;\"><strong>Cédula / Identificación:</strong> <code style=\"color: #0284c7; font-size: 15px; font-weight: bold;\">{$id}</code></p>";
+    if ($clave) {
+        $credencialesHtml .= "<p style=\"margin: 0;\"><strong>Contraseña temporal:</strong> <code style=\"color: #0f2b48; font-size: 15px;\">{$clave}</code></p>";
+    }
+    $credencialesHtml .= "</div>";
+
+    $html = "<p>Estimado(a) <strong>" . htmlspecialchars($nombre) . "</strong>,</p>
+    <p>Nos complace informarte que tu solicitud de acceso a la <strong>Universidad del Aluminio</strong> ha sido <strong style=\"color: #10b981;\">aprobada satisfactoriamente</strong>.</p>
+    <p>A partir de este momento puedes ingresar al Campus Virtual para comenzar tus programas formativos:</p>
+    {$credencialesHtml}
+    <p>Te recomendamos cambiar tu contraseña periódicamente desde el panel de perfil del alumno.</p>";
+
+    $mailer = obtenerMailerInstance($conn);
+    return $mailer->send($email, "¡Bienvenido a la Universidad del Aluminio! — Cuenta Aprobada", renderHtmlEmailTemplate("¡Bienvenido al Campus Virtual!", $html, "Ingresar al Campus", $loginUrl));
+}
+
+/**
+ * Notifica al administrador que hay una nueva solicitud de registro.
+ */
+function notificarAdminNuevaSolicitud(mysqli $conn, string $tipo, string $nombreSolicitante, string $idSolicitante): bool {
+    $res = $conn->query("SELECT valor FROM `configuracion` WHERE clave = 'email_admin'");
+    $adminEmail = ($res && $r = $res->fetch_assoc()) ? trim($r['valor'] ?? '') : '';
+    if (!$adminEmail || !filter_var($adminEmail, FILTER_VALIDATE_EMAIL)) return false;
+
+    $baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . "://" . ($_SERVER['HTTP_HOST'] ?? 'localhost') . dirname($_SERVER['SCRIPT_NAME'] ?? '');
+    $adminUrl = rtrim($baseUrl, '/') . '/admin.php';
+
+    $html = "<p>Hola Administrador,</p>
+    <p>Se ha recibido una nueva solicitud de <strong>" . htmlspecialchars($tipo) . "</strong> en la plataforma:</p>
+    <div style=\"background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 16px 0;\">
+        <p style=\"margin: 0 0 6px;\"><strong>Colaborador:</strong> " . htmlspecialchars($nombreSolicitante) . "</p>
+        <p style=\"margin: 0;\"><strong>Cédula:</strong> <code style=\"color: #0284c7; font-weight: bold;\">" . htmlspecialchars($idSolicitante) . "</code></p>
+    </div>
+    <p>Ingresa al panel de control para autorizar o denegar esta solicitud.</p>";
+
+    $mailer = obtenerMailerInstance($conn);
+    return $mailer->send($adminEmail, "Nueva Solicitud Pendiente: $nombreSolicitante", renderHtmlEmailTemplate("Nueva Solicitud de Acceso", $html, "Revisar en el Panel", $adminUrl));
+}
+
+/**
+ * Notifica a un usuario que ha obtenido un certificado oficial.
+ */
+function notificarCertificadoEmitido(mysqli $conn, string $email, string $nombre, string $programaTitulo, string $codigoVerificacion): bool {
+    if (!$email || !filter_var($email, FILTER_VALIDATE_EMAIL)) return false;
+
+    $baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . "://" . ($_SERVER['HTTP_HOST'] ?? 'localhost') . dirname($_SERVER['SCRIPT_NAME'] ?? '');
+    $verifyUrl = rtrim($baseUrl, '/') . '/verificar.php?code=' . urlencode($codigoVerificacion);
+
+    $html = "<p>¡Felicitaciones, <strong>" . htmlspecialchars($nombre) . "</strong>!</p>
+    <p>Has completado exitosamente todos los requerimientos académicos del programa:</p>
+    <div style=\"background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 18px; margin: 18px 0; text-align: center;\">
+        <h3 style=\"color: #166534; margin: 0 0 8px; font-size: 18px;\">" . htmlspecialchars($programaTitulo) . "</h3>
+        <p style=\"margin: 0; color: #15803d; font-size: 14px;\">Código Oficial de Verificación: <strong style=\"font-family: monospace; font-size: 16px; background: #dcfce7; padding: 2px 8px; border-radius: 4px;\">{$codigoVerificacion}</strong></p>
+    </div>
+    <p>Tu certificación ha sido registrada en el padrón institucional con firma criptográfica y código QR verificable.</p>";
+
+    $mailer = obtenerMailerInstance($conn);
+    return $mailer->send($email, "🎓 ¡Certificado Oficial Obtenido: $programaTitulo!", renderHtmlEmailTemplate("¡Felicitaciones por tu Certificación!", $html, "Verificar Certificado Oficial", $verifyUrl));
+}
