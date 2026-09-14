@@ -495,25 +495,45 @@ switch ($action) {
 
         try {
             $resultado = db_evaluar_modulo($conn, $uid, $cid, $midx, $resp);
+            // Disparadores de Notificaciones Institucionales por Correo
+            require_once __DIR__ . '/mailer.php';
+
+            $sU = $conn->prepare("SELECT nombre, rol FROM `usuarios` WHERE id = ?");
+            $sU->bind_param('s', $uid);
+            $sU->execute();
+            $rU = $sU->get_result()->fetch_assoc();
+            $uName = $rU['nombre'] ?? $uid;
+
+            $cTitulo = $resultado['cursoTitulo'] ?? $cid;
+            $mTitulo = $resultado['moduloTitulo'] ?? ("Módulo " . ($midx + 1));
+            $calif   = (int)($resultado['calificacion'] ?? 0);
+            $intentos = (int)($resultado['numIntentos'] ?? 1);
+            $maxInt  = (int)($resultado['maxIntentos'] ?? 0);
+
+            // 1. Notificar al Admin cuando un usuario aprueba un módulo
+            if (!empty($resultado['moduloRecienAprobado'])) {
+                @notificarAdminModuloAprobado($conn, $uid, $uName, $cid, $cTitulo, $mTitulo, $midx, $calif, $intentos);
+            }
+
+            // 2. Notificar al Admin cuando un usuario agota sus intentos permitidos
+            if (!empty($resultado['intentosAgotados'])) {
+                @notificarAdminIntentosAgotados($conn, $uid, $uName, $cid, $cTitulo, $mTitulo, $midx, $intentos, $maxInt, $calif);
+            }
+
+            // 3. Notificar al Alumno y al Admin cuando completa un curso completo
             if (!empty($resultado['certificadoOtorgado'])) {
-                require_once __DIR__ . '/mailer.php';
-                $sU = $conn->prepare("SELECT nombre FROM `usuarios` WHERE id = ?");
-                $sU->bind_param('s', $uid);
-                $sU->execute();
-                $rU = $sU->get_result()->fetch_assoc();
-                $uName = $rU['nombre'] ?? $uid;
-
-                $sC = $conn->prepare("SELECT titulo FROM `cursos` WHERE id = ?");
-                $sC->bind_param('s', $cid);
-                $sC->execute();
-                $rC = $sC->get_result()->fetch_assoc();
-                $cTitulo = $rC['titulo'] ?? $cid;
-
                 $codCert = "CERT-" . strtoupper(substr(md5($uid . $cid . 'SALT_2026'), 0, 10));
                 $emailUser = filter_var($uid, FILTER_VALIDATE_EMAIL) ? $uid : '';
                 if ($emailUser) {
                     @notificarCertificadoEmitido($conn, $emailUser, $uName, $cTitulo, $codCert);
                 }
+                @notificarAdminCursoCompletado($conn, $uid, $uName, $cid, $cTitulo, $codCert);
+            }
+
+            // 4. Notificar al Admin cuando completa todos los cursos de su rol o carrera
+            if (!empty($resultado['rolOtorgado']) || !empty($resultado['carreraOtorgada'])) {
+                $nombrePlan = $resultado['rolNombre'] ?? 'Plan de Formación del Rol';
+                @notificarAdminRolCompletado($conn, $uid, $uName, $nombrePlan, $resultado['certificadosCurso'] ?? []);
             }
             echo json_encode($resultado, JSON_UNESCAPED_UNICODE);
         } catch (InvalidArgumentException $e) {

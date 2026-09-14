@@ -2396,28 +2396,78 @@ function db_evaluar_modulo(mysqli $conn, string $userId, string $cursoId, int $m
         $userCertsCarrera[] = $rUCarr['carrera_id'];
     }
 
+    // Obtener rol del usuario y verificar si completó todos los cursos asignados a su rol
+    $userRol = $uRow['rol'] ?? 'participante';
+    $rolNombre = $userRol;
+    $stmtRNom = $conn->prepare("SELECT nombre FROM `roles_config` WHERE id = ?");
+    $stmtRNom->bind_param('s', $userRol);
+    $stmtRNom->execute();
+    $resRNom = $stmtRNom->get_result();
+    if ($resRNom && $rNom = $resRNom->fetch_assoc()) {
+        $rolNombre = $rNom['nombre'];
+    }
+
+    $stmtRC = $conn->prepare("SELECT curso_id FROM `rol_cursos` WHERE rol_id = ?");
+    $stmtRC->bind_param('s', $userRol);
+    $stmtRC->execute();
+    $resRC = $stmtRC->get_result();
+    $cursosRol = [];
+    while ($rRC = $resRC->fetch_assoc()) {
+        $cursosRol[] = $rRC['curso_id'];
+    }
+
+    $rolOtorgado = false;
+    if (!empty($cursosRol) && $certificadoOtorgado) {
+        $todosRolAprobados = true;
+        foreach ($cursosRol as $cRolId) {
+            if (!in_array($cRolId, $userCertsCurso, true)) {
+                $todosRolAprobados = false;
+                break;
+            }
+        }
+        if ($todosRolAprobados) {
+            $rolOtorgado = true;
+        }
+    }
+
+    // Título del curso
+    $stmtCTit = $conn->prepare("SELECT titulo FROM `cursos` WHERE id = ?");
+    $stmtCTit->bind_param('s', $cursoId);
+    $stmtCTit->execute();
+    $resCTit = $stmtCTit->get_result();
+    $cursoTitulo = ($resCTit && $rCTit = $resCTit->fetch_assoc()) ? $rCTit['titulo'] : $cursoId;
+
+    $moduloRecienAprobado = (!$yaAprobado && $aprobado);
+    $bloqueadoRecien = (!$yaAprobado && $maxIntentos > 0 && !$aprobado && $numIntentos >= $maxIntentos);
+
     return [
-        'success'             => true,
-        'calificacion'        => $calificacion,
-        'aprobado'            => $aprobado,
-        'aciertos'            => $aciertos,
-        'total'               => $total,
-        'minAprobacion'       => $minAprobacion,
-        'maxIntentos'         => $maxIntentos,
-        'numIntentos'         => $numIntentos,
-        'bloqueado'           => ($maxIntentos > 0 && !$aprobado && $numIntentos >= $maxIntentos),
-        'certificadoOtorgado' => $certificadoOtorgado,
-        'carreraOtorgada'     => $carreraOtorgada,
-        'preguntasDetalle'    => $preguntasDetalle,
-        'progreso'            => [
+        'success'              => true,
+        'calificacion'         => $calificacion,
+        'aprobado'             => $aprobado,
+        'moduloRecienAprobado' => $moduloRecienAprobado,
+        'moduloTitulo'         => $moduloTitulo,
+        'cursoTitulo'          => $cursoTitulo,
+        'aciertos'             => $aciertos,
+        'total'                => $total,
+        'minAprobacion'        => $minAprobacion,
+        'maxIntentos'          => $maxIntentos,
+        'numIntentos'          => $numIntentos,
+        'bloqueado'            => ($maxIntentos > 0 && !$aprobado && $numIntentos >= $maxIntentos),
+        'intentosAgotados'     => $bloqueadoRecien,
+        'certificadoOtorgado'  => $certificadoOtorgado,
+        'carreraOtorgada'      => $carreraOtorgada,
+        'rolOtorgado'          => $rolOtorgado,
+        'rolNombre'            => $rolNombre,
+        'preguntasDetalle'     => $preguntasDetalle,
+        'progreso'             => [
             'leccionesCompletadas' => array_values($curProg['lecciones_completadas']),
             'modulosAprobados'     => array_values($curProg['modulos_aprobados']),
             'medallas'             => array_values($curProg['medallas']),
             'evaluaciones'         => (object)$curProg['evaluaciones'],
             'intentos'             => (object)$curProg['intentos'],
         ],
-        'certificadosCurso'   => $userCertsCurso,
-        'certificadosCarrera' => $userCertsCarrera,
+        'certificadosCurso'    => $userCertsCurso,
+        'certificadosCarrera'  => $userCertsCarrera,
     ];
 }
 

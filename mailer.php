@@ -306,3 +306,135 @@ function notificarCertificadoEmitido(mysqli $conn, string $email, string $nombre
     $mailer = obtenerMailerInstance($conn);
     return $mailer->send($email, "🎓 ¡Certificado Oficial Obtenido: $programaTitulo!", renderHtmlEmailTemplate("¡Felicitaciones por tu Certificación!", $html, "Verificar Certificado Oficial", $verifyUrl));
 }
+
+/**
+ * 1. Notifica al administrador que un colaborador ha aprobado un módulo.
+ */
+function notificarAdminModuloAprobado(mysqli $conn, string $userId, string $userName, string $cursoId, string $cursoTitulo, string $moduloTitulo, int $moduloIdx, int $calificacion, int $intento): bool {
+    $res = $conn->query("SELECT valor FROM `configuracion` WHERE clave = 'email_admin'");
+    $adminEmail = ($res && $r = $res->fetch_assoc()) ? trim($r['valor'] ?? '') : '';
+    if (!$adminEmail || !filter_var($adminEmail, FILTER_VALIDATE_EMAIL)) return false;
+
+    $baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . "://" . ($_SERVER['HTTP_HOST'] ?? 'localhost') . dirname($_SERVER['SCRIPT_NAME'] ?? '');
+    $adminUrl = rtrim($baseUrl, '/') . '/admin.php';
+
+    $numMod = $moduloIdx + 1;
+    $fecha = date('d/m/Y H:i');
+
+    $html = "<p>Hola Administrador,</p>
+    <p>El colaborador <strong>" . htmlspecialchars($userName) . "</strong> ha <strong style=\"color: #10b981;\">aprobado satisfactoriamente</strong> un módulo de evaluación:</p>
+    <div style=\"background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px; margin: 18px 0;\">
+        <p style=\"margin: 0 0 6px;\"><strong>Colaborador:</strong> " . htmlspecialchars($userName) . " <span style=\"color: #64748b;\">(C.I: {$userId})</span></p>
+        <p style=\"margin: 0 0 6px;\"><strong>Curso:</strong> " . htmlspecialchars($cursoTitulo) . "</p>
+        <p style=\"margin: 0 0 6px;\"><strong>Módulo:</strong> Módulo {$numMod} — " . htmlspecialchars($moduloTitulo) . "</p>
+        <p style=\"margin: 0 0 6px;\"><strong>Calificación Obtenida:</strong> <span style=\"font-size: 16px; font-weight: bold; color: #0284c7;\">{$calificacion}%</span></p>
+        <p style=\"margin: 0 0 6px;\"><strong>Intento Realizado:</strong> Intento #{$intento}</p>
+        <p style=\"margin: 0;\"><strong>Fecha y Hora:</strong> {$fecha}</p>
+    </div>
+    <p>El progreso del usuario ha sido actualizado en tiempo real en la plataforma académica.</p>";
+
+    $mailer = obtenerMailerInstance($conn);
+    return $mailer->send(
+        $adminEmail,
+        "✅ Módulo Aprobado: $userName — $cursoTitulo (Mód. $numMod)",
+        renderHtmlEmailTemplate("Aprobación de Módulo Académico", $html, "Ver Panel de Reportes", $adminUrl)
+    );
+}
+
+/**
+ * 2. Notifica al administrador que un colaborador ha completado y certificado un curso completo.
+ */
+function notificarAdminCursoCompletado(mysqli $conn, string $userId, string $userName, string $cursoId, string $cursoTitulo, string $codigoCertificado): bool {
+    $res = $conn->query("SELECT valor FROM `configuracion` WHERE clave = 'email_admin'");
+    $adminEmail = ($res && $r = $res->fetch_assoc()) ? trim($r['valor'] ?? '') : '';
+    if (!$adminEmail || !filter_var($adminEmail, FILTER_VALIDATE_EMAIL)) return false;
+
+    $baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . "://" . ($_SERVER['HTTP_HOST'] ?? 'localhost') . dirname($_SERVER['SCRIPT_NAME'] ?? '');
+    $verifyUrl = rtrim($baseUrl, '/') . '/verificar.php?code=' . urlencode($codigoCertificado);
+
+    $fecha = date('d/m/Y H:i');
+
+    $html = "<p>Hola Administrador,</p>
+    <p>¡Buenas noticias! El colaborador <strong>" . htmlspecialchars($userName) . "</strong> ha completado el <strong>100% de los requisitos</strong> y obtenido la certificación oficial del curso:</p>
+    <div style=\"background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 20px; margin: 18px 0; text-align: center;\">
+        <h3 style=\"color: #166534; margin: 0 0 8px; font-size: 18px;\">" . htmlspecialchars($cursoTitulo) . "</h3>
+        <p style=\"margin: 0 0 6px; color: #15803d;\">Colaborador: <strong>" . htmlspecialchars($userName) . "</strong> (C.I: {$userId})</p>
+        <p style=\"margin: 0 0 6px; color: #15803d; font-size: 13px;\">Fecha de Certificación: {$fecha}</p>
+        <p style=\"margin: 0; color: #15803d; font-size: 14px;\">Código de Verificación: <strong style=\"font-family: monospace; font-size: 15px; background: #dcfce7; padding: 2px 8px; border-radius: 4px;\">{$codigoCertificado}</strong></p>
+    </div>
+    <p>El certificado digital con firma criptográfica y código QR verificable se encuentra registrado en el sistema.</p>";
+
+    $mailer = obtenerMailerInstance($conn);
+    return $mailer->send(
+        $adminEmail,
+        "🎉 Curso Certificado: $userName culminó $cursoTitulo",
+        renderHtmlEmailTemplate("¡Curso Completado y Certificado!", $html, "Verificar Certificado Oficial", $verifyUrl)
+    );
+}
+
+/**
+ * 3. Notifica al administrador que un colaborador ha completado todos los cursos asignados a su rol o carrera.
+ */
+function notificarAdminRolCompletado(mysqli $conn, string $userId, string $userName, string $rolNombre, array $cursosCompletados = []): bool {
+    $res = $conn->query("SELECT valor FROM `configuracion` WHERE clave = 'email_admin'");
+    $adminEmail = ($res && $r = $res->fetch_assoc()) ? trim($r['valor'] ?? '') : '';
+    if (!$adminEmail || !filter_var($adminEmail, FILTER_VALIDATE_EMAIL)) return false;
+
+    $baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . "://" . ($_SERVER['HTTP_HOST'] ?? 'localhost') . dirname($_SERVER['SCRIPT_NAME'] ?? '');
+    $adminUrl = rtrim($baseUrl, '/') . '/admin.php';
+
+    $totalCursos = count($cursosCompletados);
+    $fecha = date('d/m/Y H:i');
+
+    $html = "<p>Hola Administrador,</p>
+    <p>¡Gran logro institucional! El colaborador <strong>" . htmlspecialchars($userName) . "</strong> ha completado satisfactoriamente <strong>todos los cursos correspondientes a su plan de formación / rol</strong>:</p>
+    <div style=\"background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 20px; margin: 18px 0; text-align: center;\">
+        <div style=\"font-size: 32px; margin-bottom: 6px;\">🏆</div>
+        <h3 style=\"color: #1e40af; margin: 0 0 6px; font-size: 19px;\">Malla Curricular / Cargo: " . htmlspecialchars($rolNombre) . "</h3>
+        <p style=\"margin: 0 0 6px; color: #1d4ed8;\">Colaborador: <strong>" . htmlspecialchars($userName) . "</strong> (C.I: {$userId})</p>
+        <p style=\"margin: 0; color: #3b82f6; font-size: 14px;\">Total de Cursos Certificados en el Plan: <strong>{$totalCursos}</strong> &bull; Fecha: {$fecha}</p>
+    </div>
+    <p>El colaborador ha cumplido con el perfil técnico y formativo exigido para su cargo.</p>";
+
+    $mailer = obtenerMailerInstance($conn);
+    return $mailer->send(
+        $adminEmail,
+        "🏆 Plan de Formación Culminado: $userName completó su Malla ($rolNombre)",
+        renderHtmlEmailTemplate("¡Plan de Formación del Rol Completado!", $html, "Revisar Historial Académico", $adminUrl)
+    );
+}
+
+/**
+ * 4. Notifica al administrador que un colaborador ha superado el límite de intentos en una evaluación.
+ */
+function notificarAdminIntentosAgotados(mysqli $conn, string $userId, string $userName, string $cursoId, string $cursoTitulo, string $moduloTitulo, int $moduloIdx, int $intentosUsados, int $maxIntentos, int $ultimaCalificacion): bool {
+    $res = $conn->query("SELECT valor FROM `configuracion` WHERE clave = 'email_admin'");
+    $adminEmail = ($res && $r = $res->fetch_assoc()) ? trim($r['valor'] ?? '') : '';
+    if (!$adminEmail || !filter_var($adminEmail, FILTER_VALIDATE_EMAIL)) return false;
+
+    $baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . "://" . ($_SERVER['HTTP_HOST'] ?? 'localhost') . dirname($_SERVER['SCRIPT_NAME'] ?? '');
+    $adminUrl = rtrim($baseUrl, '/') . '/admin.php';
+
+    $numMod = $moduloIdx + 1;
+    $fecha = date('d/m/Y H:i');
+
+    $html = "<p>Hola Administrador,</p>
+    <p>Se te notifica que el colaborador <strong>" . htmlspecialchars($userName) . "</strong> ha <strong style=\"color: #dc2626;\">agotado el límite de intentos permitidos</strong> en una evaluación y ha quedado bloqueado:</p>
+    <div style=\"background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 18px; margin: 18px 0;\">
+        <p style=\"margin: 0 0 6px;\"><strong>Colaborador:</strong> " . htmlspecialchars($userName) . " <span style=\"color: #64748b;\">(C.I: {$userId})</span></p>
+        <p style=\"margin: 0 0 6px;\"><strong>Curso:</strong> " . htmlspecialchars($cursoTitulo) . "</p>
+        <p style=\"margin: 0 0 6px;\"><strong>Módulo Afectado:</strong> Módulo {$numMod} — " . htmlspecialchars($moduloTitulo) . "</p>
+        <p style=\"margin: 0 0 6px;\"><strong>Intentos Utilizados:</strong> <span style=\"color: #dc2626; font-weight: bold;\">{$intentosUsados} de {$maxIntentos} permitidos</span></p>
+        <p style=\"margin: 0 0 6px;\"><strong>Última Calificación:</strong> {$ultimaCalificacion}%</p>
+        <p style=\"margin: 0;\"><strong>Fecha y Hora:</strong> {$fecha}</p>
+    </div>
+    <p style=\"color: #991b1b; font-size: 14px;\"><strong>Acción requerida:</strong> El estudiante no podrá volver a presentar la evaluación hasta que un administrador o tutor revise su caso y restablezca sus intentos desde el panel de gestión de colaboradores.</p>";
+
+    $mailer = obtenerMailerInstance($conn);
+    return $mailer->send(
+        $adminEmail,
+        "⚠️ Límite de Intentos Agotado: $userName en $cursoTitulo (Mód. $numMod)",
+        renderHtmlEmailTemplate("Evaluación Bloqueada por Intentos", $html, "Gestionar Colaboradores en el Panel", $adminUrl)
+    );
+}
+
