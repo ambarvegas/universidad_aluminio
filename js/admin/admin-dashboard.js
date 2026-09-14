@@ -217,6 +217,9 @@ function actualizarTablas() {
                                 <button class="btn btn-sm btn-outline-primary" onclick="abrirEditorUsuario('${u.id}')" title="Editar datos del usuario">
                                     <i class="bi bi-person-gear me-1"></i>Editar
                                 </button>
+                                <button class="btn btn-sm btn-outline-info" onclick="abrirModalInvitacionAcceso('${u.id}')" title="Generar / Enviar enlace de acceso e invitación por correo">
+                                    <i class="bi bi-send-check"></i>
+                                </button>
                                 <button class="btn btn-sm btn-outline-warning" onclick="abrirRestablecerAvance('${u.id}')" title="Restablecer progreso">
                                     <i class="bi bi-arrow-counterclockwise"></i>
                                 </button>

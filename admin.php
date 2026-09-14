@@ -1087,11 +1087,76 @@ if (!function_exists('v_asset')) {
                             </div>
                         </div>
                     </div>
-                    <div class="modal-footer bg-light">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                        <button type="submit" class="btn btn-primary px-4" id="btn-guardar-usuario">Guardar Cambios</button>
+                    <div class="modal-footer bg-light d-flex justify-content-between">
+                        <div>
+                            <button type="button" class="btn btn-outline-info btn-sm" id="btn-modal-user-invite" onclick="abrirModalInvitacionDesdeEditor()">
+                                <i class="bi bi-send-check-fill me-1"></i> Generar / Enviar Enlace de Acceso
+                            </button>
+                        </div>
+                        <div>
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-primary px-4" id="btn-guardar-usuario">Guardar Cambios</button>
+                        </div>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Enlace de Acceso / Invitación / Restablecimiento -->
+    <div class="modal fade" id="invitacionAccesoModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fs-6 fw-bold" id="invitacionModalTitle">
+                        <i class="bi bi-send-check-fill me-2"></i>Enlace de Acceso / Invitación
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="alert alert-info py-2 px-3 small mb-3 border-0" style="background-color: #eff6ff; color: #1e40af;">
+                        <div class="fw-bold" id="inv-user-nombre">Colaborador</div>
+                        <div class="text-muted small">C.I: <span id="inv-user-id" class="fw-bold text-dark"></span> | Correo: <span id="inv-user-email" class="fw-bold text-dark"></span></div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold text-secondary">Tipo de Enlace</label>
+                        <div class="btn-group w-100" role="group">
+                            <input type="radio" class="btn-check" name="inv-tipo-radio" id="inv-tipo-invitacion" value="invitacion" checked onchange="actualizarLinkInvitacionActual()">
+                            <label class="btn btn-outline-primary btn-sm" for="inv-tipo-invitacion">Invitación / Activación</label>
+                            <input type="radio" class="btn-check" name="inv-tipo-radio" id="inv-tipo-reset" value="reset" onchange="actualizarLinkInvitacionActual()">
+                            <label class="btn btn-outline-primary btn-sm" for="inv-tipo-reset">Restablecer Contraseña</label>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold text-secondary">Vigencia del Enlace</label>
+                        <select id="inv-duracion" class="form-select form-select-sm" onchange="actualizarLinkInvitacionActual()">
+                            <option value="24">24 horas (1 día)</option>
+                            <option value="48" selected>48 horas (2 días)</option>
+                            <option value="168">7 días (1 semana)</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold text-secondary">Enlace Generado</label>
+                        <div class="input-group">
+                            <input type="text" id="inv-link-input" class="form-control form-control-sm font-monospace" readonly placeholder="Generando enlace...">
+                            <button class="btn btn-outline-secondary btn-sm" type="button" id="btn-copiar-inv-link" onclick="copiarLinkInvitacion()" title="Copiar al portapapeles">
+                                <i class="bi bi-clipboard me-1" id="icon-copiar-inv"></i> Copiar
+                            </button>
+                        </div>
+                        <small class="text-muted" style="font-size: 11px;">Expira el: <span id="inv-expira-txt" class="fw-bold text-dark">—</span></small>
+                    </div>
+
+                    <div id="inv-email-status" class="alert small mb-0" style="display: none;"></div>
+                </div>
+                <div class="modal-footer bg-light d-flex justify-content-between">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                    <button type="button" class="btn btn-sm btn-primary px-3" id="btn-reenviar-inv-email" onclick="actualizarLinkInvitacionActual(true)">
+                        <i class="bi bi-envelope-at-fill me-1"></i> Reenviar por Correo
+                    </button>
+                </div>
             </div>
         </div>
     </div>

@@ -368,6 +368,180 @@ switch ($action) {
         catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 
+    // ------ RECUPERACION DE CONTRASEÑA (PÚBLICO) ----------------
+    case 'solicitar_recuperacion':
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body = jsonBody();
+        $identificador = trim((string)($body['identificador'] ?? ''));
+        if (!$identificador) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Por favor ingresa tu cédula o correo electrónico.']);
+            break;
+        }
+
+        // Buscar usuario por cédula o correo
+        $stmtU = $conn->prepare("SELECT id, nombre, email, estado FROM `usuarios` WHERE id = ? OR (email != '' AND LOWER(email) = LOWER(?))");
+        $stmtU->bind_param('ss', $identificador, $identificador);
+        $stmtU->execute();
+        $resU = $stmtU->get_result();
+        $uRow = $resU->fetch_assoc();
+
+        if (!$uRow) {
+            http_response_code(404);
+            echo json_encode(['error' => 'No se encontró ningún colaborador con la cédula o correo proporcionado.']);
+            break;
+        }
+
+        $emailUser = trim($uRow['email'] ?? '');
+        if (!$emailUser || !filter_var($emailUser, FILTER_VALIDATE_EMAIL)) {
+            http_response_code(400);
+            echo json_encode([
+                'error' => 'Tu cuenta no tiene un correo electrónico registrado en el sistema. Por favor, solicita a un administrador que te configure tu correo o te genere un enlace de acceso directo.',
+                'code'  => 'NO_EMAIL_CONFIGURED',
+                'usuario_id' => $uRow['id'],
+                'nombre' => $uRow['nombre']
+            ]);
+            break;
+        }
+
+        try {
+            $token = db_crear_token_acceso($conn, $uRow['id'], 'reset', 2);
+            $baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . "://" . ($_SERVER['HTTP_HOST'] ?? 'localhost') . dirname($_SERVER['SCRIPT_NAME'] ?? '');
+            $link = rtrim($baseUrl, '/') . '/recuperar.php?token=' . $token;
+
+            require_once __DIR__ . '/mailer.php';
+            $enviado = @notificarRecuperacionClave($conn, $emailUser, $uRow['nombre'], $uRow['id'], $link);
+
+            // Ofuscar correo para feedback seguro
+            $partes = explode('@', $emailUser);
+            $nombreCorreo = $partes[0];
+            $dominio = $partes[1] ?? '';
+            $longitud = strlen($nombreCorreo);
+            $ofuscado = ($longitud <= 2) ? $nombreCorreo . '***@' . $dominio : substr($nombreCorreo, 0, 2) . str_repeat('*', max(3, $longitud - 3)) . substr($nombreCorreo, -1) . '@' . $dominio;
+
+            echo json_encode([
+                'success'        => true,
+                'email_enviado'  => $enviado,
+                'email_ofuscado' => $ofuscado,
+                'message'        => "Hemos enviado un enlace seguro para restablecer tu contraseña al correo $ofuscado. El enlace es válido por 2 horas."
+            ], JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Error al procesar la solicitud de recuperación: ' . $e->getMessage()]);
+        }
+        break;
+
+    // ------ VERIFICAR TOKEN DE ACCESO / RECUPERACIÓN (PÚBLICO) ---
+    case 'verificar_token_acceso':
+        $token = trim((string)($_GET['token'] ?? jsonBody()['token'] ?? ''));
+        if (!$token) {
+            http_response_code(400);
+            echo json_encode(['valid' => false, 'error' => 'Token no proporcionado.']);
+            break;
+        }
+        try {
+            $info = db_validar_token_acceso($conn, $token);
+            if (!$info['valid']) {
+                http_response_code(400);
+            }
+            echo json_encode($info, JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['valid' => false, 'error' => 'Error al validar el enlace: ' . $e->getMessage()]);
+        }
+        break;
+
+    // ------ EJECUTAR RESTABLECIMIENTO / DEFINIR NUEVA CLAVE (PÚBLICO)
+    case 'ejecutar_recuperacion':
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body = jsonBody();
+        $token = trim((string)($body['token'] ?? ''));
+        $claveNueva = trim((string)($body['clave_nueva'] ?? $body['claveNueva'] ?? ''));
+
+        if (!$token || !$claveNueva) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Se requieren el token y la nueva contraseña.']);
+            break;
+        }
+
+        try {
+            $resultado = db_consumir_token_acceso($conn, $token, $claveNueva);
+            echo json_encode($resultado, JSON_UNESCAPED_UNICODE);
+        } catch (InvalidArgumentException $e) {
+            http_response_code(400);
+            echo json_encode(['error' => $e->getMessage()]);
+        } catch (Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Error al restablecer la contraseña: ' . $e->getMessage()]);
+        }
+        break;
+
+    // ------ GENERAR LINK DE INVITACIÓN / ACCESO AUTOMÁTICO (ADMIN) -
+    case 'generar_link_invitacion':
+        require_admin();
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body = jsonBody();
+        $uid = trim((string)($body['usuario_id'] ?? $body['id'] ?? ''));
+        $tipo = trim((string)($body['tipo'] ?? 'invitacion'));
+        $horas = isset($body['horas_validez']) ? (int)$body['horas_validez'] : 48;
+        if ($horas <= 0) $horas = 48;
+
+        if (!$uid) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Se requiere el identificador de usuario (cédula).']);
+            break;
+        }
+
+        $stmtU = $conn->prepare("SELECT id, nombre, email, rol, estado FROM `usuarios` WHERE id = ?");
+        $stmtU->bind_param('s', $uid);
+        $stmtU->execute();
+        $uRow = $stmtU->get_result()->fetch_assoc();
+
+        if (!$uRow) {
+            http_response_code(404);
+            echo json_encode(['error' => "Usuario con cédula $uid no encontrado."]);
+            break;
+        }
+
+        try {
+            $token = db_crear_token_acceso($conn, $uid, $tipo, $horas);
+            $baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . "://" . ($_SERVER['HTTP_HOST'] ?? 'localhost') . dirname($_SERVER['SCRIPT_NAME'] ?? '');
+            $link = rtrim($baseUrl, '/') . '/recuperar.php?token=' . $token;
+
+            $userEmail = trim($uRow['email'] ?? '');
+            $emailEnviado = false;
+
+            // Envío automático al correo registrado del usuario
+            if ($userEmail && filter_var($userEmail, FILTER_VALIDATE_EMAIL)) {
+                require_once __DIR__ . '/mailer.php';
+                $emailEnviado = @notificarInvitacionAcceso($conn, $userEmail, $uRow['nombre'], $uid, $link, $tipo);
+            }
+
+            $expiraFormatted = date('d/m/Y H:i', time() + ($horas * 3600));
+
+            echo json_encode([
+                'success'       => true,
+                'link'          => $link,
+                'token'         => $token,
+                'expira'        => $expiraFormatted,
+                'tipo'          => $tipo,
+                'usuario'       => [
+                    'id'     => $uRow['id'],
+                    'nombre' => $uRow['nombre'],
+                    'email'  => $userEmail,
+                    'rol'    => $uRow['rol']
+                ],
+                'email_enviado' => $emailEnviado,
+                'mensaje'       => ($emailEnviado) 
+                    ? "Enlace generado y enviado exitosamente al correo registrado ({$userEmail})."
+                    : ($userEmail ? "Enlace generado. No se pudo enviar el correo automático por configuración SMTP del servidor, pero puedes copiar el enlace directamente." : "Enlace generado. El usuario no tiene correo registrado en su perfil, puedes copiar el enlace para enviárselo directamente.")
+            ], JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Error al generar enlace de acceso: ' . $e->getMessage()]);
+        }
+        break;
+
     // ------ SOLICITUD DE REGISTRO --------------------------------
     case 'solicitar_registro':
         // Público: no requiere sesión (para que puedan registrarse)

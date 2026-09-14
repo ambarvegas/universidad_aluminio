@@ -325,6 +325,22 @@ function db_create_tables(mysqli $conn): void {
             `ultima_vez`      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             PRIMARY KEY (`ip`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        // Tokens de acceso seguro / invitaciones y restablecimiento de contraseña
+        "CREATE TABLE IF NOT EXISTS `tokens_acceso` (
+            `token`       VARCHAR(64)  NOT NULL,
+            `usuario_id`  VARCHAR(50)  NOT NULL,
+            `tipo`        VARCHAR(20)  NOT NULL DEFAULT 'reset',
+            `expira`      DATETIME     NOT NULL,
+            `usado`       TINYINT(1)   NOT NULL DEFAULT 0,
+            `creado_en`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            `usado_en`    DATETIME     DEFAULT NULL,
+            PRIMARY KEY (`token`),
+            INDEX `idx_ta_usuario` (`usuario_id`),
+            INDEX `idx_ta_expira` (`expira`),
+            INDEX `idx_ta_usado` (`usado`),
+            FOREIGN KEY (`usuario_id`) REFERENCES `usuarios`(`id`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
     ];
 
     foreach ($statements as $sql) {
@@ -2130,6 +2146,12 @@ function db_evaluar_modulo(mysqli $conn, string $userId, string $cursoId, int $m
     $stmtYaApr->execute();
     $yaAprobado = ($stmtYaApr->get_result()->num_rows > 0);
 
+    // Verificar si ya tenía certificado emitido de este curso
+    $stmtYaCert = $conn->prepare("SELECT 1 FROM `usuario_certificados_curso` WHERE usuario_id = ? AND curso_id = ?");
+    $stmtYaCert->bind_param('ss', $userId, $cursoId);
+    $stmtYaCert->execute();
+    $yaCertificado = ($stmtYaCert->get_result()->num_rows > 0);
+
     // Obtener intentos previos
     $stmtIntSel = $conn->prepare("SELECT intentos FROM `usuario_intentos` WHERE usuario_id = ? AND curso_id = ? AND modulo_num = ?");
     $stmtIntSel->bind_param('sss', $userId, $cursoId, $mNumStr);
@@ -2283,6 +2305,14 @@ function db_evaluar_modulo(mysqli $conn, string $userId, string $cursoId, int $m
         $resTot = $stmtTot->get_result();
         $totalEval = ($resTot && $rTot = $resTot->fetch_assoc()) ? (int)$rTot['total_eval'] : 0;
 
+        if ($totalEval === 0) {
+            $stmtTotM = $conn->prepare("SELECT COUNT(*) as total_m FROM `curso_modulos` WHERE curso_id = ?");
+            $stmtTotM->bind_param('s', $cursoId);
+            $stmtTotM->execute();
+            $resTotM = $stmtTotM->get_result();
+            $totalEval = ($resTotM && $rTotM = $resTotM->fetch_assoc()) ? (int)$rTotM['total_m'] : 0;
+        }
+
         $stmtApr = $conn->prepare("SELECT COUNT(DISTINCT modulo_num) as aprobados FROM `usuario_modulos_aprobados` WHERE usuario_id = ? AND curso_id = ?");
         $stmtApr->bind_param('ss', $userId, $cursoId);
         $stmtApr->execute();
@@ -2293,7 +2323,7 @@ function db_evaluar_modulo(mysqli $conn, string $userId, string $cursoId, int $m
             $stmtCert = $conn->prepare("INSERT IGNORE INTO `usuario_certificados_curso` (usuario_id, curso_id) VALUES (?,?)");
             $stmtCert->bind_param('ss', $userId, $cursoId);
             $stmtCert->execute();
-            if ($stmtCert->affected_rows > 0) {
+            if ($stmtCert->affected_rows > 0 || !$yaCertificado) {
                 $certificadoOtorgado = true;
             }
         }
@@ -3602,6 +3632,138 @@ function db_actualizar_perfil(mysqli $conn, string $userId, array $datos): array
         'fecha_nacimiento' => $fechaNac
     ];
 }
+
+// ============================================================
+// GESTIÓN DE TOKENS DE ACCESO, RESTABLECIMIENTO E INVITACIÓN
+// ============================================================
+
+/**
+ * Genera un token criptográfico seguro de acceso/restablecimiento/invitación para un usuario.
+ *
+ * @param mysqli $conn Conexión a la base de datos
+ * @param string $usuarioId C.I. del usuario
+ * @param string $tipo Tipo de token ('reset' o 'invitacion')
+ * @param int $horasValidez Duración de validez en horas
+ * @return string Token generado (64 caracteres hex)
+ */
+function db_crear_token_acceso(mysqli $conn, string $usuarioId, string $tipo = 'reset', int $horasValidez = 48): string {
+    $usuarioId = trim($usuarioId);
+    if (!$usuarioId) throw new InvalidArgumentException("ID de usuario requerido.");
+
+    // Validar existencia del usuario
+    $stmtU = $conn->prepare("SELECT id FROM `usuarios` WHERE id = ?");
+    $stmtU->bind_param('s', $usuarioId);
+    $stmtU->execute();
+    if (!$stmtU->get_result()->fetch_assoc()) {
+        throw new InvalidArgumentException("Usuario con cédula $usuarioId no encontrado.");
+    }
+
+    // Invalidar tokens previos no utilizados del mismo tipo
+    $stmtInv = $conn->prepare("UPDATE `tokens_acceso` SET usado = 1 WHERE usuario_id = ? AND tipo = ? AND usado = 0");
+    $stmtInv->bind_param('ss', $usuarioId, $tipo);
+    $stmtInv->execute();
+
+    // Generar token criptográfico
+    $token = bin2hex(random_bytes(32));
+    $expira = date('Y-m-d H:i:s', time() + ($horasValidez * 3600));
+
+    $stmtIns = $conn->prepare("INSERT INTO `tokens_acceso` (token, usuario_id, tipo, expira, usado, creado_en) VALUES (?, ?, ?, ?, 0, NOW())");
+    $stmtIns->bind_param('ssss', $token, $usuarioId, $tipo, $expira);
+    $stmtIns->execute();
+
+    return $token;
+}
+
+/**
+ * Valida un token de acceso y retorna los datos del usuario asociado si es válido.
+ *
+ * @param mysqli $conn Conexión a la base de datos
+ * @param string $token Token de 64 caracteres
+ * @return array Estado de validez y detalles del usuario
+ */
+function db_validar_token_acceso(mysqli $conn, string $token): array {
+    $token = trim($token);
+    if (!$token || strlen($token) !== 64) {
+        return ['valid' => false, 'error' => 'El enlace o token de acceso no es válido.'];
+    }
+
+    $stmt = $conn->prepare("SELECT t.token, t.usuario_id, t.tipo, t.expira, t.usado, u.nombre, u.email, u.rol, u.estado 
+                            FROM `tokens_acceso` t 
+                            JOIN `usuarios` u ON u.id = t.usuario_id 
+                            WHERE t.token = ?");
+    $stmt->bind_param('s', $token);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+
+    if (!$row) {
+        return ['valid' => false, 'error' => 'El enlace de acceso no existe o no es válido.'];
+    }
+
+    if ((int)$row['usado'] === 1) {
+        return ['valid' => false, 'error' => 'Este enlace ya ha sido utilizado anteriormente. Solicita uno nuevo.'];
+    }
+
+    if (strtotime($row['expira']) < time()) {
+        return ['valid' => false, 'error' => 'Este enlace de acceso ha expirado. Por favor, solicita uno nuevo.'];
+    }
+
+    return [
+        'valid'      => true,
+        'token'      => $token,
+        'usuario_id' => $row['usuario_id'],
+        'tipo'       => $row['tipo'],
+        'expira'     => $row['expira'],
+        'nombre'     => $row['nombre'],
+        'email'      => $row['email'],
+        'rol'        => $row['rol'],
+        'estado'     => $row['estado'],
+    ];
+}
+
+/**
+ * Consume el token y actualiza la contraseña del usuario (bcrypt).
+ *
+ * @param mysqli $conn Conexión a la base de datos
+ * @param string $token Token de 64 caracteres
+ * @param string $nuevaClave Nueva contraseña en texto plano
+ * @return array Resultado de la operación
+ */
+function db_consumir_token_acceso(mysqli $conn, string $token, string $nuevaClave): array {
+    $val = db_validar_token_acceso($conn, $token);
+    if (!$val['valid']) {
+        throw new InvalidArgumentException($val['error']);
+    }
+
+    $nuevaClave = trim($nuevaClave);
+    if (strlen($nuevaClave) < 4) {
+        throw new InvalidArgumentException("La contraseña debe tener al menos 4 caracteres.");
+    }
+
+    $userId = $val['usuario_id'];
+    $hash = password_hash($nuevaClave, PASSWORD_BCRYPT);
+
+    // Actualizar contraseña y activar usuario si estaba inactivo/pendiente
+    $stmtUpU = $conn->prepare("UPDATE `usuarios` SET clave = ?, estado = 'activo' WHERE id = ?");
+    $stmtUpU->bind_param('ss', $hash, $userId);
+    $stmtUpU->execute();
+
+    // Marcar token como consumido
+    $stmtUpT = $conn->prepare("UPDATE `tokens_acceso` SET usado = 1, usado_en = NOW() WHERE token = ?");
+    $stmtUpT->bind_param('s', $token);
+    $stmtUpT->execute();
+
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+    db_log_activity($conn, $userId, 'RESTABLECER_CLAVE_TOKEN', "Tipo: {$val['tipo']}", $ip);
+
+    return [
+        'success'    => true,
+        'usuario_id' => $userId,
+        'nombre'     => $val['nombre'],
+        'tipo'       => $val['tipo'],
+        'message'    => 'Contraseña actualizada correctamente.'
+    ];
+}
+
 
 
 

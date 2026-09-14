@@ -55,6 +55,137 @@ window.abrirEditorUsuario = (id) => {
     }
 };
 
+// ============================================================
+// GESTIÓN DE ENLACES DE ACCESO, INVITACIÓN Y RESTABLECIMIENTO
+// ============================================================
+
+let _currentInviteUserId = null;
+
+window.abrirModalInvitacionAcceso = async (id) => {
+    const idStr = String(id || '').trim();
+    const u = (typeof usuarios !== 'undefined' && Array.isArray(usuarios)) ? usuarios.find(user => String(user.id) === idStr) : null;
+    if (!u) {
+        showToast("Colaborador no encontrado.", "danger");
+        return;
+    }
+
+    _currentInviteUserId = idStr;
+    const nombreEl = document.getElementById('inv-user-nombre');
+    const idEl = document.getElementById('inv-user-id');
+    const emailEl = document.getElementById('inv-user-email');
+    const inputLink = document.getElementById('inv-link-input');
+    const expiraEl = document.getElementById('inv-expira-txt');
+    const statusEl = document.getElementById('inv-email-status');
+
+    if (nombreEl) nombreEl.innerText = u.nombre || idStr;
+    if (idEl) idEl.innerText = idStr;
+    if (emailEl) emailEl.innerText = u.email || 'Sin correo configurado';
+    if (inputLink) inputLink.value = 'Generando enlace seguro...';
+    if (expiraEl) expiraEl.innerText = '—';
+    if (statusEl) statusEl.style.display = 'none';
+
+    // Seleccionar por defecto 'invitacion'
+    const radInv = document.getElementById('inv-tipo-invitacion');
+    if (radInv) radInv.checked = true;
+
+    const modalEl = document.getElementById('invitacionAccesoModal');
+    if (modalEl && typeof bootstrap !== 'undefined') {
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+    }
+
+    await actualizarLinkInvitacionActual(false);
+};
+
+window.abrirModalInvitacionDesdeEditor = () => {
+    const uId = document.getElementById('u-id')?.value?.trim();
+    if (!uId) {
+        showToast("Primero ingresa la cédula del colaborador.", "warning");
+        return;
+    }
+    abrirModalInvitacionAcceso(uId);
+};
+
+window.actualizarLinkInvitacionActual = async (isReenvio = false) => {
+    if (!_currentInviteUserId) return;
+
+    const tipoRadio = document.querySelector('input[name="inv-tipo-radio"]:checked')?.value || 'invitacion';
+    const duracionHoras = parseInt(document.getElementById('inv-duracion')?.value || '48', 10);
+    const inputLink = document.getElementById('inv-link-input');
+    const expiraEl = document.getElementById('inv-expira-txt');
+    const statusEl = document.getElementById('inv-email-status');
+    const btnReenviar = document.getElementById('btn-reenviar-inv-email');
+
+    if (btnReenviar) btnReenviar.disabled = true;
+
+    try {
+        const res = await window.API.generarLinkInvitacion({
+            usuario_id: _currentInviteUserId,
+            tipo: tipoRadio,
+            horas_validez: duracionHoras
+        });
+
+        if (inputLink) inputLink.value = res.link || '';
+        if (expiraEl) expiraEl.innerText = res.expira || '—';
+
+        if (statusEl) {
+            statusEl.style.display = 'block';
+            if (res.email_enviado) {
+                statusEl.className = 'alert alert-success small mb-0';
+                statusEl.innerHTML = `<i class="bi bi-check-circle-fill me-1"></i> Correo institucional enviado automáticamente a <strong>${res.usuario.email}</strong>.`;
+                showToast(`Enlace enviado a ${res.usuario.email}`, 'success');
+            } else if (res.usuario?.email) {
+                statusEl.className = 'alert alert-warning small mb-0';
+                statusEl.innerHTML = `<i class="bi bi-exclamation-circle-fill me-1"></i> ${res.mensaje}`;
+            } else {
+                statusEl.className = 'alert alert-secondary small mb-0';
+                statusEl.innerHTML = `<i class="bi bi-info-circle-fill me-1"></i> El colaborador no posee correo registrado en su perfil. Puedes copiar el enlace generado y enviárselo directamente.`;
+            }
+        }
+    } catch (err) {
+        if (inputLink) inputLink.value = 'Error al generar enlace';
+        if (statusEl) {
+            statusEl.style.display = 'block';
+            statusEl.className = 'alert alert-danger small mb-0';
+            statusEl.innerHTML = `<i class="bi bi-exclamation-triangle-fill me-1"></i> ${err.message || 'Error al procesar la solicitud.'}`;
+        }
+    } finally {
+        if (btnReenviar) btnReenviar.disabled = false;
+    }
+};
+
+window.copiarLinkInvitacion = async () => {
+    const inputLink = document.getElementById('inv-link-input');
+    const btn = document.getElementById('btn-copiar-inv-link');
+    const icon = document.getElementById('icon-copiar-inv');
+    const link = inputLink?.value || '';
+
+    if (!link || link.startsWith('Generando') || link.startsWith('Error')) {
+        showToast("No hay un enlace válido para copiar.", "warning");
+        return;
+    }
+
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(link);
+        } else {
+            inputLink.select();
+            document.execCommand('copy');
+        }
+
+        if (btn) btn.className = 'btn btn-success btn-sm';
+        if (icon) icon.className = 'bi bi-check-lg me-1';
+        showToast("¡Enlace copiado al portapapeles!", "success");
+
+        setTimeout(() => {
+            if (btn) btn.className = 'btn btn-outline-secondary btn-sm';
+            if (icon) icon.className = 'bi bi-clipboard me-1';
+        }, 2000);
+    } catch (e) {
+        showToast("Por favor selecciona y copia el enlace manualmente.", "info");
+    }
+};
+
 function renderSelectRoles() {
     const select = document.getElementById('u-rol');
     if (select && Array.isArray(rolesConfig)) {

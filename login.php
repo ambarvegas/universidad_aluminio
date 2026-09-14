@@ -148,6 +148,11 @@ if (!function_exists('v_asset')) {
                         <i class="bi bi-eye" id="pwd-icon"></i>
                     </button>
                 </div>
+                <div class="d-flex justify-content-end mt-2">
+                    <a href="javascript:void(0)" class="text-decoration-none small text-muted" data-bs-toggle="modal" data-bs-target="#modalRecuperarClave" style="font-size: 12px;">
+                        <i class="bi bi-question-circle me-1"></i>¿Olvidaste tu contraseña?
+                    </a>
+                </div>
             </div>
 
             <div id="login-error" class="alert alert-danger py-2 px-3 small text-center mb-3" style="display:none;">
@@ -170,6 +175,41 @@ if (!function_exists('v_asset')) {
                 </div>
             </div>
         </form>
+    </div>
+
+    <!-- Modal de Recuperación de Contraseña -->
+    <div class="modal fade" id="modalRecuperarClave" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+                <form id="form-recuperar-clave" onsubmit="event.preventDefault(); window.solicitarRecuperacionClave();">
+                    <div class="modal-header text-white" style="background: linear-gradient(135deg, #0f2b48 0%, #1e3a8a 100%);">
+                        <h5 class="modal-title fs-6 fw-bold"><i class="bi bi-shield-lock me-2"></i>Recuperar Contraseña</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body p-4">
+                        <p class="text-muted small mb-3">
+                            Ingresa tu <strong>Cédula de Identidad</strong> o <strong>Correo Electrónico registrado</strong> y te enviaremos un enlace seguro para restablecer tu contraseña.
+                        </p>
+                        
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold text-secondary">Cédula o Correo Electrónico</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-person-vcard"></i></span>
+                                <input type="text" id="recuperar-id" class="form-control" placeholder="Ej: 25482938 o correo@ejemplo.com" required autocomplete="username">
+                            </div>
+                        </div>
+
+                        <div id="recuperar-feedback" class="alert small mb-0" style="display: none;"></div>
+                    </div>
+                    <div class="modal-footer bg-light border-top-0">
+                        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" id="btn-enviar-recuperacion" class="btn btn-sm btn-primary px-3 fw-bold" style="background-color: #0f2b48; border-color: #0f2b48;">
+                            <i class="bi bi-send-fill me-1"></i> Enviar Enlace
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
 
     <!-- Modal de Solicitud de Registro -->
@@ -245,6 +285,55 @@ if (!function_exists('v_asset')) {
                 icon.classList.add('bi-eye');
             }
         }
+
+        async function solicitarRecuperacionClave() {
+            const input = document.getElementById('recuperar-id');
+            const feedback = document.getElementById('recuperar-feedback');
+            const btn = document.getElementById('btn-enviar-recuperacion');
+            const idVal = (input?.value || '').trim();
+
+            if (!idVal) {
+                feedback.className = 'alert alert-warning small mb-0';
+                feedback.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i> Por favor ingresa tu cédula o correo.';
+                feedback.style.display = 'block';
+                return;
+            }
+
+            feedback.style.display = 'none';
+            btn.disabled = true;
+            const origHtml = btn.innerHTML;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Enviando...';
+
+            try {
+                const res = await fetch('api.php?action=solicitar_recuperacion', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ identificador: idVal })
+                });
+                const data = await res.json().catch(() => ({}));
+
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+
+                if (res.ok && data.success) {
+                    feedback.className = 'alert alert-success small mb-0';
+                    feedback.innerHTML = `<i class="bi bi-check-circle-fill me-1"></i> ${data.message}`;
+                    feedback.style.display = 'block';
+                    input.value = '';
+                } else {
+                    feedback.className = 'alert alert-danger small mb-0';
+                    feedback.innerHTML = `<i class="bi bi-exclamation-circle-fill me-1"></i> ${data.error || 'No se pudo procesar la solicitud.'}`;
+                    feedback.style.display = 'block';
+                }
+            } catch (err) {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+                feedback.className = 'alert alert-danger small mb-0';
+                feedback.innerHTML = '<i class="bi bi-exclamation-circle-fill me-1"></i> Error de conexión con el servidor.';
+                feedback.style.display = 'block';
+            }
+        }
+        window.solicitarRecuperacionClave = solicitarRecuperacionClave;
 
         document.getElementById('login-form').addEventListener('submit', async (e) => {
             e.preventDefault();

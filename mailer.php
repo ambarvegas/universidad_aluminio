@@ -438,3 +438,72 @@ function notificarAdminIntentosAgotados(mysqli $conn, string $userId, string $us
     );
 }
 
+/**
+ * 5. Notifica al usuario con un enlace seguro para restablecer su contraseña.
+ */
+function notificarRecuperacionClave(mysqli $conn, string $email, string $nombre, string $userId, string $linkRecuperacion): bool {
+    if (!$email || !filter_var($email, FILTER_VALIDATE_EMAIL)) return false;
+
+    $html = "<p>Estimado(a) <strong>" . htmlspecialchars($nombre) . "</strong>,</p>
+    <p>Hemos recibido una solicitud para <strong style=\"color: #0284c7;\">restablecer la contraseña</strong> de tu cuenta en el Campus Virtual de la <strong>Universidad del Aluminio</strong>.</p>
+    <div style=\"background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 16px 0;\">
+        <p style=\"margin: 0 0 6px;\"><strong>Identificación / Cédula:</strong> <code style=\"color: #0f2b48; font-size: 15px; font-weight: bold;\">{$userId}</code></p>
+        <p style=\"margin: 0;\"><strong>Correo registrado:</strong> {$email}</p>
+    </div>
+    <p>Para definir una nueva contraseña de acceso seguro, haz clic en el siguiente botón:</p>";
+
+    $html .= "<div style=\"background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 14px; margin: 20px 0; font-size: 13px; color: #1e40af;\">
+        <strong>Nota de seguridad:</strong> Este enlace es de un solo uso y expirará en <strong>2 horas</strong>. Si tú no solicitaste este cambio, puedes ignorar este mensaje de forma segura; tu contraseña actual continuará protegida.
+    </div>";
+
+    $html .= "<p style=\"font-size: 12px; color: #64748b; word-break: break-all;\">Si el botón no funciona, copia y pega este enlace en tu navegador:<br><a href=\"{$linkRecuperacion}\" style=\"color: #0284c7;\">{$linkRecuperacion}</a></p>";
+
+    $mailer = obtenerMailerInstance($conn);
+    return $mailer->send(
+        $email,
+        "🔐 Restablecimiento de Contraseña — Universidad del Aluminio",
+        renderHtmlEmailTemplate("Restablecimiento de Contraseña", $html, "Restablecer mi Contraseña", $linkRecuperacion)
+    );
+}
+
+/**
+ * 6. Notifica al usuario una invitación o enlace de acceso directo al Campus Virtual.
+ */
+function notificarInvitacionAcceso(mysqli $conn, string $email, string $nombre, string $userId, string $linkAcceso, string $tipo = 'invitacion'): bool {
+    if (!$email || !filter_var($email, FILTER_VALIDATE_EMAIL)) return false;
+
+    $asunto = ($tipo === 'invitacion') 
+        ? "🎟️ Invitación de Acceso al Campus Virtual — Universidad del Aluminio"
+        : "🔑 Enlace de Acceso / Restablecimiento de Clave — Universidad del Aluminio";
+
+    $tituloEncabezado = ($tipo === 'invitacion') ? "¡Bienvenido(a) a la Universidad del Aluminio!" : "Enlace de Acceso y Gestión de Clave";
+    $botonTexto = ($tipo === 'invitacion') ? "Activar Mi Cuenta y Definir Clave" : "Acceder y Definir Contraseña";
+
+    $html = "<p>Estimado(a) <strong>" . htmlspecialchars($nombre) . "</strong>,</p>";
+    if ($tipo === 'invitacion') {
+        $html .= "<p>La administración académica de la <strong>Universidad del Aluminio</strong> te ha otorgado acceso a la plataforma de formación técnica.</p>";
+    } else {
+        $html .= "<p>Se ha generado un enlace de acceso directo y restablecimiento de credenciales para tu cuenta en la <strong>Universidad del Aluminio</strong>.</p>";
+    }
+
+    $html .= "<div style=\"background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 16px 0;\">
+        <p style=\"margin: 0 0 6px;\"><strong>Identificación / Cédula:</strong> <code style=\"color: #0284c7; font-size: 15px; font-weight: bold;\">{$userId}</code></p>
+        <p style=\"margin: 0;\"><strong>Correo electrónico:</strong> {$email}</p>
+    </div>
+    <p>Para acceder y configurar tu contraseña personalizada, haz clic en el siguiente botón:</p>";
+
+    $html .= "<div style=\"background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px; margin: 20px 0; font-size: 13px; color: #166534;\">
+        <strong>Acceso Seguro:</strong> Este enlace te permitirá ingresar directamente al Campus Virtual y definir tu clave de forma rápida y confiable.
+    </div>";
+
+    $html .= "<p style=\"font-size: 12px; color: #64748b; word-break: break-all;\">Si el botón no funciona, copia y pega este enlace en tu navegador web:<br><a href=\"{$linkAcceso}\" style=\"color: #0284c7;\">{$linkAcceso}</a></p>";
+
+    $mailer = obtenerMailerInstance($conn);
+    return $mailer->send(
+        $email,
+        $asunto,
+        renderHtmlEmailTemplate($tituloEncabezado, $html, $botonTexto, $linkAcceso)
+    );
+}
+
+

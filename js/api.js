@@ -106,6 +106,22 @@ window.API = (() => {
             return _post('cambiar_clave', { claveActual, claveNueva });
         },
 
+        async solicitarRecuperacion(identificador) {
+            return _post('solicitar_recuperacion', { identificador });
+        },
+
+        async verificarTokenAcceso(token) {
+            return _get('verificar_token_acceso&token=' + encodeURIComponent(token));
+        },
+
+        async ejecutarRecuperacion(token, claveNueva) {
+            return _post('ejecutar_recuperacion', { token, clave_nueva: claveNueva });
+        },
+
+        async generarLinkInvitacion(payload) {
+            return _post('generar_link_invitacion', payload);
+        },
+
         // ---- CATALOGO Y CURSOS (Carga bajo demanda) ----
         async cargarCatalogo() {
             return _get('catalogo');
