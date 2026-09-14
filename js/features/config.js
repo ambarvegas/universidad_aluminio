@@ -108,7 +108,7 @@ async function guardarNombreInstitucion(val) {
     try {
         await window.API.guardarConfig('nombreInstitucion', val.trim());
     } catch (e) {
-        await guardarTodo();
+        showToast(`Error al guardar nombre: ${e.message}`, 'danger');
     }
 }
 
@@ -193,10 +193,12 @@ async function guardarColoresPlataforma() {
     db.configuracion.colorAcento   = accent;
 
     try {
-        await window.API.guardarConfig('colorPrimario', primary);
-        await window.API.guardarConfig('colorAcento', accent);
+        await window.API.guardarConfigBatch({
+            colorPrimario: primary,
+            colorAcento: accent
+        });
     } catch (e) {
-        await guardarTodo();
+        showToast(`Error al guardar colores: ${e.message}`, 'danger');
     }
 }
 
@@ -282,17 +284,11 @@ async function cargarLogoInstitucion(event) {
         aplicarLogoEnNavbars(logoSrc);
 
         try {
-            if (window.API && typeof window.API.guardarConfig === 'function') {
-                await window.API.guardarConfig('logo', logoSrc);
-            } else {
-                await guardarTodo();
-            }
+            await window.API.guardarConfig('logo', logoSrc);
+            showToast('Logo institucional actualizado con éxito.', 'success');
         } catch (e) {
-            console.warn('Fallback a guardarTodo para logo:', e);
-            await guardarTodo();
+            showToast(`Error al guardar logo: ${e.message}`, 'danger');
         }
-
-        showToast('Logo institucional actualizado con éxito.', 'success');
     }, 'Cargando logo...');
 }
 
@@ -319,15 +315,11 @@ async function eliminarLogo() {
     const input = document.getElementById('input-logo');
     if (input) input.value = '';
     try {
-        if (window.API && typeof window.API.guardarConfig === 'function') {
-            await window.API.guardarConfig('logo', '');
-        } else {
-            await guardarTodo();
-        }
+        await window.API.guardarConfig('logo', '');
+        showToast('Logo eliminado.', 'info');
     } catch (e) {
-        await guardarTodo();
+        showToast(`Error al eliminar logo: ${e.message}`, 'danger');
     }
-    showToast('Logo eliminado.', 'info');
 }
 
 // -------------------------------------------------------
@@ -340,10 +332,10 @@ async function actualizarMinAprobacionGlobal(val) {
     db.configuracion.minAprobacion = num;
     try {
         await window.API.guardarConfig('minAprobacion', num);
+        showToast(`Calificación mínima establecida en ${num}%`, 'info');
     } catch (e) {
-        await guardarTodo();
+        showToast(`Error al actualizar porcentaje: ${e.message}`, 'danger');
     }
-    showToast(`Calificación mínima establecida en ${num}%`, 'info');
 }
 
 // -------------------------------------------------------
@@ -362,17 +354,20 @@ function actualizarMensajeBienvenida(val) {
 // MODO MANTENIMIENTO
 // -------------------------------------------------------
 
-function actualizarModoMantenimiento(activo) {
+async function actualizarModoMantenimiento(activo) {
     if (!db.configuracion) db.configuracion = {};
     db.configuracion.modoMantenimiento = activo;
     const alertEl = document.getElementById('mantenimiento-alert');
     if (alertEl) alertEl.style.display = activo ? 'block' : 'none';
-    guardarTodo().then(() => {
+    try {
+        await window.API.guardarConfig('modoMantenimiento', activo);
         showToast(
             activo ? 'Modo mantenimiento activado. Nuevos registros suspendidos.' : 'Modo mantenimiento desactivado.',
             activo ? 'warning' : 'success'
         );
-    });
+    } catch (e) {
+        showToast(`Error al guardar modo mantenimiento: ${e.message}`, 'danger');
+    }
 }
 
 // -------------------------------------------------------
@@ -382,19 +377,32 @@ function actualizarModoMantenimiento(activo) {
 async function guardarTodasLasConfiguraciones() {
     const btn = document.getElementById('btn-guardar-config');
     await withLoading(btn, async () => {
-        // Nombre
-        const nombre = document.getElementById('cfg-nombre-universidad')?.value?.trim();
-        if (nombre) await guardarNombreInstitucion(nombre);
+        const nombre  = document.getElementById('cfg-nombre-universidad')?.value?.trim();
+        const primary = document.getElementById('cfg-color-primario')?.value || DEFAULT_COLORS.primary;
+        const accent  = document.getElementById('cfg-color-acento')?.value  || DEFAULT_COLORS.accent;
+        const msg     = document.getElementById('cfg-mensaje-bienvenida')?.value;
 
-        // Colores
-        await guardarColoresPlataforma();
+        if (!db.configuracion) db.configuracion = {};
+        if (nombre) db.configuracion.nombreInstitucion = nombre;
+        db.configuracion.colorPrimario = primary;
+        db.configuracion.colorAcento   = accent;
+        if (msg !== undefined) db.configuracion.mensajeBienvenida = msg;
 
-        // Mensaje bienvenida
-        const msg = document.getElementById('cfg-mensaje-bienvenida')?.value;
+        const batch = {
+            colorPrimario: primary,
+            colorAcento: accent
+        };
+        if (nombre) batch.nombreInstitucion = nombre;
+        if (msg !== undefined) batch.mensajeBienvenida = msg;
+
+        await window.API.guardarConfigBatch(batch);
+
+        if (nombre) {
+            aplicarNombreInstitucion(nombre);
+            localStorage.setItem('aluNombreInstitucion', nombre);
+        }
+        aplicarColoresPlataforma(primary, accent);
         if (msg !== undefined) actualizarMensajeBienvenida(msg);
-
-        // Guardar todo a la BD
-        await guardarTodo();
 
         showToast('✅ Configuración guardada correctamente.', 'success');
     }, 'Guardando...');

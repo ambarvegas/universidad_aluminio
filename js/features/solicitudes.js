@@ -55,20 +55,11 @@ async function gestionarSolicitudRegistro(id, aprobado) {
             });
 
             usuarios.push(nuevoUsuario);
-            try {
-                await window.API.guardarUsuario(nuevoUsuario);
-            } catch (e) {
-                console.warn('Fallback a guardarUsuarios:', e);
-            }
+            await window.API.guardarUsuario(nuevoUsuario);
         }
 
         solicitudesRegistro = solicitudesRegistro.filter(s => s.id !== id);
-        try {
-            await window.API.eliminarSolicitudRegistro(id);
-        } catch (e) {
-            console.warn('Fallback a guardarSolicitudes:', e);
-            await guardarSolicitudes();
-        }
+        await window.API.eliminarSolicitudRegistro(id);
 
         showToast(aprobado ? 'Usuario aprobado y registrado.' : 'Solicitud rechazada.', aprobado ? 'success' : 'danger');
         setTimeout(() => location.reload(), 1500);
@@ -100,22 +91,13 @@ async function gestionarSolicitudCurso(userId, cursoId, aprobado) {
                 if (!Array.isArray(user.asignados)) user.asignados = [];
                 if (!user.asignados.includes(cursoId)) {
                     user.asignados.push(cursoId);
-                    try {
-                        await window.API.guardarUsuario(user);
-                    } catch (e) {
-                        console.warn('Fallback usuario:', e);
-                    }
+                    await window.API.guardarUsuario(user);
                 }
             }
         }
 
         solicitudesCursos = solicitudesCursos.filter(s => !(s.userId === userId && s.cursoId === cursoId));
-        try {
-            await window.API.eliminarSolicitudCurso(userId, cursoId);
-        } catch (e) {
-            console.warn('Fallback solicitudes:', e);
-            await guardarSolicitudes();
-        }
+        await window.API.eliminarSolicitudCurso(userId, cursoId);
 
         showToast(aprobado ? 'Acceso aprobado.' : 'Acceso rechazado.', aprobado ? 'success' : 'danger');
         setTimeout(() => location.reload(), 1500);

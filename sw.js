@@ -4,8 +4,8 @@
  * se reflejen de inmediato mientras se mantiene la capacidad offline.
  */
 
-const CACHE_NAME    = 'unialuminio-v21';
-const CACHE_DYNAMIC = 'unialuminio-dynamic-v21';
+const CACHE_NAME    = 'unialuminio-v23';
+const CACHE_DYNAMIC = 'unialuminio-dynamic-v23';
 
 // Assets estáticos que se cachean al instalar el SW
 const STATIC_ASSETS = [
@@ -21,11 +21,20 @@ const STATIC_ASSETS = [
     './icon-512.png',
     './js/api.js',
     './js/auth.js',
+    './js/core/state.js',
     './js/ui/modal.js',
     './js/ui/toast.js',
     './js/features/config.js',
     './js/features/images.js',
     './js/features/reports.js',
+    './js/features/solicitudes.js',
+    './js/admin/admin-courses.js',
+    './js/admin/admin-users.js',
+    './js/admin/admin-careers-roles.js',
+    './js/admin/admin-dashboard.js',
+    './js/campus/campus.js',
+    './js/campus/player.js',
+    './js/campus/diploma.js',
     // Bootstrap y fuentes CDN
     'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css',
     'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js',

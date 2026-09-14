@@ -2302,6 +2302,194 @@ function db_evaluar_modulo(mysqli $conn, string $userId, string $cursoId, int $m
 }
 
 /**
+ * Restablece el avance de un usuario en un curso o en módulos específicos de manera atómica.
+ * Limpia tanto las tablas relacionales normalizadas como el espejo JSON.
+ *
+ * @param mysqli $conn Conexión a la base de datos
+ * @param string $userId Cédula del usuario
+ * @param string $cursoId ID del curso
+ * @param array|null $modulos Índices de módulos a restablecer (null o vacío = curso completo)
+ * @return array Estado resultante
+ */
+function db_restablecer_progreso(mysqli $conn, string $userId, string $cursoId, ?array $modulos = null): array {
+    $conn->begin_transaction();
+    try {
+        $userId = trim($userId);
+        $cursoId = trim($cursoId);
+        if (!$userId || !$cursoId) {
+            throw new InvalidArgumentException("Se requieren userId y cursoId válidos");
+        }
+
+        $esCompleto = ($modulos === null || empty($modulos));
+
+        if ($esCompleto) {
+            // 1. Limpieza total de tablas relacionales para este usuario y curso
+            $stmtLec = $conn->prepare("DELETE FROM `usuario_lecciones_completadas` WHERE usuario_id = ? AND curso_id = ?");
+            $stmtLec->bind_param('ss', $userId, $cursoId);
+            $stmtLec->execute();
+
+            $stmtMod = $conn->prepare("DELETE FROM `usuario_modulos_aprobados` WHERE usuario_id = ? AND curso_id = ?");
+            $stmtMod->bind_param('ss', $userId, $cursoId);
+            $stmtMod->execute();
+
+            $stmtMed = $conn->prepare("DELETE FROM `usuario_medallas` WHERE usuario_id = ? AND curso_id = ?");
+            $stmtMed->bind_param('ss', $userId, $cursoId);
+            $stmtMed->execute();
+
+            $stmtEv = $conn->prepare("DELETE FROM `usuario_evaluaciones` WHERE usuario_id = ? AND curso_id = ?");
+            $stmtEv->bind_param('ss', $userId, $cursoId);
+            $stmtEv->execute();
+
+            $stmtIn = $conn->prepare("DELETE FROM `usuario_intentos` WHERE usuario_id = ? AND curso_id = ?");
+            $stmtIn->bind_param('ss', $userId, $cursoId);
+            $stmtIn->execute();
+
+            $stmtCert = $conn->prepare("DELETE FROM `usuario_certificados_curso` WHERE usuario_id = ? AND curso_id = ?");
+            $stmtCert->bind_param('ss', $userId, $cursoId);
+            $stmtCert->execute();
+
+            $stmtProg = $conn->prepare("DELETE FROM `usuario_progreso` WHERE usuario_id = ? AND curso_id = ?");
+            $stmtProg->bind_param('ss', $userId, $cursoId);
+            $stmtProg->execute();
+        } else {
+            // 2. Limpieza selectiva por módulos
+            $stmtProg = $conn->prepare("SELECT lecciones_completadas, modulos_aprobados, medallas, evaluaciones, intentos FROM `usuario_progreso` WHERE usuario_id = ? AND curso_id = ?");
+            $stmtProg->bind_param('ss', $userId, $cursoId);
+            $stmtProg->execute();
+            $resProg = $stmtProg->get_result();
+
+            $curProg = [
+                'lecciones_completadas' => [],
+                'modulos_aprobados'     => [],
+                'medallas'              => [],
+                'evaluaciones'          => [],
+                'intentos'              => []
+            ];
+            if ($resProg && $pRow = $resProg->fetch_assoc()) {
+                $curProg['lecciones_completadas'] = json_decode($pRow['lecciones_completadas'] ?? '[]', true) ?? [];
+                $curProg['modulos_aprobados']     = json_decode($pRow['modulos_aprobados'] ?? '[]', true) ?? [];
+                $curProg['medallas']              = json_decode($pRow['medallas'] ?? '[]', true) ?? [];
+                $curProg['evaluaciones']          = json_decode($pRow['evaluaciones'] ?? '{}', true) ?? [];
+                $curProg['intentos']              = json_decode($pRow['intentos'] ?? '{}', true) ?? [];
+            }
+
+            foreach ($modulos as $mVal) {
+                $mNumStr = (string)$mVal;
+
+                // Eliminar de tablas relacionales
+                $sMod = $conn->prepare("DELETE FROM `usuario_modulos_aprobados` WHERE usuario_id = ? AND curso_id = ? AND modulo_num = ?");
+                $sMod->bind_param('sss', $userId, $cursoId, $mNumStr);
+                $sMod->execute();
+
+                $sMed = $conn->prepare("DELETE FROM `usuario_medallas` WHERE usuario_id = ? AND curso_id = ? AND medalla_num = ?");
+                $sMed->bind_param('sss', $userId, $cursoId, $mNumStr);
+                $sMed->execute();
+
+                $sEv = $conn->prepare("DELETE FROM `usuario_evaluaciones` WHERE usuario_id = ? AND curso_id = ? AND modulo_num = ?");
+                $sEv->bind_param('sss', $userId, $cursoId, $mNumStr);
+                $sEv->execute();
+
+                $sIn = $conn->prepare("DELETE FROM `usuario_intentos` WHERE usuario_id = ? AND curso_id = ? AND modulo_num = ?");
+                $sIn->bind_param('sss', $userId, $cursoId, $mNumStr);
+                $sIn->execute();
+
+                // Eliminar lecciones con prefijo $mNumStr-
+                $prefix = $mNumStr . '-%';
+                $sLec = $conn->prepare("DELETE FROM `usuario_lecciones_completadas` WHERE usuario_id = ? AND curso_id = ? AND leccion_codigo LIKE ?");
+                $sLec->bind_param('sss', $userId, $cursoId, $prefix);
+                $sLec->execute();
+
+                // Actualizar espejo en memoria
+                $curProg['modulos_aprobados'] = array_values(array_filter($curProg['modulos_aprobados'], fn($x) => (string)$x !== $mNumStr));
+                $curProg['medallas'] = array_values(array_filter($curProg['medallas'], fn($x) => (string)$x !== $mNumStr));
+                unset($curProg['evaluaciones'][$mNumStr]);
+                unset($curProg['intentos'][$mNumStr]);
+                $curProg['lecciones_completadas'] = array_values(array_filter($curProg['lecciones_completadas'], fn($l) => !str_starts_with((string)$l, $mNumStr . '-')));
+            }
+
+            // Si ya no quedan módulos aprobados, revocar certificado de curso si existía
+            if (empty($curProg['modulos_aprobados'])) {
+                $sCert = $conn->prepare("DELETE FROM `usuario_certificados_curso` WHERE usuario_id = ? AND curso_id = ?");
+                $sCert->bind_param('ss', $userId, $cursoId);
+                $sCert->execute();
+            }
+
+            // Guardar progreso actualizado en usuario_progreso
+            $lecJson  = json_encode(array_values($curProg['lecciones_completadas']));
+            $modJson  = json_encode(array_values($curProg['modulos_aprobados']));
+            $medJson  = json_encode(array_values($curProg['medallas']));
+            $evalJson = empty($curProg['evaluaciones']) ? '{}' : json_encode((object)$curProg['evaluaciones'], JSON_FORCE_OBJECT);
+            $intJson  = empty($curProg['intentos']) ? '{}' : json_encode((object)$curProg['intentos'], JSON_FORCE_OBJECT);
+
+            $stmtUpProg = $conn->prepare(
+                "INSERT INTO `usuario_progreso` (usuario_id, curso_id, lecciones_completadas, modulos_aprobados, medallas, evaluaciones, intentos)
+                 VALUES (?,?,?,?,?,?,?)
+                 ON DUPLICATE KEY UPDATE
+                   lecciones_completadas = VALUES(lecciones_completadas),
+                   modulos_aprobados     = VALUES(modulos_aprobados),
+                   medallas              = VALUES(medallas),
+                   evaluaciones          = VALUES(evaluaciones),
+                   intentos              = VALUES(intentos)"
+            );
+            $stmtUpProg->bind_param('sssssss', $userId, $cursoId, $lecJson, $modJson, $medJson, $evalJson, $intJson);
+            $stmtUpProg->execute();
+        }
+
+        // 3. Recalcular estado de carreras asignadas
+        $stmtUC = $conn->prepare("SELECT curso_id FROM `usuario_certificados_curso` WHERE usuario_id = ?");
+        $stmtUC->bind_param('s', $userId);
+        $stmtUC->execute();
+        $resUC = $stmtUC->get_result();
+        $userCertsCurso = [];
+        while ($rUC = $resUC->fetch_assoc()) {
+            $userCertsCurso[] = $rUC['curso_id'];
+        }
+
+        $stmtCars = $conn->prepare("SELECT carrera_id FROM `usuario_carreras_asignadas` WHERE usuario_id = ?");
+        $stmtCars->bind_param('s', $userId);
+        $stmtCars->execute();
+        $resCars = $stmtCars->get_result();
+        while ($carRow = $resCars->fetch_assoc()) {
+            $carId = $carRow['carrera_id'];
+            $stmtCC = $conn->prepare("SELECT curso_id FROM `carrera_cursos` WHERE carrera_id = ?");
+            $stmtCC->bind_param('s', $carId);
+            $stmtCC->execute();
+            $resCC = $stmtCC->get_result();
+            $reqCursos = [];
+            while ($ccRow = $resCC->fetch_assoc()) {
+                $reqCursos[] = $ccRow['curso_id'];
+            }
+            if (!empty($reqCursos)) {
+                $completa = true;
+                foreach ($reqCursos as $rcId) {
+                    if (!in_array($rcId, $userCertsCurso, true)) {
+                        $completa = false;
+                        break;
+                    }
+                }
+                $nuevoEstado = $completa ? 'Completada' : 'Incompleta';
+                $stmtUpCar = $conn->prepare("UPDATE `usuario_carreras_asignadas` SET estado = ? WHERE usuario_id = ? AND carrera_id = ?");
+                $stmtUpCar->bind_param('sss', $nuevoEstado, $userId, $carId);
+                $stmtUpCar->execute();
+
+                if (!$completa) {
+                    $stmtDelCertCar = $conn->prepare("DELETE FROM `usuario_certificados_carrera` WHERE usuario_id = ? AND carrera_id = ?");
+                    $stmtDelCertCar->bind_param('ss', $userId, $carId);
+                    $stmtDelCertCar->execute();
+                }
+            }
+        }
+
+        $conn->commit();
+        return ['success' => true, 'message' => 'Avance restablecido correctamente'];
+    } catch (Throwable $e) {
+        $conn->rollback();
+        throw $e;
+    }
+}
+
+
+/**
  * Si la imagen viene como cadena data:image/... en Base64,
  * la extrae, la guarda como archivo JPG optimizado en uploads/ y retorna la ruta relativa.
  * Si ya es una ruta relativa o URL, la retorna sin modificar.
@@ -2540,6 +2728,24 @@ function db_upsert_config(mysqli $conn, string $clave, $valor): void {
     );
     $stmt->bind_param('ss', $clave, $valorStr);
     $stmt->execute();
+}
+
+/**
+ * Guarda un lote de pares clave-valor de configuración dentro de una sola transacción.
+ */
+function db_upsert_config_batch(mysqli $conn, array $configs): void {
+    $conn->begin_transaction();
+    try {
+        foreach ($configs as $clave => $valor) {
+            $clave = trim((string)$clave);
+            if ($clave === '') continue;
+            db_upsert_config($conn, $clave, $valor);
+        }
+        $conn->commit();
+    } catch (Throwable $e) {
+        $conn->rollback();
+        throw $e;
+    }
 }
 
 /**

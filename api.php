@@ -225,7 +225,7 @@ switch ($action) {
             break;
         }
         if ($method === 'POST') {
-            require_admin(); // Solo admins pueden guardar el DB completo
+            require_admin(); // Solo admins pueden restaurar o importar el DB completo (backup)
             $body = jsonBody();
             if (empty($body)) { http_response_code(400); echo json_encode(['error' => 'Datos invalidos o vacios']); break; }
             foreach (['usuarios','cursos','carreras','rolesConfig','solicitudesRegistro','solicitudesCursos'] as $k) {
@@ -233,7 +233,11 @@ switch ($action) {
                     http_response_code(400); echo json_encode(['error' => "Propiedad faltante: '$k'"]); $conn->close(); exit;
                 }
             }
-            try { db_write_all($conn, $body); echo json_encode(['message' => 'Guardado en MySQL']); }
+            try {
+                db_log_activity($conn, $_SESSION['user_id'] ?? 'admin', 'IMPORT_DB_BACKUP', 'Restauración completa de base de datos JSON', $_SERVER['REMOTE_ADDR'] ?? '');
+                db_write_all($conn, $body);
+                echo json_encode(['message' => 'Base de datos restaurada y sincronizada en MySQL']);
+            }
             catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
             break;
         }
@@ -546,6 +550,29 @@ switch ($action) {
         } catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 
+    // ------ RESTABLECER PROGRESO (atómico) ----------------------
+    case 'restablecer_progreso':
+        require_admin();
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body    = jsonBody();
+        $uid     = trim((string)($body['usuario_id'] ?? ''));
+        $cid     = trim((string)($body['curso_id']   ?? ''));
+        $modulos = isset($body['modulos']) && is_array($body['modulos']) ? $body['modulos'] : null;
+        if (!$uid || !$cid) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Se requieren usuario_id y curso_id']);
+            break;
+        }
+        try {
+            $res = db_restablecer_progreso($conn, $uid, $cid, $modulos);
+            db_log_activity($conn, $_SESSION['user_id'] ?? 'admin', 'RESTABLECER_PROGRESO', "Usuario: $uid, Curso: $cid", $_SERVER['REMOTE_ADDR'] ?? '');
+            echo json_encode($res, JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Error al restablecer progreso: ' . $e->getMessage()]);
+        }
+        break;
+
     // ------ SOLICITUDES ------------------------------------------
     case 'solicitar_acceso_curso':
         require_session();
@@ -584,6 +611,22 @@ switch ($action) {
         }
         try { db_upsert_config($conn, $clave, $body['valor']); echo json_encode(['message' => 'Configuracion guardada']); }
         catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        break;
+
+    case 'guardar_config_batch':
+        require_admin();
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body = jsonBody();
+        $configs = $body['configuraciones'] ?? $body;
+        if (!is_array($configs) || empty($configs)) {
+            http_response_code(400); echo json_encode(['error' => 'Se requiere un arreglo asociativo de configuraciones']); break;
+        }
+        try {
+            db_upsert_config_batch($conn, $configs);
+            echo json_encode(['message' => 'Configuraciones guardadas']);
+        } catch (Throwable $e) {
+            http_response_code(500); echo json_encode(['error' => $e->getMessage()]);
+        }
         break;
 
     // ------ LECTURA INDIVIDUAL -----------------------------------

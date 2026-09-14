@@ -120,7 +120,8 @@ window.API = (() => {
             return _get(null);
         },
 
-        async guardarDB(db) {
+        // ---- RESTAURACION DE BACKUP (Admin) ----
+        async importarBackupDB(db) {
             _setSaving(true);
             try {
                 const r = await _post(null, db);
@@ -130,6 +131,12 @@ window.API = (() => {
                 _setSaving(false);
                 throw e;
             }
+        },
+
+        // Legacy alias deprecado (solo para restauración de copias de seguridad)
+        async guardarDB(db) {
+            console.warn("[DEPRECATED] API.guardarDB() debe usarse exclusivamente para restaurar copias de seguridad.");
+            return this.importarBackupDB(db);
         },
 
         // ---- EVALUACION DE MODULO (servidor) ----
@@ -150,6 +157,19 @@ window.API = (() => {
             _setSaving(true);
             try {
                 const r = await _post('guardar_progreso', payload);
+                _setSaving(false);
+                return r;
+            } catch (e) {
+                _setSaving(false);
+                throw e;
+            }
+        },
+
+        // ---- RESTABLECER PROGRESO (atómico) ----
+        async restablecerProgreso(payload) {
+            _setSaving(true);
+            try {
+                const r = await _post('restablecer_progreso', payload);
                 _setSaving(false);
                 return r;
             } catch (e) {
@@ -233,6 +253,18 @@ window.API = (() => {
         // ---- CONFIGURACIÓN ----
         async guardarConfig(clave, valor) {
             return _post('guardar_config', { clave, valor });
+        },
+
+        async guardarConfigBatch(configuraciones) {
+            _setSaving(true);
+            try {
+                const r = await _post('guardar_config_batch', { configuraciones });
+                _setSaving(false);
+                return r;
+            } catch (e) {
+                _setSaving(false);
+                throw e;
+            }
         },
 
         // ---- HEALTH CHECK ----
