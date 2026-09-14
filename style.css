@@ -677,6 +677,45 @@ h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6, .navbar-brand {
     background: rgba(2, 132, 199, 0.08);
 }
 
+.quiz-question-img-container {
+    margin: 0.75rem 0 1.25rem 0;
+    text-align: center;
+}
+
+.quiz-question-img {
+    max-height: 260px;
+    max-width: 100%;
+    object-fit: contain;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--aluminum-border);
+    background: #fff;
+    padding: 4px;
+    box-shadow: var(--shadow-sm);
+    cursor: zoom-in;
+    transition: transform 0.2s ease;
+}
+
+.quiz-question-img:hover {
+    transform: scale(1.02);
+}
+
+.quiz-option-content {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-grow: 1;
+}
+
+.quiz-option-img {
+    width: 60px;
+    height: 60px;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--aluminum-border);
+    background: #fff;
+    flex-shrink: 0;
+}
+
 .quiz-score-badge {
     width: 100px;
     height: 100px;

@@ -309,17 +309,67 @@
     };
 
     // ------------------------------------------------------------
-    // EDITOR DE EVALUACIÓN DE MÓDULOS
+    // EDITOR DE EVALUACIÓN DE MÓDULOS (BANCO, DINÁMICO E IMÁGENES)
     // ------------------------------------------------------------
+
+    window.actualizarInfoBanco = () => {
+        const total = (window.tempModuloEvaluacion.preguntas || []).length;
+        const badge = document.getElementById('badge-total-preguntas');
+        if (badge) badge.innerText = `${total} ${total === 1 ? 'pregunta' : 'preguntas'} en el banco`;
+
+        const info = document.getElementById('eval-banco-info');
+        const num = window.tempModuloEvaluacion.numPreguntas || 0;
+        const tipo = window.tempModuloEvaluacion.tipo || 'fijo';
+
+        if (info) {
+            if (tipo === 'aleatorio') {
+                if (num > 0) {
+                    info.innerHTML = `<span class="text-primary fw-bold"><i class="bi bi-shuffle me-1"></i>Se seleccionarán ${num} de ${total} preguntas al azar para cada evaluación.</span>`;
+                } else {
+                    info.innerHTML = `<span class="text-secondary"><i class="bi bi-shuffle me-1"></i>Se seleccionarán todas las ${total} preguntas al azar.</span>`;
+                }
+            } else {
+                info.innerHTML = `Formulario Fijo: Se presentarán ${num > 0 ? num : total} preguntas en el orden definido.`;
+            }
+        }
+    };
 
     window.abrirEditorModuloEvaluacion = (mIdx) => {
         const modulo = window.tempModulos[mIdx];
-        window.tempModuloEvaluacion = JSON.parse(JSON.stringify(modulo.evaluacion || { preguntas: [] }));
+        const evalData = modulo.evaluacion || {};
+
+        window.tempModuloEvaluacion = {
+            tipo: evalData.tipo || 'fijo',
+            numPreguntas: parseInt(evalData.numPreguntas) || 0,
+            mezclarOpciones: !!evalData.mezclarOpciones,
+            preguntas: (evalData.preguntas || []).map(p => ({
+                id: p.id || null,
+                enunciado: p.enunciado || '',
+                imagen: p.imagen || '',
+                correcta: parseInt(p.correcta) || 0,
+                opciones: (p.opciones || []).map(opt => {
+                    if (typeof opt === 'object' && opt !== null) {
+                        return { texto: opt.texto || '', imagen: opt.imagen || '' };
+                    }
+                    return { texto: String(opt || ''), imagen: '' };
+                })
+            }))
+        };
 
         document.getElementById('modalModuloEvaluacionTitulo').innerText = `Evaluación: ${modulo.titulo}`;
         document.getElementById('edit-modulo-idx').value = mIdx;
 
+        const selTipo = document.getElementById('eval-tipo');
+        if (selTipo) selTipo.value = window.tempModuloEvaluacion.tipo;
+
+        const inputNum = document.getElementById('eval-num-preguntas');
+        if (inputNum) inputNum.value = window.tempModuloEvaluacion.numPreguntas || '';
+
+        const swMezclar = document.getElementById('eval-mezclar-opciones');
+        if (swMezclar) swMezclar.checked = window.tempModuloEvaluacion.mezclarOpciones;
+
         window.renderPreguntasModuloEditor();
+        window.actualizarInfoBanco();
 
         const modalElement = document.getElementById('moduloEvaluacionModal');
         const bModal = new bootstrap.Modal(modalElement);
@@ -330,19 +380,93 @@
         if (!window.tempModuloEvaluacion.preguntas) window.tempModuloEvaluacion.preguntas = [];
         window.tempModuloEvaluacion.preguntas.push({
             enunciado: "Nueva pregunta",
-            opciones: ["Opción A", "Opción B"],
+            imagen: "",
+            opciones: [
+                { texto: "Opción A", imagen: "" },
+                { texto: "Opción B", imagen: "" }
+            ],
             correcta: 0
         });
         window.renderPreguntasModuloEditor();
+        window.actualizarInfoBanco();
     };
 
     window.eliminarPreguntaModulo = (idx) => {
         window.tempModuloEvaluacion.preguntas.splice(idx, 1);
         window.renderPreguntasModuloEditor();
+        window.actualizarInfoBanco();
     };
 
-    window.eliminarPreguntaOpcionesModulo = (idx) => {
-        window.tempModuloEvaluacion.preguntas[idx].opciones.pop();
+    window.agregarOpcionPreguntaModulo = (pIdx) => {
+        if (!window.tempModuloEvaluacion.preguntas[pIdx].opciones) {
+            window.tempModuloEvaluacion.preguntas[pIdx].opciones = [];
+        }
+        const letra = String.fromCharCode(65 + window.tempModuloEvaluacion.preguntas[pIdx].opciones.length);
+        window.tempModuloEvaluacion.preguntas[pIdx].opciones.push({
+            texto: `Opción ${letra}`,
+            imagen: ""
+        });
+        window.renderPreguntasModuloEditor();
+    };
+
+    window.eliminarOpcionPreguntaModulo = (pIdx, oIdx) => {
+        const p = window.tempModuloEvaluacion.preguntas[pIdx];
+        if (p.opciones.length <= 2) {
+            showToast('Una pregunta debe tener al menos 2 opciones de respuesta.', 'warning');
+            return;
+        }
+        p.opciones.splice(oIdx, 1);
+        if (p.correcta >= p.opciones.length) {
+            p.correcta = p.opciones.length - 1;
+        }
+        window.renderPreguntasModuloEditor();
+    };
+
+    window.cargarImagenPregunta = async (event, pIdx) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        try {
+            const cursoId = document.getElementById('edit-id')?.value || 'nuevo';
+            if (typeof subirImagenServidor === 'function') {
+                const prevUrl = window.tempModuloEvaluacion.preguntas[pIdx].imagen || '';
+                const url = await subirImagenServidor(file, 'pregunta', `p_${cursoId}_${pIdx}`, prevUrl);
+                window.tempModuloEvaluacion.preguntas[pIdx].imagen = url;
+            } else {
+                const b64 = await window.comprimirImagenBase64(file, 800, 0.82);
+                window.tempModuloEvaluacion.preguntas[pIdx].imagen = b64;
+            }
+            window.renderPreguntasModuloEditor();
+        } catch (err) {
+            showToast('Error al cargar imagen: ' + err.message, 'danger');
+        }
+    };
+
+    window.eliminarImagenPregunta = (pIdx) => {
+        window.tempModuloEvaluacion.preguntas[pIdx].imagen = '';
+        window.renderPreguntasModuloEditor();
+    };
+
+    window.cargarImagenOpcion = async (event, pIdx, oIdx) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        try {
+            const cursoId = document.getElementById('edit-id')?.value || 'nuevo';
+            if (typeof subirImagenServidor === 'function') {
+                const prevUrl = window.tempModuloEvaluacion.preguntas[pIdx].opciones[oIdx].imagen || '';
+                const url = await subirImagenServidor(file, 'opcion', `opt_${cursoId}_${pIdx}_${oIdx}`, prevUrl);
+                window.tempModuloEvaluacion.preguntas[pIdx].opciones[oIdx].imagen = url;
+            } else {
+                const b64 = await window.comprimirImagenBase64(file, 600, 0.82);
+                window.tempModuloEvaluacion.preguntas[pIdx].opciones[oIdx].imagen = b64;
+            }
+            window.renderPreguntasModuloEditor();
+        } catch (err) {
+            showToast('Error al cargar imagen de opción: ' + err.message, 'danger');
+        }
+    };
+
+    window.eliminarImagenOpcion = (pIdx, oIdx) => {
+        window.tempModuloEvaluacion.preguntas[pIdx].opciones[oIdx].imagen = '';
         window.renderPreguntasModuloEditor();
     };
 
@@ -350,24 +474,110 @@
         const container = document.getElementById('contenedor-preguntas-modulo-editor');
         if (!container) return;
 
-        container.innerHTML = (window.tempModuloEvaluacion.preguntas || []).map((p, pIdx) => `
-            <div class="card p-3 mb-3 bg-white shadow-sm">
-                <div class="d-flex justify-content-between mb-2">
-                    <input type="text" class="form-control me-2" value="${p.enunciado}" oninput="window.tempModuloEvaluacion.preguntas[${pIdx}].enunciado = this.value">
-                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="eliminarPreguntaModulo(${pIdx})">X</button>
-                </div>
-                ${p.opciones.map((opt, oIdx) => `
-                    <div class="input-group mb-1">
-                        <div class="input-group-text">
-                            <input type="radio" name="correcta-mod-${pIdx}" ${p.correcta == oIdx ? 'checked' : ''} onclick="window.tempModuloEvaluacion.preguntas[${pIdx}].correcta = ${oIdx}">
-                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="eliminarPreguntaOpcionesModulo(${pIdx})">X</button>
-                        </div>
-                        <input type="text" class="form-control form-control-sm" value="${opt}" oninput="window.tempModuloEvaluacion.preguntas[${pIdx}].opciones[${oIdx}] = this.value">
+        const preguntas = window.tempModuloEvaluacion.preguntas || [];
+        if (preguntas.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-4 bg-white rounded border border-dashed text-muted mb-3">
+                    <i class="bi bi-patch-question fs-2 d-block mb-2 text-secondary"></i>
+                    <p class="mb-2 fw-bold">El banco de preguntas está vacío.</p>
+                    <button type="button" class="btn btn-primary btn-sm" onclick="agregarPreguntaModulo()">
+                        <i class="bi bi-plus-circle me-1"></i>Crear Primera Pregunta
+                    </button>
+                </div>`;
+            return;
+        }
+
+        container.innerHTML = preguntas.map((p, pIdx) => {
+            const tieneImgPreg = !!p.imagen;
+            const srcImgPreg = tieneImgPreg ? (typeof resolverSrcImagen === 'function' ? resolverSrcImagen(p.imagen) : p.imagen) : '';
+
+            return `
+            <div class="card p-3 mb-3 bg-white shadow-sm border rounded-3">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="badge bg-primary px-3 py-1 fw-bold">Pregunta ${pIdx + 1}</span>
+                    <div class="d-flex align-items-center gap-2">
+                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="eliminarPreguntaModulo(${pIdx})" title="Eliminar pregunta del banco">
+                            <i class="bi bi-trash me-1"></i>Eliminar Pregunta
+                        </button>
                     </div>
-                `).join('')}
-                <button type="button" class="btn btn-sm btn-link" onclick="window.tempModuloEvaluacion.preguntas[${pIdx}].opciones.push('Nueva Opción'); window.renderPreguntasModuloEditor()">+ Añadir Opción</button>
-            </div>
-        `).join('') + `<button type="button" class="btn btn-outline-dark w-100" onclick="agregarPreguntaModulo()">+ Añadir Pregunta al Examen</button>`;
+                </div>
+
+                <!-- Enunciado -->
+                <div class="mb-2">
+                    <label class="form-label small fw-bold text-muted">Enunciado de la pregunta:</label>
+                    <textarea class="form-control" rows="2" placeholder="Escribe el enunciado de la pregunta..." oninput="window.tempModuloEvaluacion.preguntas[${pIdx}].enunciado = this.value">${p.enunciado || ''}</textarea>
+                </div>
+
+                <!-- Imagen Ilustrativa de la Pregunta -->
+                <div class="mb-3 p-2 bg-light rounded border">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span class="small fw-bold text-dark"><i class="bi bi-image text-primary me-1"></i>Ilustración / Diagrama de la Pregunta:</span>
+                        ${tieneImgPreg ? `
+                            <button type="button" class="btn btn-xs btn-outline-danger py-0 px-2" onclick="eliminarImagenPregunta(${pIdx})">
+                                <i class="bi bi-x-circle me-1"></i>Quitar Ilustración
+                            </button>
+                        ` : ''}
+                    </div>
+                    ${tieneImgPreg ? `
+                        <div class="d-flex align-items-center gap-3 mt-1">
+                            <img src="${srcImgPreg}" class="rounded border bg-white shadow-sm" style="max-height: 90px; max-width: 140px; object-fit: contain;">
+                            <label class="btn btn-sm btn-outline-secondary mb-0">
+                                <i class="bi bi-arrow-repeat me-1"></i>Cambiar Imagen
+                                <input type="file" accept="image/*" class="d-none" onchange="cargarImagenPregunta(event, ${pIdx})">
+                            </label>
+                        </div>
+                    ` : `
+                        <label class="btn btn-sm btn-outline-primary mb-0 mt-1">
+                            <i class="bi bi-upload me-1"></i>Adjuntar Imagen / Esquema a esta Pregunta
+                            <input type="file" accept="image/*" class="d-none" onchange="cargarImagenPregunta(event, ${pIdx})">
+                        </label>
+                    `}
+                </div>
+
+                <!-- Opciones de Respuesta -->
+                <div class="ms-1">
+                    <label class="form-label small fw-bold text-muted mb-1">Opciones de respuesta (marca la correcta):</label>
+                    <div class="d-flex flex-column gap-2">
+                        ${p.opciones.map((opt, oIdx) => {
+                            const optTexto = typeof opt === 'object' ? (opt.texto || '') : String(opt || '');
+                            const optImg = typeof opt === 'object' ? (opt.imagen || '') : '';
+                            const tieneOptImg = !!optImg;
+                            const srcOptImg = tieneOptImg ? (typeof resolverSrcImagen === 'function' ? resolverSrcImagen(optImg) : optImg) : '';
+                            const esCorrecta = (p.correcta === oIdx);
+
+                            return `
+                            <div class="border p-2 rounded ${esCorrecta ? 'border-success bg-success bg-opacity-10' : 'bg-light'}">
+                                <div class="input-group input-group-sm">
+                                    <div class="input-group-text ${esCorrecta ? 'bg-success text-white' : ''}" title="Marcar como respuesta correcta">
+                                        <input type="radio" name="correcta-mod-${pIdx}" class="form-check-input mt-0" ${esCorrecta ? 'checked' : ''} onclick="window.tempModuloEvaluacion.preguntas[${pIdx}].correcta = ${oIdx}; window.renderPreguntasModuloEditor()">
+                                    </div>
+                                    <input type="text" class="form-control" placeholder="Texto de la opción..." value="${optTexto.replace(/"/g, '&quot;')}" oninput="window.tempModuloEvaluacion.preguntas[${pIdx}].opciones[${oIdx}].texto = this.value">
+                                    <label class="btn btn-outline-secondary mb-0" title="${tieneOptImg ? 'Cambiar miniatura de opción' : 'Añadir miniatura a opción'}">
+                                        <i class="bi bi-camera ${tieneOptImg ? 'text-primary' : ''}"></i>
+                                        <input type="file" accept="image/*" class="d-none" onchange="cargarImagenOpcion(event, ${pIdx}, ${oIdx})">
+                                    </label>
+                                    <button type="button" class="btn btn-outline-danger" onclick="eliminarOpcionPreguntaModulo(${pIdx}, ${oIdx})" title="Eliminar opción">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </div>
+                                ${tieneOptImg ? `
+                                    <div class="d-flex align-items-center gap-2 mt-2 ms-4">
+                                        <img src="${srcOptImg}" class="rounded border bg-white" style="width: 44px; height: 44px; object-fit: cover;">
+                                        <span class="small text-muted">Miniatura adjunta</span>
+                                        <button type="button" class="btn btn-link btn-sm text-danger p-0 ms-1" onclick="eliminarImagenOpcion(${pIdx}, ${oIdx})" title="Quitar miniatura">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                ` : ''}
+                            </div>`;
+                        }).join('')}
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="agregarOpcionPreguntaModulo(${pIdx})">
+                        <i class="bi bi-plus-circle me-1"></i>Añadir Opción
+                    </button>
+                </div>
+            </div>`;
+        }).join('') + `<button type="button" class="btn btn-primary w-100 mt-2 py-2 fw-bold" onclick="agregarPreguntaModulo()"><i class="bi bi-plus-circle me-1"></i>Añadir Nueva Pregunta al Banco</button>`;
     };
 
     window.guardarEvaluacionModulo = () => {
@@ -381,9 +591,17 @@
 
         try {
             const mIdx = document.getElementById('edit-modulo-idx').value;
+            const tipo = document.getElementById('eval-tipo')?.value || 'fijo';
+            const numPreguntas = parseInt(document.getElementById('eval-num-preguntas')?.value) || 0;
+            const mezclarOpciones = document.getElementById('eval-mezclar-opciones')?.checked || false;
+
+            window.tempModuloEvaluacion.tipo = tipo;
+            window.tempModuloEvaluacion.numPreguntas = numPreguntas;
+            window.tempModuloEvaluacion.mezclarOpciones = mezclarOpciones;
+
             window.tempModulos[mIdx].evaluacion = JSON.parse(JSON.stringify(window.tempModuloEvaluacion));
 
-            showToast('Evaluación del módulo guardada temporalmente.', 'success');
+            showToast('Evaluación del módulo configurada con éxito.', 'success');
             const modalElement = document.getElementById('moduloEvaluacionModal');
             const bModal = bootstrap.Modal.getOrCreateInstance(modalElement);
             bModal.hide();

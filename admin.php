@@ -1113,13 +1113,45 @@ if (!function_exists('v_asset')) {
                     </div>
                     <div class="modal-body p-4">
                         <input type="hidden" id="edit-modulo-idx">
-                        <div class="row g-3">
-                            <div class="col-12">
-                                <h5 class="fw-bold text-primary">Preguntas de la Evaluación</h5>
-                                <p class="text-muted small">Añade preguntas de opción múltiple. Marca la opción correcta usando el botón circular.</p>
-                                <div id="contenedor-preguntas-modulo-editor"></div>
+
+                        <!-- Configuración General del Examen y Banco de Preguntas -->
+                        <div class="card bg-light border p-3 mb-4 rounded-3 shadow-sm">
+                            <h6 class="fw-bold text-dark mb-3"><i class="bi bi-gear-fill text-primary me-2"></i>Configuración de la Evaluación</h6>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold" for="eval-tipo">Modo de Evaluación:</label>
+                                    <select id="eval-tipo" class="form-select form-select-sm" onchange="window.tempModuloEvaluacion.tipo = this.value; window.actualizarInfoBanco();">
+                                        <option value="fijo">Formulario Fijo (todas las preguntas en orden)</option>
+                                        <option value="aleatorio">Dinámico / Banco Aleatorio (preguntas al azar)</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold" for="eval-num-preguntas">Preguntas a Presentar:</label>
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text"><i class="bi bi-card-checklist"></i></span>
+                                        <input type="number" id="eval-num-preguntas" class="form-control" min="0" placeholder="0 = Todas las del banco" oninput="window.tempModuloEvaluacion.numPreguntas = parseInt(this.value) || 0; window.actualizarInfoBanco();">
+                                    </div>
+                                    <div class="form-text text-muted" style="font-size: 0.75rem;" id="eval-banco-info">0 o vacío para mostrar todas las preguntas del banco.</div>
+                                </div>
+                                <div class="col-12">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" role="switch" id="eval-mezclar-opciones" onchange="window.tempModuloEvaluacion.mezclarOpciones = this.checked;">
+                                        <label class="form-check-label small fw-bold" for="eval-mezclar-opciones">
+                                            <i class="bi bi-shuffle me-1 text-primary"></i>Mezclar orden de las opciones de respuesta aleatoriamente en cada intento
+                                        </label>
+                                    </div>
+                                </div>
                             </div>
                         </div>
+
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <div>
+                                <h5 class="fw-bold text-primary mb-0">Banco de Preguntas</h5>
+                                <p class="text-muted small mb-0">Añade preguntas y opciones de respuesta. Puedes adjuntar miniaturas a enunciados y opciones.</p>
+                            </div>
+                            <span class="badge bg-primary px-3 py-2" id="badge-total-preguntas">0 preguntas</span>
+                        </div>
+                        <div id="contenedor-preguntas-modulo-editor"></div>
                     </div>
                     <div class="modal-footer bg-light">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>

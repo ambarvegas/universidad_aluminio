@@ -443,7 +443,72 @@ window.mostrarEvaluacionModulo = (cursoID, mIdx) => {
     }
 
     const minAprobacion = (db && db.configuracion && db.configuracion.minAprobacion) || 70;
-    const totalPreguntas = (modulo.evaluacion && modulo.evaluacion.preguntas) ? modulo.evaluacion.preguntas.length : 0;
+    const evalConfig = modulo.evaluacion || {};
+    const poolPreguntas = Array.isArray(evalConfig.preguntas) ? evalConfig.preguntas : [];
+    const evalTipo = evalConfig.tipo || 'fijo';
+    const numPreguntasConfig = parseInt(evalConfig.numPreguntas, 10) || 0;
+    const mezclarOpciones = Boolean(evalConfig.mezclarOpciones);
+
+    // Función auxiliar para barajar arreglos (Fisher-Yates)
+    const mezclarArray = (arr) => {
+        const res = [...arr];
+        for (let i = res.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [res[i], res[j]] = [res[j], res[i]];
+        }
+        return res;
+    };
+
+    // Seleccionar preguntas para la evaluación activa
+    let preguntasActivas = [];
+    if (poolPreguntas.length > 0) {
+        if (evalTipo === 'aleatorio') {
+            const poolMezclado = mezclarArray(poolPreguntas);
+            const cantidad = (numPreguntasConfig > 0 && numPreguntasConfig <= poolPreguntas.length)
+                ? numPreguntasConfig
+                : poolPreguntas.length;
+            preguntasActivas = poolMezclado.slice(0, cantidad);
+        } else {
+            // Fijo
+            if (numPreguntasConfig > 0 && numPreguntasConfig <= poolPreguntas.length) {
+                preguntasActivas = poolPreguntas.slice(0, numPreguntasConfig);
+            } else {
+                preguntasActivas = [...poolPreguntas];
+            }
+        }
+    }
+
+    // Mapear y mezclar opciones si corresponde preservando el índice original para la calificación
+    const preguntasRenderizadas = preguntasActivas.map((p, pIdx) => {
+        const opcionesRaw = Array.isArray(p.opciones) ? p.opciones : [];
+        let opcionesMap = opcionesRaw.map((opt, origIdx) => {
+            const texto = (typeof opt === 'object' && opt !== null) ? (opt.texto || '') : String(opt || '');
+            const imagen = (typeof opt === 'object' && opt !== null) ? (opt.imagen || '') : '';
+            return { origIdx, texto, imagen };
+        });
+
+        if (mezclarOpciones) {
+            opcionesMap = mezclarArray(opcionesMap);
+        }
+
+        return {
+            id: p.id !== undefined ? p.id : pIdx,
+            enunciado: p.enunciado || '',
+            imagen: p.imagen || '',
+            opciones: opcionesMap,
+            preguntaRef: p
+        };
+    });
+
+    // Guardar estado del quiz activo en memoria
+    window._quizActivo = {
+        cursoId: curso.id,
+        mIdx: mIdx,
+        preguntas: preguntasRenderizadas
+    };
+
+    const totalBanco = poolPreguntas.length;
+    const totalMostrar = preguntasRenderizadas.length;
 
     const badgeIntentos = (maxIntentos > 0)
         ? `<span class="badge bg-warning bg-opacity-25 text-dark border border-warning px-3 py-2 ms-2">
@@ -453,6 +518,14 @@ window.mostrarEvaluacionModulo = (cursoID, mIdx) => {
             <i class="bi bi-infinity me-1"></i> Intentos ilimitados
            </span>`;
 
+    const badgeModo = (evalTipo === 'aleatorio' && totalBanco > totalMostrar)
+        ? `<span class="badge bg-info bg-opacity-10 text-info border border-info px-3 py-2 ms-2">
+            <i class="bi bi-shuffle me-1"></i> Banco: ${totalMostrar} de ${totalBanco} preguntas
+           </span>`
+        : `<span class="badge bg-light text-dark border px-3 py-2">
+            <i class="bi bi-check2-square text-primary me-1"></i> ${totalMostrar} preguntas
+           </span>`;
+
     visor.innerHTML = `
         <div class="quiz-card p-4 p-md-5">
             <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom flex-wrap gap-2">
@@ -460,10 +533,8 @@ window.mostrarEvaluacionModulo = (cursoID, mIdx) => {
                     <span class="badge-soft-warning mb-1 d-inline-block">Examen de Módulo ${mIdx + 1}</span>
                     <h3 class="fw-bold text-primary mb-0">${modulo.titulo}</h3>
                 </div>
-                <div class="d-flex align-items-center">
-                    <span class="badge bg-light text-dark border px-3 py-2">
-                        <i class="bi bi-check2-square text-primary me-1"></i> ${totalPreguntas} preguntas
-                    </span>
+                <div class="d-flex align-items-center flex-wrap gap-1">
+                    ${badgeModo}
                     ${badgeIntentos}
                 </div>
             </div>
@@ -475,16 +546,27 @@ window.mostrarEvaluacionModulo = (cursoID, mIdx) => {
             </p>
 
             <div class="quiz-area mb-4">
-                ${modulo.evaluacion.preguntas.map((p, i) => `
-                    <div class="card p-3 mb-3 border bg-light">
-                        <h6 class="fw-bold text-primary mb-3">
-                            <span class="badge bg-primary me-2">${i + 1}</span> ${p.enunciado}
+                ${preguntasRenderizadas.map((p, i) => `
+                    <div class="card p-3 mb-4 border bg-light shadow-sm rounded-3">
+                        <h6 class="fw-bold text-primary mb-3 d-flex align-items-start gap-2">
+                            <span class="badge bg-primary flex-shrink-0">${i + 1}</span>
+                            <span class="flex-grow-1">${p.enunciado}</span>
                         </h6>
-                        <div class="quiz-options-list">
-                            ${p.opciones.map((opt, oIdx) => `
-                                <label class="quiz-option-label" for="q${i}o${oIdx}">
-                                    <input type="radio" name="q${i}" value="${oIdx}" id="q${i}o${oIdx}" class="form-check-input">
-                                    <span>${opt}</span>
+                        ${p.imagen ? `
+                            <div class="quiz-question-img-container mb-3 text-center">
+                                <img src="${p.imagen}" alt="Ilustración de la pregunta" class="img-fluid rounded border shadow-sm quiz-question-img" style="max-height: 280px; object-fit: contain;">
+                            </div>
+                        ` : ''}
+                        <div class="quiz-options-list d-flex flex-column gap-2">
+                            ${p.opciones.map((optItem, oIdx) => `
+                                <label class="quiz-option-label d-flex align-items-center gap-3 p-2 px-3 rounded border bg-white shadow-xs" for="q${i}o${oIdx}" style="cursor: pointer;">
+                                    <input type="radio" name="q${i}" value="${optItem.origIdx}" id="q${i}o${oIdx}" class="form-check-input mt-0 flex-shrink-0" style="width: 1.2rem; height: 1.2rem;">
+                                    <div class="d-flex align-items-center gap-2 flex-grow-1">
+                                        ${optItem.imagen ? `
+                                            <img src="${optItem.imagen}" alt="Opción" class="rounded border quiz-option-img" style="width: 45px; height: 45px; object-fit: cover; flex-shrink: 0;">
+                                        ` : ''}
+                                        <span class="quiz-option-text">${optItem.texto}</span>
+                                    </div>
                                 </label>
                             `).join('')}
                         </div>
@@ -507,7 +589,12 @@ window.validarEvaluacionModulo = async (mIdx) => {
 
     try {
         const modulo = cursoActualData.modulos[mIdx];
-        const preguntas = (modulo.evaluacion && modulo.evaluacion.preguntas) || [];
+        const activeQuiz = (window._quizActivo && window._quizActivo.mIdx === mIdx) 
+            ? window._quizActivo 
+            : null;
+        const preguntas = activeQuiz 
+            ? activeQuiz.preguntas 
+            : ((modulo.evaluacion && modulo.evaluacion.preguntas) || []);
         const feedback = document.getElementById('feedback');
 
         // 1. Verificar que todas las preguntas hayan sido respondidas
@@ -525,10 +612,15 @@ window.validarEvaluacionModulo = async (mIdx) => {
             return;
         }
 
-        // 2. Recolectar respuestas seleccionadas
-        const respuestas = preguntas.map((_, i) => {
+        // 2. Recolectar respuestas seleccionadas con pregunta_id e índice original de opción
+        const respuestas = preguntas.map((p, i) => {
             const sel = document.querySelector(`input[name="q${i}"]:checked`);
-            return sel ? parseInt(sel.value, 10) : -1;
+            const opcionOriginal = sel ? parseInt(sel.value, 10) : -1;
+            const pid = p.id !== undefined ? p.id : (p.preguntaRef && p.preguntaRef.id !== undefined ? p.preguntaRef.id : i);
+            return {
+                pregunta_id: pid,
+                opcion: opcionOriginal
+            };
         });
 
         // 3. Estado de carga en el botón
@@ -565,21 +657,36 @@ window.validarEvaluacionModulo = async (mIdx) => {
             quizArea.innerHTML = res.preguntasDetalle.map((p, i) => {
                 const isCorrect = p.esCorrecta;
                 return `
-                    <div class="card p-3 mb-3 border ${isCorrect ? 'border-success bg-success bg-opacity-10' : 'border-danger bg-danger bg-opacity-10'}">
-                        <h6 class="fw-bold d-flex justify-content-between align-items-center">
+                    <div class="card p-3 mb-3 border ${isCorrect ? 'border-success bg-success bg-opacity-10' : 'border-danger bg-danger bg-opacity-10'} shadow-sm rounded-3">
+                        <h6 class="fw-bold d-flex justify-content-between align-items-start gap-2 mb-2">
                             <span><span class="badge ${isCorrect ? 'bg-success' : 'bg-danger'} me-2">${i + 1}</span> ${p.enunciado}</span>
                             ${isCorrect 
-                                ? '<span class="badge-soft-success"><i class="bi bi-check-circle-fill me-1"></i>Correcto</span>' 
-                                : '<span class="badge-soft-danger"><i class="bi bi-x-circle-fill me-1"></i>Incorrecto</span>'}
+                                ? '<span class="badge-soft-success flex-shrink-0"><i class="bi bi-check-circle-fill me-1"></i>Correcto</span>' 
+                                : '<span class="badge-soft-danger flex-shrink-0"><i class="bi bi-x-circle-fill me-1"></i>Incorrecto</span>'}
                         </h6>
-                        <div class="mt-2">
-                            ${p.opciones.map((opt, oIdx) => {
-                                let labelStyle = "";
-                                if (oIdx === p.correcta) labelStyle = "font-weight-bold text-success";
-                                else if (oIdx === p.seleccionada && !isCorrect) labelStyle = "text-danger text-decoration-line-through";
+                        ${p.imagen ? `
+                            <div class="quiz-question-img-container mb-2 text-start">
+                                <img src="${p.imagen}" alt="Ilustración" class="img-fluid rounded border shadow-sm" style="max-height: 180px; object-fit: contain;">
+                            </div>
+                        ` : ''}
+                        <div class="mt-2 d-flex flex-column gap-1">
+                            ${(Array.isArray(p.opciones) ? p.opciones : []).map((opt, oIdx) => {
+                                const optText = (typeof opt === 'object' && opt !== null) ? (opt.texto || '') : String(opt || '');
+                                const optImg = (typeof opt === 'object' && opt !== null) ? (opt.imagen || '') : '';
+                                let labelStyle = "text-muted";
+                                let icon = "•";
+                                if (oIdx === p.correcta) {
+                                    labelStyle = "fw-bold text-success";
+                                    icon = "✓";
+                                } else if (oIdx === p.seleccionada && !isCorrect) {
+                                    labelStyle = "text-danger text-decoration-line-through";
+                                    icon = "✗";
+                                }
                                 return `
-                                    <div class="py-1 small ${labelStyle}">
-                                        ${oIdx === p.correcta ? '✓ ' : (oIdx === p.seleccionada ? '✗ ' : '• ')}${opt}
+                                    <div class="py-1 px-2 rounded small d-flex align-items-center gap-2 ${labelStyle}">
+                                        <span class="fw-bold">${icon}</span>
+                                        ${optImg ? `<img src="${optImg}" class="rounded border flex-shrink-0" style="width: 32px; height: 32px; object-fit: cover;">` : ''}
+                                        <span>${optText}</span>
                                     </div>`;
                             }).join('')}
                         </div>

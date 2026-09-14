@@ -140,7 +140,7 @@ switch ($action) {
         $nombre  = $type . '_' . $entidad . '_' . time() . '.' . $ext;
         $destino = $uploadDir . $nombre;
 
-        $maxWidth = ($type === 'logo') ? 400 : 1200;
+        $maxWidth = ($type === 'logo') ? 400 : (($type === 'opcion' || $type === 'pregunta') ? 800 : 1200);
         $quality  = 82;
 
         switch ($mime) {

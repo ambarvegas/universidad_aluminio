@@ -114,11 +114,14 @@ function db_create_tables(mysqli $conn): void {
 
         // Módulos de un curso (relación normalizada)
         "CREATE TABLE IF NOT EXISTS `curso_modulos` (
-            `id`           INT          NOT NULL AUTO_INCREMENT,
-            `curso_id`     VARCHAR(100) NOT NULL,
-            `orden`        INT          NOT NULL DEFAULT 0,
-            `titulo`       VARCHAR(500) NOT NULL DEFAULT '',
-            `max_intentos` INT          NOT NULL DEFAULT 0,
+            `id`                   INT          NOT NULL AUTO_INCREMENT,
+            `curso_id`             VARCHAR(100) NOT NULL,
+            `orden`                INT          NOT NULL DEFAULT 0,
+            `titulo`               VARCHAR(500) NOT NULL DEFAULT '',
+            `max_intentos`         INT          NOT NULL DEFAULT 0,
+            `eval_tipo`            VARCHAR(20)  NOT NULL DEFAULT 'fijo',
+            `eval_num_preguntas`   INT          NOT NULL DEFAULT 0,
+            `eval_mezclar_opciones` TINYINT(1)  NOT NULL DEFAULT 0,
             PRIMARY KEY (`id`),
             INDEX `idx_cm_curso` (`curso_id`),
             FOREIGN KEY (`curso_id`) REFERENCES `cursos`(`id`) ON DELETE CASCADE
@@ -147,6 +150,7 @@ function db_create_tables(mysqli $conn): void {
             `curso_id`  VARCHAR(100) NOT NULL,
             `orden`     INT          NOT NULL DEFAULT 0,
             `enunciado` TEXT         NOT NULL,
+            `imagen`    VARCHAR(500) DEFAULT NULL,
             `opciones`  JSON         NOT NULL,
             `correcta`  TINYINT      NOT NULL DEFAULT 0,
             PRIMARY KEY (`id`),
@@ -566,7 +570,7 @@ function db_read_all(mysqli $conn): array {
     // Pre-cargar módulos
     $cursosModulosMap = [];
     $moduloToCursoMap = [];
-    $resCM = $conn->query("SELECT id, curso_id, orden, titulo, max_intentos FROM `curso_modulos` ORDER BY curso_id, orden ASC");
+    $resCM = $conn->query("SELECT id, curso_id, orden, titulo, max_intentos, eval_tipo, eval_num_preguntas, eval_mezclar_opciones FROM `curso_modulos` ORDER BY curso_id, orden ASC");
     if ($resCM) {
         while ($r = $resCM->fetch_assoc()) {
             $mid = (int)$r['id'];
@@ -577,7 +581,12 @@ function db_read_all(mysqli $conn): array {
                 'titulo'      => $r['titulo'],
                 'maxIntentos' => (int)($r['max_intentos'] ?? 0),
                 'lecciones'   => [],
-                'evaluacion'  => ['preguntas' => []],
+                'evaluacion'  => [
+                    'tipo'            => $r['eval_tipo'] ?? 'fijo',
+                    'numPreguntas'    => (int)($r['eval_num_preguntas'] ?? 0),
+                    'mezclarOpciones' => !empty($r['eval_mezclar_opciones']),
+                    'preguntas'       => [],
+                ],
             ];
         }
     }
@@ -598,14 +607,16 @@ function db_read_all(mysqli $conn): array {
     }
 
     // Pre-cargar preguntas
-    $resCP = $conn->query("SELECT modulo_id, orden, enunciado, opciones, correcta FROM `curso_preguntas` ORDER BY modulo_id, orden ASC");
+    $resCP = $conn->query("SELECT id, modulo_id, orden, enunciado, imagen, opciones, correcta FROM `curso_preguntas` ORDER BY modulo_id, orden ASC");
     if ($resCP) {
         while ($r = $resCP->fetch_assoc()) {
             $mid = (int)$r['modulo_id'];
             $cid = $moduloToCursoMap[$mid] ?? null;
             if ($cid !== null && isset($cursosModulosMap[$cid][$mid])) {
                 $cursosModulosMap[$cid][$mid]['evaluacion']['preguntas'][] = [
+                    'id'        => (int)$r['id'],
                     'enunciado' => $r['enunciado'],
+                    'imagen'    => $r['imagen'] ?? '',
                     'opciones'  => json_decode($r['opciones'] ?? '[]', true) ?? [],
                     'correcta'  => (int)$r['correcta'],
                 ];
@@ -1015,9 +1026,13 @@ function db_write_all(mysqli $conn, array $data): void {
 
             $modOrd = 0;
             foreach (($c['modulos'] ?? []) as $mod) {
-                $modTitulo = $conn->real_escape_string(trim((string)($mod['titulo'] ?? '')));
-                $modMaxInt = (int)($mod['maxIntentos'] ?? $mod['max_intentos'] ?? 0);
-                $conn->query("INSERT INTO `curso_modulos` (curso_id, orden, titulo, max_intentos) VALUES ('$safeCId', $modOrd, '$modTitulo', $modMaxInt)");
+                $modTitulo  = $conn->real_escape_string(trim((string)($mod['titulo'] ?? '')));
+                $modMaxInt  = (int)($mod['maxIntentos'] ?? $mod['max_intentos'] ?? 0);
+                $evalTipo   = $conn->real_escape_string($mod['evaluacion']['tipo'] ?? 'fijo');
+                $evalNum    = (int)($mod['evaluacion']['numPreguntas'] ?? 0);
+                $evalMez    = !empty($mod['evaluacion']['mezclarOpciones']) ? 1 : 0;
+
+                $conn->query("INSERT INTO `curso_modulos` (curso_id, orden, titulo, max_intentos, eval_tipo, eval_num_preguntas, eval_mezclar_opciones) VALUES ('$safeCId', $modOrd, '$modTitulo', $modMaxInt, '$evalTipo', $evalNum, $evalMez)");
                 $modId = (int)$conn->insert_id;
                 $modOrd++;
 
@@ -1037,9 +1052,19 @@ function db_write_all(mysqli $conn, array $data): void {
                 $preguntas = $mod['evaluacion']['preguntas'] ?? [];
                 foreach ($preguntas as $preg) {
                     $pEnun = $conn->real_escape_string((string)($preg['enunciado'] ?? ''));
-                    $pOpc  = $conn->real_escape_string(json_encode($preg['opciones'] ?? []));
+                    $pImg  = !empty($preg['imagen']) ? "'" . $conn->real_escape_string(db_guardar_imagen_si_base64($preg['imagen'], "pregunta_{$safeCId}_{$modId}")) . "'" : 'NULL';
+                    $rawOpc = $preg['opciones'] ?? [];
+                    if (is_array($rawOpc)) {
+                        foreach ($rawOpc as $oKey => &$oVal) {
+                            if (is_array($oVal) && !empty($oVal['imagen'])) {
+                                $oVal['imagen'] = db_guardar_imagen_si_base64($oVal['imagen'], "opcion_{$safeCId}_{$modId}_{$preOrd}_{$oKey}");
+                            }
+                        }
+                        unset($oVal);
+                    }
+                    $pOpc  = $conn->real_escape_string(json_encode($rawOpc, JSON_UNESCAPED_UNICODE));
                     $pCorr = (int)($preg['correcta'] ?? 0);
-                    $conn->query("INSERT INTO `curso_preguntas` (modulo_id, curso_id, orden, enunciado, opciones, correcta) VALUES ($modId, '$safeCId', $preOrd, '$pEnun', '$pOpc', $pCorr)");
+                    $conn->query("INSERT INTO `curso_preguntas` (modulo_id, curso_id, orden, enunciado, imagen, opciones, correcta) VALUES ($modId, '$safeCId', $preOrd, '$pEnun', $pImg, '$pOpc', $pCorr)");
                     $preOrd++;
                 }
             }
@@ -1582,7 +1607,7 @@ function db_read_catalogo(mysqli $conn, string $userId, string $userRol): array 
     $esSuperRol = ($miRolConfig && in_array('*', $miRolConfig['permisos'] ?? [], true));
 
     // 3. Módulos agregados (con conteo de lecciones y preguntas)
-    $sqlMod = "SELECT cm.id, cm.curso_id, cm.orden, cm.titulo, cm.max_intentos,
+    $sqlMod = "SELECT cm.id, cm.curso_id, cm.orden, cm.titulo, cm.max_intentos, cm.eval_tipo, cm.eval_num_preguntas, cm.eval_mezclar_opciones,
                       COUNT(DISTINCT cl.id) as total_lecciones,
                       COUNT(DISTINCT cp.id) as total_preguntas
                FROM `curso_modulos` cm
@@ -1596,13 +1621,17 @@ function db_read_catalogo(mysqli $conn, string $userId, string $userRol): array 
         while ($mr = $resMod->fetch_assoc()) {
             $cid = $mr['curso_id'];
             $modulosPorCurso[$cid][] = [
-                'id'              => (int)$mr['id'],
-                '_orden'          => (int)$mr['orden'],
-                'titulo'          => $mr['titulo'],
-                'maxIntentos'     => (int)($mr['max_intentos'] ?? 0),
-                'totalLecciones'  => (int)$mr['total_lecciones'],
-                'tieneEvaluacion' => ((int)$mr['total_preguntas'] > 0),
-                'lecciones'       => array_fill(0, (int)$mr['total_lecciones'], null),
+                'id'                  => (int)$mr['id'],
+                '_orden'              => (int)$mr['orden'],
+                'titulo'              => $mr['titulo'],
+                'maxIntentos'         => (int)($mr['max_intentos'] ?? 0),
+                'evalTipo'            => $mr['eval_tipo'] ?? 'fijo',
+                'evalNumPreguntas'    => (int)($mr['eval_num_preguntas'] ?? 0),
+                'evalMezclarOpciones' => !empty($mr['eval_mezclar_opciones']),
+                'totalLecciones'      => (int)$mr['total_lecciones'],
+                'tieneEvaluacion'     => ((int)$mr['total_preguntas'] > 0),
+                'totalPreguntas'      => (int)$mr['total_preguntas'],
+                'lecciones'           => array_fill(0, (int)$mr['total_lecciones'], null),
             ];
         }
     }
@@ -1702,7 +1731,7 @@ function db_read_curso_detalle(mysqli $conn, string $cursoId, bool $esAdmin): ?a
     }
 
     // Módulos
-    $stmtM = $conn->prepare("SELECT id, orden, titulo, max_intentos FROM `curso_modulos` WHERE curso_id = ? ORDER BY orden ASC");
+    $stmtM = $conn->prepare("SELECT id, orden, titulo, max_intentos, eval_tipo, eval_num_preguntas, eval_mezclar_opciones FROM `curso_modulos` WHERE curso_id = ? ORDER BY orden ASC");
     $stmtM->bind_param('s', $cursoId);
     $stmtM->execute();
     $resM = $stmtM->get_result();
@@ -1717,7 +1746,12 @@ function db_read_curso_detalle(mysqli $conn, string $cursoId, bool $esAdmin): ?a
             'titulo'      => $mRow['titulo'],
             'maxIntentos' => (int)($mRow['max_intentos'] ?? 0),
             'lecciones'   => [],
-            'evaluacion'  => ['preguntas' => []],
+            'evaluacion'  => [
+                'tipo'            => $mRow['eval_tipo'] ?? 'fijo',
+                'numPreguntas'    => (int)($mRow['eval_num_preguntas'] ?? 0),
+                'mezclarOpciones' => !empty($mRow['eval_mezclar_opciones']),
+                'preguntas'       => [],
+            ],
         ];
     }
 
@@ -1741,7 +1775,7 @@ function db_read_curso_detalle(mysqli $conn, string $cursoId, bool $esAdmin): ?a
     }
 
     // Preguntas
-    $stmtP = $conn->prepare("SELECT id, modulo_id, orden, enunciado, opciones, correcta FROM `curso_preguntas` WHERE curso_id = ? ORDER BY modulo_id, orden ASC");
+    $stmtP = $conn->prepare("SELECT id, modulo_id, orden, enunciado, imagen, opciones, correcta FROM `curso_preguntas` WHERE curso_id = ? ORDER BY modulo_id, orden ASC");
     $stmtP->bind_param('s', $cursoId);
     $stmtP->execute();
     $resP = $stmtP->get_result();
@@ -1752,6 +1786,7 @@ function db_read_curso_detalle(mysqli $conn, string $cursoId, bool $esAdmin): ?a
                 'id'        => (int)$pRow['id'],
                 '_orden'    => (int)$pRow['orden'],
                 'enunciado' => $pRow['enunciado'],
+                'imagen'    => $pRow['imagen'] ?? '',
                 'opciones'  => is_string($pRow['opciones']) ? json_decode($pRow['opciones'], true) : $pRow['opciones'],
             ];
             if ($esAdmin) {
@@ -2055,7 +2090,7 @@ function db_evaluar_modulo(mysqli $conn, string $userId, string $cursoId, int $m
     }
 
     // 2. Buscar el módulo por curso_id y orden
-    $stmtM = $conn->prepare("SELECT id, orden, titulo, max_intentos FROM `curso_modulos` WHERE curso_id = ? AND orden = ?");
+    $stmtM = $conn->prepare("SELECT id, orden, titulo, max_intentos, eval_tipo, eval_num_preguntas, eval_mezclar_opciones FROM `curso_modulos` WHERE curso_id = ? AND orden = ?");
     $stmtM->bind_param('si', $cursoId, $moduloIdx);
     $stmtM->execute();
     $resM = $stmtM->get_result();
@@ -2087,26 +2122,78 @@ function db_evaluar_modulo(mysqli $conn, string $userId, string $cursoId, int $m
         throw new InvalidArgumentException("Has alcanzado el límite máximo de $maxIntentos intentos permitidos para esta evaluación. Contacta a un administrador para restablecer tus intentos.");
     }
 
-    // 3. Obtener las preguntas del módulo en orden
-    $stmtQ = $conn->prepare("SELECT id, orden, enunciado, opciones, correcta FROM `curso_preguntas` WHERE modulo_id = ? ORDER BY orden ASC");
+    // 3. Obtener el banco de preguntas del módulo en orden
+    $stmtQ = $conn->prepare("SELECT id, orden, enunciado, imagen, opciones, correcta FROM `curso_preguntas` WHERE modulo_id = ? ORDER BY orden ASC");
     $stmtQ->bind_param('i', $moduloId);
     $stmtQ->execute();
     $resQ = $stmtQ->get_result();
-    $preguntas = [];
+    $bancoPreguntasById = [];
+    $bancoPreguntasList = [];
     while ($qRow = $resQ->fetch_assoc()) {
-        $preguntas[] = $qRow;
+        $qId = (int)$qRow['id'];
+        $bancoPreguntasById[$qId] = $qRow;
+        $bancoPreguntasList[] = $qRow;
     }
-    if (empty($preguntas)) {
+    if (empty($bancoPreguntasList)) {
         throw new InvalidArgumentException("El módulo \"$moduloTitulo\" no posee preguntas de evaluación configuradas.");
     }
 
-    // 4. Comparar respuestas y calcular puntaje
-    $total = count($preguntas);
+    // 4. Identificar y calificar preguntas respondidas
+    $preguntasAEvaluar = [];
+
+    // Detectar si respuestas viene como array de objetos [{ pregunta_id: 123, opcion: 0 }, ...]
+    $esListaObjetos = false;
+    foreach ($respuestas as $item) {
+        if (is_array($item) && (isset($item['pregunta_id']) || isset($item['id']))) {
+            $esListaObjetos = true;
+            break;
+        }
+    }
+
+    if ($esListaObjetos) {
+        foreach ($respuestas as $item) {
+            if (!is_array($item)) continue;
+            $pId = (int)($item['pregunta_id'] ?? $item['id'] ?? 0);
+            $sel = isset($item['opcion']) ? (int)$item['opcion'] : (isset($item['opcion_seleccionada']) ? (int)$item['opcion_seleccionada'] : -1);
+            if (isset($bancoPreguntasById[$pId])) {
+                $preguntasAEvaluar[] = [
+                    'pregunta'     => $bancoPreguntasById[$pId],
+                    'userSelected' => $sel
+                ];
+            }
+        }
+    } else {
+        // Formato mapa o indexado (retrocompatibilidad)
+        foreach ($respuestas as $key => $val) {
+            $sel = (int)$val;
+            if (is_numeric($key) && isset($bancoPreguntasById[(int)$key])) {
+                $preguntasAEvaluar[] = [
+                    'pregunta'     => $bancoPreguntasById[(int)$key],
+                    'userSelected' => $sel
+                ];
+            } elseif (is_numeric($key) && isset($bancoPreguntasList[(int)$key])) {
+                $preguntasAEvaluar[] = [
+                    'pregunta'     => $bancoPreguntasList[(int)$key],
+                    'userSelected' => $sel
+                ];
+            }
+        }
+    }
+
+    if (empty($preguntasAEvaluar)) {
+        foreach ($bancoPreguntasList as $idx => $p) {
+            $sel = isset($respuestas[$idx]) ? (int)$respuestas[$idx] : -1;
+            $preguntasAEvaluar[] = ['pregunta' => $p, 'userSelected' => $sel];
+        }
+    }
+
+    $total = count($preguntasAEvaluar);
     $aciertos = 0;
     $preguntasDetalle = [];
 
-    foreach ($preguntas as $idx => $p) {
-        $userSelected = isset($respuestas[$idx]) ? (int)$respuestas[$idx] : -1;
+    foreach ($preguntasAEvaluar as $item) {
+        $p = $item['pregunta'];
+        $userSelected = $item['userSelected'];
         $correcta = (int)$p['correcta'];
         $esCorrecta = ($userSelected === $correcta);
         if ($esCorrecta) {
@@ -2117,8 +2204,10 @@ function db_evaluar_modulo(mysqli $conn, string $userId, string $cursoId, int $m
         if (!is_array($opciones)) $opciones = [];
 
         $preguntasDetalle[] = [
+            'id'           => (int)$p['id'],
             'orden'        => (int)$p['orden'],
             'enunciado'    => $p['enunciado'],
+            'imagen'       => $p['imagen'] ?? '',
             'opciones'     => $opciones,
             'seleccionada' => $userSelected,
             'correcta'     => $correcta,
@@ -2596,9 +2685,13 @@ function db_upsert_curso(mysqli $conn, array $c): void {
 
     $modOrd = 0;
     foreach (($c['modulos'] ?? []) as $mod) {
-        $modTitulo = $conn->real_escape_string(trim((string)($mod['titulo'] ?? '')));
-        $modMaxInt = (int)($mod['maxIntentos'] ?? $mod['max_intentos'] ?? 0);
-        $conn->query("INSERT INTO `curso_modulos` (curso_id, orden, titulo, max_intentos) VALUES ('$safeId', $modOrd, '$modTitulo', $modMaxInt)");
+        $modTitulo  = $conn->real_escape_string(trim((string)($mod['titulo'] ?? '')));
+        $modMaxInt  = (int)($mod['maxIntentos'] ?? $mod['max_intentos'] ?? 0);
+        $evalTipo   = $conn->real_escape_string($mod['evaluacion']['tipo'] ?? 'fijo');
+        $evalNum    = (int)($mod['evaluacion']['numPreguntas'] ?? 0);
+        $evalMez    = !empty($mod['evaluacion']['mezclarOpciones']) ? 1 : 0;
+
+        $conn->query("INSERT INTO `curso_modulos` (curso_id, orden, titulo, max_intentos, eval_tipo, eval_num_preguntas, eval_mezclar_opciones) VALUES ('$safeId', $modOrd, '$modTitulo', $modMaxInt, '$evalTipo', $evalNum, $evalMez)");
         $modId = (int)$conn->insert_id;
         $modOrd++;
 
@@ -2618,9 +2711,19 @@ function db_upsert_curso(mysqli $conn, array $c): void {
         $preguntas = $mod['evaluacion']['preguntas'] ?? [];
         foreach ($preguntas as $preg) {
             $pEnun = $conn->real_escape_string((string)($preg['enunciado'] ?? ''));
-            $pOpc  = $conn->real_escape_string(json_encode($preg['opciones'] ?? []));
+            $pImg  = !empty($preg['imagen']) ? "'" . $conn->real_escape_string(db_guardar_imagen_si_base64($preg['imagen'], "pregunta_{$safeId}_{$modId}")) . "'" : 'NULL';
+            $rawOpc = $preg['opciones'] ?? [];
+            if (is_array($rawOpc)) {
+                foreach ($rawOpc as $oKey => &$oVal) {
+                    if (is_array($oVal) && !empty($oVal['imagen'])) {
+                        $oVal['imagen'] = db_guardar_imagen_si_base64($oVal['imagen'], "opcion_{$safeId}_{$modId}_{$preOrd}_{$oKey}");
+                    }
+                }
+                unset($oVal);
+            }
+            $pOpc  = $conn->real_escape_string(json_encode($rawOpc, JSON_UNESCAPED_UNICODE));
             $pCorr = (int)($preg['correcta'] ?? 0);
-            $conn->query("INSERT INTO `curso_preguntas` (modulo_id, curso_id, orden, enunciado, opciones, correcta) VALUES ($modId, '$safeId', $preOrd, '$pEnun', '$pOpc', $pCorr)");
+            $conn->query("INSERT INTO `curso_preguntas` (modulo_id, curso_id, orden, enunciado, imagen, opciones, correcta) VALUES ($modId, '$safeId', $preOrd, '$pEnun', $pImg, '$pOpc', $pCorr)");
             $preOrd++;
         }
     }
