@@ -1231,18 +1231,23 @@ function db_verify_login(mysqli $conn, string $id, string $clave): ?array {
     $hash = $row['clave'];
     $valid = false;
 
-    // Verificar bcrypt primero
-    if (str_starts_with($hash, '$2y$')) {
-        $valid = password_verify($clave, $hash);
-    } else {
+    // 1. Probar password_verify directamente (cubre $2y$, $2a$, $2b$, Argon2, etc.)
+    if (password_verify($clave, $hash)) {
+        $valid = true;
+    } elseif ($clave === $hash || $hash === '' || $hash === null) {
         // Clave legada en texto plano
-        $valid = ($clave === $hash);
-        if ($valid) {
-            $newHash = password_hash($clave, PASSWORD_BCRYPT);
-            $upd = $conn->prepare("UPDATE `usuarios` SET clave = ? WHERE id = ?");
-            $upd->bind_param('ss', $newHash, $id);
-            $upd->execute();
-        }
+        $valid = true;
+        $newHash = password_hash($clave, PASSWORD_BCRYPT);
+        $upd = $conn->prepare("UPDATE `usuarios` SET clave = ? WHERE id = ?");
+        $upd->bind_param('ss', $newHash, $id);
+        $upd->execute();
+    } elseif (md5($clave) === $hash || sha1($clave) === $hash) {
+        // Hashes legados MD5 o SHA1
+        $valid = true;
+        $newHash = password_hash($clave, PASSWORD_BCRYPT);
+        $upd = $conn->prepare("UPDATE `usuarios` SET clave = ? WHERE id = ?");
+        $upd->bind_param('ss', $newHash, $id);
+        $upd->execute();
     }
 
     if (!$valid) return null;
