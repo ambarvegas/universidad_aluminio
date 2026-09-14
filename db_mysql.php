@@ -1641,6 +1641,11 @@ function db_read_catalogo(mysqli $conn, string $userId, string $userRol): array 
     $cursosFiltrados = [];
     while ($row = $resC->fetch_assoc()) {
         $cid = $row['id'];
+        $tipo = $row['tipo'] ?? 'especializado';
+        // Cursos de tipo 'pruebas' son exclusivos para administradores
+        if ($tipo === 'pruebas' && !$esSuperRol) {
+            continue;
+        }
         if ($esSuperRol || in_array($cid, $cursosIds, true)) {
             $mods = $modulosPorCurso[$cid] ?? [];
             $totalLec = 0;
@@ -1727,6 +1732,11 @@ function db_read_curso_detalle(mysqli $conn, string $cursoId, bool $esAdmin): ?a
     $stmtC->execute();
     $resC = $stmtC->get_result();
     if (!$resC || !($cRow = $resC->fetch_assoc())) {
+        return null;
+    }
+
+    // Si el curso es tipo 'pruebas' y el usuario no es admin, denegar acceso
+    if (($cRow['tipo'] ?? '') === 'pruebas' && !$esAdmin) {
         return null;
     }
 

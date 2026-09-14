@@ -90,10 +90,11 @@ function actualizarTablas() {
             tablaCursosBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4"><i class="bi bi-search me-1"></i>No se encontraron cursos coincidentes.</td></tr>';
         } else {
             cursosFiltrados.forEach(c => {
-                const esLibre = c.tipo === 'publico' || c.tipo === 'libre';
-                const badgeTipo = esLibre
-                    ? '<span class="badge-soft-success"><i class="bi bi-unlock-fill me-1"></i>Acceso Libre</span>'
-                    : '<span class="badge-soft-warning"><i class="bi bi-mortarboard-fill me-1"></i>Especializado</span>';
+                const badgeTipo = (c.tipo === 'pruebas')
+                    ? '<span class="badge text-white" style="background-color: #7c3aed;"><i class="bi bi-flask me-1"></i>Pruebas (Admin)</span>'
+                    : ((c.tipo === 'publico' || c.tipo === 'libre')
+                        ? '<span class="badge-soft-success"><i class="bi bi-unlock-fill me-1"></i>Acceso Libre</span>'
+                        : '<span class="badge-soft-warning"><i class="bi bi-mortarboard-fill me-1"></i>Especializado</span>');
                 
                 const totalModulos = (c.modulos || []).length;
                 let totalLecciones = 0;

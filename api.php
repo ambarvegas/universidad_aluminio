@@ -200,6 +200,9 @@ switch ($action) {
             if (!$curso) {
                 http_response_code(404); echo json_encode(['error' => 'Curso no encontrado']); break;
             }
+            if (($curso['tipo'] ?? '') === 'pruebas' && !is_admin()) {
+                http_response_code(403); echo json_encode(['error' => 'Acceso restringido: Este curso es de pruebas y exclusivo para administradores']); break;
+            }
             echo json_encode(['curso' => $curso], JSON_UNESCAPED_UNICODE);
         } catch (Throwable $e) {
             http_response_code(500); echo json_encode(['error' => $e->getMessage()]);
@@ -479,6 +482,17 @@ switch ($action) {
             break;
         }
 
+        // Si el curso es de pruebas, solo administradores pueden evaluar
+        $sChk = $conn->prepare("SELECT tipo FROM `cursos` WHERE id = ?");
+        $sChk->bind_param('s', $cid);
+        $sChk->execute();
+        $rChk = $sChk->get_result()->fetch_assoc();
+        if ($rChk && ($rChk['tipo'] ?? '') === 'pruebas' && !is_admin()) {
+            http_response_code(403);
+            echo json_encode(['error' => 'Acceso restringido: Este curso es de pruebas y exclusivo para administradores']);
+            break;
+        }
+
         try {
             $resultado = db_evaluar_modulo($conn, $uid, $cid, $midx, $resp);
             if (!empty($resultado['certificadoOtorgado'])) {
@@ -621,6 +635,18 @@ switch ($action) {
         require_session();
         if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
         $body = jsonBody();
+        $targetCid = trim($body['cursoId'] ?? $body['curso_id'] ?? '');
+        if ($targetCid) {
+            $sCur = $conn->prepare("SELECT tipo FROM `cursos` WHERE id = ?");
+            $sCur->bind_param('s', $targetCid);
+            $sCur->execute();
+            $rCur = $sCur->get_result()->fetch_assoc();
+            if ($rCur && ($rCur['tipo'] ?? '') === 'pruebas') {
+                http_response_code(403);
+                echo json_encode(['error' => 'No es posible solicitar acceso a cursos en modalidad de prueba.']);
+                break;
+            }
+        }
         try { 
             db_add_solicitud_curso($conn, $body); 
             require_once __DIR__ . '/mailer.php';

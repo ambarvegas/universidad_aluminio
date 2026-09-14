@@ -972,6 +972,7 @@ if (!function_exists('v_asset')) {
                                 <select id="curso-tipo" class="form-select">
                                     <option value="especializado">Especializado (Por Carrera)</option>
                                     <option value="publico">Acceso Libre (Público)</option>
+                                    <option value="pruebas">🧪 Solo Pruebas (Exclusivo Administrador)</option>
                                 </select>
                             </div>
                             <div class="col-md-3">

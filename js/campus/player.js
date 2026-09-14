@@ -31,6 +31,7 @@ async function guardarProgresoUsuario() {
 window.guardarProgresoUsuario = guardarProgresoUsuario;
 
 function verificarAccesoLeccion(mIdx, lIdx) {
+    if (sesion && sesion.rol === 'admin') return true;
     if (mIdx === 0 && lIdx === 0) return true;
 
     if (!sesion || !cursoActualData) return false;
@@ -861,7 +862,9 @@ function renderizarCursoTeachlr(curso) {
                 
                 <!-- Tarjeta Resumen del Curso -->
                 <div class="card border-0 shadow-sm p-3 mb-3 bg-white rounded-3">
-                    <span class="badge-soft-primary mb-2 align-self-start"><i class="bi bi-mortarboard-fill me-1"></i>Programa Académico</span>
+                    ${curso.tipo === 'pruebas'
+                        ? '<span class="badge text-white mb-2 align-self-start" style="background:#7c3aed"><i class="bi bi-flask me-1"></i>Modo de Pruebas (Admin)</span>'
+                        : '<span class="badge-soft-primary mb-2 align-self-start"><i class="bi bi-mortarboard-fill me-1"></i>Programa Académico</span>'}
                     <h5 class="fw-bold text-primary mb-2">${curso.titulo}</h5>
                     
                     <div class="d-flex justify-content-between align-items-center mb-1">

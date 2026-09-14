@@ -97,7 +97,7 @@
             document.getElementById('curso-prelacion').value = c.prelacion || '';
         }
         if (document.getElementById('curso-tipo')) {
-            document.getElementById('curso-tipo').value = (c.tipo === 'publico' || c.tipo === 'libre') ? 'publico' : 'especializado';
+            document.getElementById('curso-tipo').value = (c.tipo === 'publico' || c.tipo === 'libre') ? 'publico' : ((c.tipo === 'pruebas') ? 'pruebas' : 'especializado');
         }
         if (document.getElementById('curso-en-construccion')) {
             document.getElementById('curso-en-construccion').checked = !!c.enConstruccion;

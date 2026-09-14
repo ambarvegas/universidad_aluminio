@@ -117,11 +117,23 @@ function renderizarGaleria() {
         }
         const porSolicitud = (sesion && sesion.asignados) || [];
         const idsAccesoTotal = [...new Set([...directosDelRol, ...deCarreras, ...porSolicitud])];
-        cursosVisibles = (cursos || []).map(c => {
+        cursosVisibles = (cursos || []).filter(c => c.tipo !== 'pruebas').map(c => {
             const esAccesoLibre = c.tipo === 'publico' || c.tipo === 'libre';
             const tieneAcceso = esAccesoLibre || idsAccesoTotal.includes(c.id);
             return { ...c, bloqueado: !tieneAcceso };
         });
+    }
+
+    // Botón de filtro 'Pruebas' si el usuario es Administrador
+    const filtrosContainer = document.getElementById('filtros-categoria');
+    if (filtrosContainer && sesion && sesion.rol === 'admin' && !document.querySelector('button[data-filter="pruebas"]')) {
+        const btnPruebas = document.createElement('button');
+        btnPruebas.type = 'button';
+        btnPruebas.className = 'filter-pill-btn';
+        btnPruebas.dataset.filter = 'pruebas';
+        btnPruebas.innerHTML = '<i class="bi bi-flask me-1"></i>Pruebas';
+        btnPruebas.onclick = () => setFiltroGaleria('pruebas');
+        filtrosContainer.appendChild(btnPruebas);
     }
 
     // 3. Calcular Métricas para los KPIs
@@ -156,14 +168,16 @@ function renderizarGaleria() {
         }
 
         const esLibre = c.tipo === 'publico' || c.tipo === 'libre';
-        if (filtroGaleriaCategoria === 'progreso') {
+        if (filtroGaleriaCategoria === 'pruebas') {
+            return c.tipo === 'pruebas';
+        } else if (filtroGaleriaCategoria === 'progreso') {
             return c._progresoInfo.porcentaje > 0 && !c._progresoInfo.completado;
         } else if (filtroGaleriaCategoria === 'completados') {
             return c._progresoInfo.completado;
         } else if (filtroGaleriaCategoria === 'libre') {
             return esLibre;
         } else if (filtroGaleriaCategoria === 'especializado') {
-            return !esLibre;
+            return c.tipo === 'especializado';
         }
         return true;
     });
@@ -208,7 +222,9 @@ function renderizarGaleria() {
 
         // Badge de Estado Superior
         let badgeEstado = '';
-        if (c.enConstruccion) {
+        if (c.tipo === 'pruebas') {
+            badgeEstado = `<span class="badge text-white shadow-sm" style="background:#7c3aed"><i class="bi bi-flask me-1"></i>Pruebas (Admin)</span>`;
+        } else if (c.enConstruccion) {
             badgeEstado = `<span class="badge bg-warning text-dark shadow-sm fw-bold"><i class="bi bi-cone-striped me-1"></i>En Construcción</span>`;
         } else if (prog.completado) {
             badgeEstado = `<span class="badge bg-success text-white shadow-sm"><i class="bi bi-award-fill me-1"></i>Completado</span>`;
