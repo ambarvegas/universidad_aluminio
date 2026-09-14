@@ -1311,6 +1311,8 @@ if (!function_exists('v_asset')) {
     <!-- Scripts Esenciales con auto-versionado -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="<?= v_asset('js/ui/modal.js') ?>"></script>
+    <script src="<?= v_asset('js/ui/toast.js') ?>"></script>
+    <script src="<?= v_asset('js/ui/spinner.js') ?>"></script>
     <script src="<?= v_asset('js/auth.js') ?>"></script>
     <script src="<?= v_asset('js/api.js') ?>"></script>
     <script src="<?= v_asset('js/core/state.js') ?>"></script>

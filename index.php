@@ -383,6 +383,7 @@ if (!function_exists('v_asset')) {
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
     <script src="<?= v_asset('js/ui/modal.js') ?>"></script>
     <script src="<?= v_asset('js/ui/toast.js') ?>"></script>
+    <script src="<?= v_asset('js/ui/spinner.js') ?>"></script>
     <script src="<?= v_asset('js/auth.js') ?>"></script>
     <script src="<?= v_asset('js/api.js') ?>"></script>
     <script src="<?= v_asset('js/core/state.js') ?>"></script>

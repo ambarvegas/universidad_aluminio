@@ -5,7 +5,7 @@
 
 function createToastContainer() {
     let container = document.getElementById('toast-container');
-    if (!container) {
+    if (!container && document.body) {
         container = document.createElement('div');
         container.id = 'toast-container';
         container.className = 'toast-container position-fixed bottom-0 end-0 p-3';
@@ -16,7 +16,16 @@ function createToastContainer() {
 }
 
 function showToast(message, type = 'success', duration = 3000) {
+    if (!document.body) {
+        document.addEventListener('DOMContentLoaded', () => showToast(message, type, duration));
+        return;
+    }
+
     const toastContainer = createToastContainer();
+    if (!toastContainer) {
+        console.log(`[Toast ${type}]: ${message}`);
+        return;
+    }
 
     const toast = document.createElement('div');
     toast.className = `toast align-items-center text-white bg-${type} border-0 shadow-lg`;
@@ -44,13 +53,19 @@ function showToast(message, type = 'success', duration = 3000) {
     `;
 
     toastContainer.appendChild(toast);
-    const bsToast = new bootstrap.Toast(toast, { delay: duration });
-    bsToast.show();
 
-    toast.addEventListener('hidden.bs.toast', () => {
-        toast.remove();
-    });
+    if (window.bootstrap && typeof window.bootstrap.Toast === 'function') {
+        const bsToast = new bootstrap.Toast(toast, { delay: duration });
+        bsToast.show();
+        toast.addEventListener('hidden.bs.toast', () => {
+            toast.remove();
+        });
+    } else {
+        toast.classList.add('show');
+        setTimeout(() => toast.remove(), duration);
+    }
 }
 
 window.showToast = showToast;
 window.createToastContainer = createToastContainer;
+
