@@ -22,6 +22,10 @@ Options -Indexes
     RewriteEngine On
     RewriteRule ^tools/ - [F,L]
     RewriteRule ^backups/ - [F,L]
+
+    # Pasar la cabecera Authorization a PHP en CGI/FastCGI (ID token de Firebase)
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 </IfModule>
 
 # 2. COMPRESIÓN GZIP / DEFLATE

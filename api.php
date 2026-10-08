@@ -30,7 +30,7 @@ if (!headers_sent()) {
     }
     header("Access-Control-Allow-Origin: *");
     header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
-    header("Access-Control-Allow-Headers: Content-Type");
+    header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Api-Key");
     header("Content-Type: application/json; charset=utf-8");
     header("X-Content-Type-Options: nosniff");
     header("X-Frame-Options: SAMEORIGIN");
@@ -46,6 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 require_once __DIR__ . '/db_mysql.php';
+require_once __DIR__ . '/firebase_auth.php';
 
 try {
     $conn = db_connect();
@@ -113,6 +114,21 @@ function kpi_api_key(): string {
         if (is_array($cfg) && !empty($cfg['kpi_api_key'])) return (string)$cfg['kpi_api_key'];
     }
     return '';
+}
+
+/**
+ * Token de "Authorization: Bearer <token>" de la petición, o null si no viene.
+ * En CGI/FastCGI llega vía la regla de .htaccess (HTTP_AUTHORIZATION o
+ * REDIRECT_HTTP_AUTHORIZATION); en mod_php, vía apache_request_headers().
+ */
+function bearer_token(): ?string {
+    $h = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
+    if ($h === '' && function_exists('apache_request_headers')) {
+        foreach ((array)apache_request_headers() as $k => $v) {
+            if (strcasecmp((string)$k, 'Authorization') === 0) { $h = (string)$v; break; }
+        }
+    }
+    return preg_match('/^Bearer\s+(\S+)$/i', trim((string)$h), $m) ? $m[1] : null;
 }
 
 // ============================================================
@@ -1024,20 +1040,48 @@ switch ($action) {
         }
         break;
 
-    // ------ KPI HUMILDAD PARA ALU-CULTURA (servidor a servidor) ---
-    // GET api.php?action=kpi_humildad&ci=25482938   Header: X-Api-Key: <clave>
+    // ------ KPI HUMILDAD PARA ALU-CULTURA --------------------------
+    // a) App:      GET api.php?action=kpi_humildad
+    //              Header: Authorization: Bearer <ID token de Firebase (Opening Checklist)>
+    //              La cédula sale del perfil users/{uid}.ci; el parámetro ci se ignora.
+    // b) Servidor: GET api.php?action=kpi_humildad&ci=25482938   Header: X-Api-Key: <clave>
+    //              (ruta heredada, se retirará junto con el servidor de Alu-Cultura)
     // Cursos asignados = asignados directamente + cursos del rol (igual que
     // db_read_for_participant), sin cursos en construcción. Completado = certificado.
     case 'kpi_humildad':
         if ($method !== 'GET') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
-        $kpiKey = kpi_api_key();
-        if ($kpiKey === '' || !hash_equals($kpiKey, (string)($_SERVER['HTTP_X_API_KEY'] ?? ''))) {
-            http_response_code(401);
-            echo json_encode(['error' => 'API key invalida']);
-            break;
+        $idToken = bearer_token();
+        if ($idToken !== null) {
+            $fb = firebase_config();
+            try {
+                $claims = verificar_id_token($idToken, $fb['firebase_project_id'], $fb['firebase_emulador']);
+            } catch (Throwable $e) {
+                http_response_code(401);
+                echo json_encode(['error' => 'Sesión inválida o expirada'], JSON_UNESCAPED_UNICODE);
+                break;
+            }
+            try {
+                $ci = ci_de_usuario_firebase($idToken, $fb['firebase_project_id'], $claims['sub'], $fb['firestore_emulador_host']);
+            } catch (Throwable $e) {
+                http_response_code(502);
+                echo json_encode(['error' => 'No se pudo leer tu perfil'], JSON_UNESCAPED_UNICODE);
+                break;
+            }
+            if ($ci === null) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Tu usuario no tiene cédula registrada en Opening Checklist'], JSON_UNESCAPED_UNICODE);
+                break;
+            }
+        } else {
+            $kpiKey = kpi_api_key();
+            if ($kpiKey === '' || !hash_equals($kpiKey, (string)($_SERVER['HTTP_X_API_KEY'] ?? ''))) {
+                http_response_code(401);
+                echo json_encode(['error' => 'API key invalida']);
+                break;
+            }
+            $ci = preg_replace('/[^0-9]/', '', (string)($_GET['ci'] ?? ''));
+            if ($ci === '') { http_response_code(400); echo json_encode(['error' => 'ci requerido']); break; }
         }
-        $ci = preg_replace('/[^0-9]/', '', (string)($_GET['ci'] ?? ''));
-        if ($ci === '') { http_response_code(400); echo json_encode(['error' => 'ci requerido']); break; }
         try {
             $stmt = $conn->prepare(
                 "SELECT u.nombre, u.rol, rc.nombre AS rol_nombre
