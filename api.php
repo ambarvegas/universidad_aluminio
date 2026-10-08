@@ -98,6 +98,22 @@ function is_admin(): bool {
     return in_array($_SESSION['user_rol'] ?? '', ['admin', 'supervisor'], true);
 }
 
+/**
+ * Clave para integraciones servidor a servidor (dashboard Alu-Cultura).
+ * Se lee de la variable de entorno KPI_API_KEY o, en hosting compartido, de
+ * config.local.php (no versionado; ver config.local.example.php).
+ * Sin clave configurada, el endpoint queda deshabilitado.
+ */
+function kpi_api_key(): string {
+    $key = getenv('KPI_API_KEY');
+    if ($key) return $key;
+    $file = __DIR__ . '/config.local.php';
+    if (is_file($file)) {
+        $cfg = include $file;
+        if (is_array($cfg) && !empty($cfg['kpi_api_key'])) return (string)$cfg['kpi_api_key'];
+    }
+    return '';
+}
 
 // ============================================================
 // ROUTER
@@ -1005,6 +1021,64 @@ switch ($action) {
                 'codigo'  => $codigo,
                 'mensaje' => 'El código de verificación no corresponde a ningún certificado oficial o ha sido revocado.'
             ], JSON_UNESCAPED_UNICODE);
+        }
+        break;
+
+    // ------ KPI HUMILDAD PARA ALU-CULTURA (servidor a servidor) ---
+    // GET api.php?action=kpi_humildad&ci=25482938   Header: X-Api-Key: <clave>
+    // Cursos asignados = asignados directamente + cursos del rol (igual que
+    // db_read_for_participant), sin cursos en construcción. Completado = certificado.
+    case 'kpi_humildad':
+        if ($method !== 'GET') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $kpiKey = kpi_api_key();
+        if ($kpiKey === '' || !hash_equals($kpiKey, (string)($_SERVER['HTTP_X_API_KEY'] ?? ''))) {
+            http_response_code(401);
+            echo json_encode(['error' => 'API key invalida']);
+            break;
+        }
+        $ci = preg_replace('/[^0-9]/', '', (string)($_GET['ci'] ?? ''));
+        if ($ci === '') { http_response_code(400); echo json_encode(['error' => 'ci requerido']); break; }
+        try {
+            $stmt = $conn->prepare(
+                "SELECT u.nombre, u.rol, rc.nombre AS rol_nombre
+                 FROM `usuarios` u LEFT JOIN `roles_config` rc ON rc.id = u.rol
+                 WHERE u.id = ? AND u.estado = 'activo'"
+            );
+            $stmt->bind_param('s', $ci);
+            $stmt->execute();
+            $u = $stmt->get_result()->fetch_assoc();
+            if (!$u) { http_response_code(404); echo json_encode(['error' => 'Usuario no encontrado']); break; }
+
+            $stmt = $conn->prepare(
+                "SELECT
+                    COUNT(*)                       AS asignados,
+                    SUM(cert.curso_id IS NOT NULL) AS completados,
+                    SUM(cert.curso_id IS NULL
+                        AND JSON_LENGTH(COALESCE(p.lecciones_completadas, JSON_ARRAY())) > 0) AS en_progreso
+                 FROM (
+                    SELECT curso_id FROM `usuario_asignados` WHERE usuario_id = ?
+                    UNION
+                    SELECT curso_id FROM `rol_cursos` WHERE rol_id = ?
+                 ) a
+                 JOIN `cursos` c ON c.id = a.curso_id AND c.en_construccion = 0
+                 LEFT JOIN `usuario_certificados_curso` cert ON cert.usuario_id = ? AND cert.curso_id = a.curso_id
+                 LEFT JOIN `usuario_progreso` p              ON p.usuario_id    = ? AND p.curso_id    = a.curso_id"
+            );
+            $stmt->bind_param('ssss', $ci, $u['rol'], $ci, $ci);
+            $stmt->execute();
+            $r = $stmt->get_result()->fetch_assoc();
+
+            echo json_encode([
+                'nombre'      => $u['nombre'],
+                'rol'         => $u['rol'],
+                'rol_nombre'  => $u['rol_nombre'] ?: $u['rol'],
+                'asignados'   => (int)($r['asignados']   ?? 0),
+                'completados' => (int)($r['completados'] ?? 0),
+                'en_progreso' => (int)($r['en_progreso'] ?? 0),
+            ], JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Error al calcular KPI']);
         }
         break;
 

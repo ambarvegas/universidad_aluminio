@@ -21,3 +21,6 @@ Thumbs.db
 *.zip
 *.tar.gz
 *.7z
+
+# Configuración local con secretos (ver config.local.example.php)
+config.local.php
