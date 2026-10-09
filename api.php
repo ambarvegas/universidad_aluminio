@@ -1043,7 +1043,9 @@ switch ($action) {
     // ------ KPI HUMILDAD PARA ALU-CULTURA --------------------------
     // a) App:      GET api.php?action=kpi_humildad
     //              Header: Authorization: Bearer <ID token de Firebase (Opening Checklist)>
-    //              La cédula sale del perfil users/{uid}.ci; el parámetro ci se ignora.
+    //              La cédula sale del perfil users/{uid}.ci. Si users/{uid}.role es
+    //              admin o superadmin, &ci=<cédula> consulta a otra persona (modo
+    //              "Ver como" de la app); para el resto el parámetro ci se ignora.
     // b) Servidor: GET api.php?action=kpi_humildad&ci=25482938   Header: X-Api-Key: <clave>
     //              (ruta heredada, se retirará junto con el servidor de Alu-Cultura)
     // Cursos asignados = asignados directamente + cursos del rol (igual que
@@ -1061,12 +1063,14 @@ switch ($action) {
                 break;
             }
             try {
-                $ci = ci_de_usuario_firebase($idToken, $fb['firebase_project_id'], $claims['sub'], $fb['firestore_emulador_host']);
+                $perfil = perfil_usuario_firebase($idToken, $fb['firebase_project_id'], $claims['sub'], $fb['firestore_emulador_host']);
             } catch (Throwable $e) {
                 http_response_code(502);
                 echo json_encode(['error' => 'No se pudo leer tu perfil'], JSON_UNESCAPED_UNICODE);
                 break;
             }
+            $ciSolicitada = isset($_GET['ci']) && is_string($_GET['ci']) ? $_GET['ci'] : null;
+            $ci = ci_objetivo($perfil, $ciSolicitada);
             if ($ci === null) {
                 http_response_code(403);
                 echo json_encode(['error' => 'Tu usuario no tiene cédula registrada en Opening Checklist'], JSON_UNESCAPED_UNICODE);

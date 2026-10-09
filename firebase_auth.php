@@ -95,12 +95,12 @@ function verificar_id_token(string $jwt, string $projectId, bool $emulador = fal
 }
 
 /**
- * Cédula (sólo dígitos) del perfil users/{uid} de Opening Checklist, leída
- * con el propio ID token del usuario (se aplican las reglas de Firestore).
- * Devuelve null si el documento no existe o no tiene ci.
+ * Perfil users/{uid} de Opening Checklist, leído con el propio ID token del
+ * usuario (se aplican las reglas de Firestore): ['ci' => dígitos|null, 'role' => string|null].
+ * Devuelve null si el documento no existe.
  * Lanza RuntimeException ante otros errores HTTP o de red.
  */
-function ci_de_usuario_firebase(string $idToken, string $projectId, string $uid, ?string $emuladorFirestore = null): ?string {
+function perfil_usuario_firebase(string $idToken, string $projectId, string $uid, ?string $emuladorFirestore = null): ?array {
     $raiz = $emuladorFirestore ? "http://$emuladorFirestore/v1" : 'https://firestore.googleapis.com/v1';
     $url = "$raiz/projects/" . rawurlencode($projectId) . '/databases/(default)/documents/users/' . rawurlencode($uid);
     $bearer = $emuladorFirestore ? 'owner' : $idToken;
@@ -121,10 +121,39 @@ function ci_de_usuario_firebase(string $idToken, string $projectId, string $uid,
     if ($status !== 200) throw new RuntimeException("Firestore HTTP $status");
 
     $doc = json_decode($resp, true);
-    $campo = is_array($doc) ? ($doc['fields']['ci'] ?? null) : null;
-    if (!is_array($campo)) return null;
-    $valor = $campo['stringValue'] ?? $campo['integerValue'] ?? null;
-    if (!is_string($valor) && !is_int($valor)) return null;
-    $ci = preg_replace('/[^0-9]/', '', (string)$valor);
-    return $ci === '' ? null : $ci;
+    $campos = is_array($doc) && is_array($doc['fields'] ?? null) ? $doc['fields'] : [];
+
+    $ci = null;
+    $campo = $campos['ci'] ?? null;
+    $valor = is_array($campo) ? ($campo['stringValue'] ?? $campo['integerValue'] ?? null) : null;
+    if (is_string($valor) || is_int($valor)) {
+        $digitos = preg_replace('/[^0-9]/', '', (string)$valor);
+        $ci = $digitos === '' ? null : $digitos;
+    }
+
+    $rol = $campos['role']['stringValue'] ?? null;
+    return ['ci' => $ci, 'role' => is_string($rol) ? $rol : null];
+}
+
+/**
+ * Cédula (sólo dígitos) del perfil users/{uid}. Null si el documento no
+ * existe o no tiene ci. Lanza RuntimeException ante otros errores.
+ */
+function ci_de_usuario_firebase(string $idToken, string $projectId, string $uid, ?string $emuladorFirestore = null): ?string {
+    $perfil = perfil_usuario_firebase($idToken, $projectId, $uid, $emuladorFirestore);
+    return $perfil['ci'] ?? null;
+}
+
+/**
+ * Cédula a consultar (función pura). Sólo admin/superadmin (exacto) pueden
+ * pedir otra cédula con ?ci= (modo "Ver como"); el resto recibe siempre la suya.
+ * Devuelve null si no hay cédula aplicable.
+ */
+function ci_objetivo(?array $perfil, ?string $ciSolicitada): ?string {
+    if ($perfil === null) return null;
+    $pedida = preg_replace('/[^0-9]/', '', (string)$ciSolicitada);
+    $rol = $perfil['role'] ?? null;
+    if ($pedida !== '' && ($rol === 'admin' || $rol === 'superadmin')) return $pedida;
+    $propia = preg_replace('/[^0-9]/', '', (string)($perfil['ci'] ?? ''));
+    return $propia === '' ? null : $propia;
 }
