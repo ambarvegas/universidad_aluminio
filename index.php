@@ -19,6 +19,7 @@ if (!function_exists('v_asset')) {
     <title>Campus Virtual — Universidad del Aluminio</title>
     <meta name="description" content="Campus virtual de formación técnica de la Universidad del Aluminio. Accede a tus cursos, evalúa tus competencias y certifica tu aprendizaje.">
     <meta name="theme-color" content="#0f2b48">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="UniAluminio">
@@ -32,7 +33,6 @@ if (!function_exists('v_asset')) {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet" />
     <link rel="stylesheet" href="<?= v_asset('style.css') ?>" />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
     <!-- Spinner de Carga Inicial -->
@@ -449,7 +449,7 @@ if (!function_exists('v_asset')) {
 
     <footer class="py-4 text-center mt-5">
         <div class="container">
-            <p class="mb-0 text-white-50">© 2026 Universidad del Aluminio • Desarrollado por Ambar Vegas &bull; <a href="clear_cache.php?to=index.php" class="text-white-50 text-decoration-none small" title="Limpiar Caché y Actualizar a la última versión"><i class="bi bi-arrow-repeat me-1"></i>Actualizar Plataforma</a></p>
+            <p class="mb-0 text-white-50">© 2026 Universidad del Aluminio • Desarrollado por Ambar Vegas</p>
         </div>
     </footer>
 

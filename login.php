@@ -19,6 +19,7 @@ if (!function_exists('v_asset')) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Acceso al Campus Virtual — Universidad del Aluminio</title>
     <meta name="theme-color" content="#0f2b48">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="UniAluminio">
     <link rel="manifest" href="manifest.json">
@@ -168,11 +169,6 @@ if (!function_exists('v_asset')) {
                 <button type="button" class="btn btn-outline-primary btn-sm px-3 mb-3" data-bs-toggle="modal" data-bs-target="#registroModal">
                     <i class="bi bi-person-plus me-1"></i> Solicitar Cuenta de Acceso
                 </button>
-                <div>
-                    <a href="clear_cache.php?to=login.php" class="text-decoration-none text-muted small" title="Forzar actualización de la aplicación">
-                        <i class="bi bi-arrow-repeat me-1"></i>Actualizar / Limpiar Caché
-                    </a>
-                </div>
             </div>
         </form>
     </div>

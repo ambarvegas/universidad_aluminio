@@ -6,7 +6,7 @@
 // ============================================================
 // GESTIÓN DE VERSIONES Y HARD RESET AUTOMÁTICO
 // ============================================================
-const APP_CLIENT_VERSION = '2026.09.14.v6';
+const APP_CLIENT_VERSION = '2026.10.13.v7';
 
 (function verificarVersionCliente() {
     try {
@@ -29,55 +29,6 @@ const APP_CLIENT_VERSION = '2026.09.14.v6';
         console.warn('Error en verificación de versión:', e);
     }
 })();
-
-/**
- * Función global para forzar hard reset de caché, desregistrar Service Worker y recargar.
- */
-window.forzarHardReset = async function (btnElement) {
-    let originalHtml = '';
-    if (btnElement) {
-        originalHtml = btnElement.innerHTML;
-        btnElement.disabled = true;
-        btnElement.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Actualizando...';
-    }
-
-    try {
-        // 1. Desregistrar Service Workers
-        if ('serviceWorker' in navigator) {
-            const regs = await navigator.serviceWorker.getRegistrations();
-            for (const reg of regs) {
-                await reg.unregister();
-            }
-        }
-
-        // 2. Borrar todos los caches de Cache Storage
-        if ('caches' in window) {
-            const keys = await caches.keys();
-            for (const key of keys) {
-                await caches.delete(key);
-            }
-        }
-
-        // 3. Limpiar almacenamiento de sesión y marcar nueva versión
-        sessionStorage.clear();
-        localStorage.setItem('unialuminio_build_ver', APP_CLIENT_VERSION);
-
-        // 4. Mostrar aviso si existe toast
-        if (typeof showToast === 'function') {
-            showToast('Caché purgada. Sincronizando con la última versión del servidor...', 'success');
-        }
-
-        // 5. Redireccionar con parámetro anti-caché
-        setTimeout(() => {
-            const url = new URL(window.location.href);
-            url.searchParams.set('v_reset', Date.now());
-            window.location.href = url.toString();
-        }, 300);
-    } catch (err) {
-        console.error('Error durante hard reset:', err);
-        window.location.reload(true);
-    }
-};
 
 // ============================================================
 // CICLO DE VIDA Y BOOTSTRAP DE LA APLICACIÓN

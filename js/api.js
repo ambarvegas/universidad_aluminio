@@ -194,6 +194,16 @@ window.API = (() => {
             }
         },
 
+        // ---- HABILITAR REINTENTO (conserva historial de reprobaciones) ----
+        async habilitarReintento(payload) {
+            _setSaving(true);
+            try {
+                return await _post('habilitar_reintento', payload);
+            } finally {
+                _setSaving(false);
+            }
+        },
+
         // ---- USUARIOS ----
         async cargarUsuariosPaginados({ page = 1, limit = 25, search = '', rol = '', estado = '' } = {}) {
             const params = new URLSearchParams();
@@ -327,4 +337,40 @@ window.API = (() => {
             return _post('notificar_usuario', payload);
         }
     };
+})();
+
+/**
+ * Latido de sesión: mantiene viva la sesión PHP mientras la pestaña esté abierta.
+ * Ver videos (YouTube embebido) no genera peticiones al servidor, por lo que sin este
+ * latido la sesión expiraba por inactividad a mitad de una lección.
+ */
+(function iniciarLatidoSesion() {
+    const INTERVALO_MS = 10 * 60 * 1000;
+    const MINIMO_ENTRE_LATIDOS_MS = 2 * 60 * 1000;
+    const path = window.location.pathname;
+    if (path.includes('login.php') || path.includes('login.html')) return;
+
+    let ultimoLatido = Date.now();
+
+    async function latir() {
+        if (!sessionStorage.getItem('aluSesion')) return;
+        ultimoLatido = Date.now();
+        try {
+            const r = await window.API.ping();
+            if (r && r.authenticated === false) {
+                // La sesión ya no existe en el servidor: mismo tratamiento que un 401
+                sessionStorage.removeItem('aluSesion');
+                window.location.href = 'login.php?expired=1';
+            }
+        } catch (_) {
+            // Sin conexión momentánea: se reintenta en el siguiente latido
+        }
+    }
+
+    setInterval(latir, INTERVALO_MS);
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && Date.now() - ultimoLatido > MINIMO_ENTRE_LATIDOS_MS) {
+            latir();
+        }
+    });
 })();

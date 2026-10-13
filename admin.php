@@ -19,6 +19,7 @@ if (!function_exists('v_asset')) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Panel de Control Académico — Universidad del Aluminio</title>
     <meta name="theme-color" content="#0f2b48">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="UniAluminio Admin">
     <link rel="manifest" href="manifest.json">
@@ -31,8 +32,9 @@ if (!function_exists('v_asset')) {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
     <link rel="stylesheet" href="<?= v_asset('style.css') ?>">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js" defer></script>
     <style>
         .btn-xs {
             padding: 0.15rem 0.4rem;
@@ -100,9 +102,6 @@ if (!function_exists('v_asset')) {
                     <p class="text-muted small mb-0">Gestión de cursos, colaboradores, estructura curricular y métricas institucionales.</p>
                 </div>
                 <div class="d-flex gap-2">
-                    <button class="btn btn-outline-secondary btn-sm shadow-sm" onclick="window.forzarHardReset(this)" title="Limpiar caché del navegador, desregistrar Service Worker y recargar última versión">
-                        <i class="bi bi-arrow-repeat me-1"></i>Limpiar Caché / Forzar Actualización
-                    </button>
                     <button class="btn btn-outline-primary btn-sm shadow-sm" onclick="refrescarDatosAdmin(this)" title="Sincronizar todo con el servidor">
                         <i class="bi bi-arrow-clockwise me-1"></i>Sincronizar Servidor
                     </button>
@@ -444,6 +443,8 @@ if (!function_exists('v_asset')) {
                                     <option value="aprobado">Aprobados</option>
                                     <option value="reprobado">Reprobados</option>
                                     <option value="manual">Marcados Manualmente</option>
+                                    <option value="bloqueado">Bloqueados (sin intentos)</option>
+                                    <option value="habilitado">Con reintento habilitado</option>
                                 </select>
                             </div>
                             <div class="col-6 col-md-2">
@@ -519,11 +520,12 @@ if (!function_exists('v_asset')) {
                                     <th style="width: 95px;">Intentos</th>
                                     <th>Modalidad</th>
                                     <th>Fecha</th>
+                                    <th class="text-end" style="width: 130px;">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody id="tabla-evaluaciones-body">
                                 <tr>
-                                    <td colspan="9" class="text-center py-4 text-muted">
+                                    <td colspan="10" class="text-center py-4 text-muted">
                                         <div class="spinner-border spinner-border-sm text-primary me-2"></div>Cargando registro de evaluaciones...
                                     </td>
                                 </tr>
@@ -1390,8 +1392,7 @@ if (!function_exists('v_asset')) {
                         <p class="mb-0">Consultando métricas de salud del servidor en tiempo real...</p>
                     </div>
                 </div>
-                <div class="modal-footer bg-light d-flex justify-content-between">
-                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="window.forzarHardReset(this)"><i class="bi bi-trash3 me-1"></i>Purgar Caché y Forzar Hard Reset</button>
+                <div class="modal-footer bg-light d-flex justify-content-end">
                     <div>
                         <button type="button" class="btn btn-outline-secondary" onclick="cargarEstadoSistemaModal()"><i class="bi bi-arrow-clockwise me-1"></i>Actualizar Métricas</button>
                         <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Cerrar</button>

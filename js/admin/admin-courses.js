@@ -86,15 +86,8 @@
         if (fileInput) fileInput.value = "";
     };
 
-    function escapeAttr(str) {
-        if (!str) return '';
-        return String(str)
-            .replace(/&/g, '&amp;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
-    }
+    // Helper global definido en js/core/state.js
+    const escapeAttr = window.escapeHtml;
 
     window.abrirEditor = (id) => {
         try {

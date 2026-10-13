@@ -59,6 +59,17 @@ function verificarAccesoLeccion(mIdx, lIdx) {
 }
 window.verificarAccesoLeccion = verificarAccesoLeccion;
 
+/**
+ * Límite de intentos del módulo + intentos adicionales habilitados por un administrador.
+ * 0 significa intentos ilimitados.
+ */
+function obtenerMaxIntentosEfectivo(modulo, progreso, mIdx) {
+    const base = (modulo.maxIntentos !== undefined) ? (parseInt(modulo.maxIntentos) || 0) : (parseInt(modulo.max_intentos) || 0);
+    if (base <= 0) return 0;
+    const extra = parseInt(progreso?.intentosExtra?.[mIdx]) || 0;
+    return base + extra;
+}
+
 function normalizarCurso(curso) {
     if (!curso) return null;
     curso.modulos = Array.isArray(curso.modulos) ? curso.modulos.map(mod => ({
@@ -419,8 +430,8 @@ window.mostrarEvaluacionModulo = (cursoID, mIdx) => {
         return;
     }
 
-    // Verificar límite de intentos
-    const maxIntentos = (modulo.maxIntentos !== undefined) ? (parseInt(modulo.maxIntentos) || 0) : (parseInt(modulo.max_intentos) || 0);
+    // Verificar límite de intentos (incluye reintentos habilitados por administración)
+    const maxIntentos = obtenerMaxIntentosEfectivo(modulo, progreso, mIdx);
     const intentosActuales = (progreso.intentos && progreso.intentos[mIdx]) ? (parseInt(progreso.intentos[mIdx]) || 0) : 0;
     const bloqueadoPorIntentos = (maxIntentos > 0 && intentosActuales >= maxIntentos);
 
@@ -637,7 +648,13 @@ window.validarEvaluacionModulo = async (mIdx) => {
 
         // 5. Actualizar sesión y progreso local con la respuesta autorizada del servidor
         if (!sesion.progreso) sesion.progreso = {};
-        sesion.progreso[cursoActualData.id] = res.progreso;
+        const progPrevio = sesion.progreso[cursoActualData.id] || {};
+        sesion.progreso[cursoActualData.id] = {
+            ...res.progreso,
+            // El servidor no reenvía los reintentos habilitados en esta respuesta; conservarlos
+            intentosExtra: progPrevio.intentosExtra || {},
+            habilitaciones: progPrevio.habilitaciones || {}
+        };
         if (Array.isArray(res.certificadosCurso)) {
             sesion.certificadosCurso = res.certificadosCurso;
         }
@@ -917,7 +934,7 @@ function renderizarCursoTeachlr(curso) {
                         ) && !moduloAprobado;
 
                         const intentosRealizados = progreso.intentos ? (parseInt(progreso.intentos[idx]) || 0) : 0;
-                        const intentosMaximos = (mod.maxIntentos !== undefined) ? (parseInt(mod.maxIntentos) || 0) : (parseInt(mod.max_intentos) || 0);
+                        const intentosMaximos = obtenerMaxIntentosEfectivo(mod, progreso, idx);
                         const intentosAgotados = (intentosMaximos > 0 && intentosRealizados >= intentosMaximos && !moduloAprobado);
 
                         let estadoEvaluacion = 'pendiente';

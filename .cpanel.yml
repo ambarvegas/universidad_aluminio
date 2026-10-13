@@ -2,11 +2,14 @@
 deployment:
   tasks:
     - export DEPLOYPATH=/home/alufletes/aluminiologo.oo.gd/formaciones
-    - /bin/cp index.html $DEPLOYPATH
-    - /bin/cp admin.html $DEPLOYPATH
-    - /bin/cp detalle.html $DEPLOYPATH
-    - /bin/cp login.html $DEPLOYPATH
-    - /bin/cp script.js $DEPLOYPATH
-    - /bin/cp script_new.js $DEPLOYPATH
-    - /bin/cp style.css $DEPLOYPATH
-    - /bin/cp api.php $DEPLOYPATH
+    - /bin/mkdir -p $DEPLOYPATH/js $DEPLOYPATH/tools $DEPLOYPATH/uploads
+    # Páginas y API (PHP), configuración Apache, PWA y assets raíz
+    - /bin/cp *.php $DEPLOYPATH/
+    - /bin/cp .htaccess manifest.json sw.js script.js style.css icon-192.png icon-512.png $DEPLOYPATH/
+    # Módulos JavaScript (js/admin, js/campus, js/core, js/features, js/ui)
+    - /bin/cp -R js/. $DEPLOYPATH/js/
+    # Herramientas de servidor (cron de respaldo y migraciones; bloqueadas por .htaccess)
+    - /bin/cp -R tools/. $DEPLOYPATH/tools/
+    # Uploads: protección del directorio y archivos versionados sin sobrescribir los subidos en el servidor
+    - /bin/cp uploads/.htaccess $DEPLOYPATH/uploads/
+    - /bin/cp -n uploads/* $DEPLOYPATH/uploads/

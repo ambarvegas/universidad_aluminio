@@ -820,9 +820,22 @@ function _obtenerTodasEvaluaciones() {
                 const calif = typeof ev.calificacion === 'number' ? ev.calificacion : (typeof ev.nota === 'number' ? ev.nota : 0);
                 const aprobado = typeof ev.aprobado === 'boolean' ? ev.aprobado : (calif >= 70);
                 const marcadoManual = !!ev.marcadoManual;
-                const intentos = parseInt(intentosObj[modNum]) || 1;
+                const intentosReales = parseInt(intentosObj[modNum]) || 0;
+                const intentos = intentosReales || 1;
                 const fecha = ev.fecha || '';
                 const fechaTimestamp = fecha ? new Date(fecha).getTime() : 0;
+
+                // Reprobaciones históricas: los intentos nunca se borran al habilitar un reintento
+                const vecesReprobado = aprobado
+                    ? (marcadoManual ? intentosReales : Math.max(0, intentosReales - 1))
+                    : Math.max(intentosReales, 1);
+                const moduloObj = cursoObj && Array.isArray(cursoObj.modulos) ? cursoObj.modulos[modIdx] : null;
+                const maxIntentosBase = moduloObj ? (parseInt(moduloObj.maxIntentos ?? moduloObj.max_intentos) || 0) : 0;
+                const intentosExtra = parseInt(progCurso.intentosExtra?.[modNumStr]) || 0;
+                const maxIntentosEfectivo = maxIntentosBase > 0 ? maxIntentosBase + intentosExtra : 0;
+                const habilitaciones = Array.isArray(progCurso.habilitaciones?.[modNumStr]) ? progCurso.habilitaciones[modNumStr] : [];
+                const bloqueado = !aprobado && maxIntentosEfectivo > 0 && intentosReales >= maxIntentosEfectivo;
+                const reintentoPendiente = !aprobado && intentosExtra > 0 && !bloqueado;
 
                 lista.push({
                     usuarioId: u.id,
@@ -837,6 +850,14 @@ function _obtenerTodasEvaluaciones() {
                     aprobado: aprobado,
                     marcadoManual: marcadoManual,
                     intentos: intentos,
+                    vecesReprobado: vecesReprobado,
+                    maxIntentosBase: maxIntentosBase,
+                    maxIntentosEfectivo: maxIntentosEfectivo,
+                    intentosExtra: intentosExtra,
+                    habilitaciones: habilitaciones,
+                    bloqueado: bloqueado,
+                    reintentoPendiente: reintentoPendiente,
+                    puedeHabilitar: !aprobado && intentosReales >= 1,
                     fecha: fecha,
                     fechaTimestamp: isNaN(fechaTimestamp) ? 0 : fechaTimestamp
                 });
@@ -943,6 +964,154 @@ function _obtenerBadgeCalificacion(calificacion) {
     }
 }
 
+// ============================================================
+// REINTENTOS HABILITADOS (evaluaciones reprobadas)
+// ============================================================
+
+function _formatearFechaCorta(fecha) {
+    if (!fecha) return '—';
+    const f = new Date(String(fecha).replace(' ', 'T'));
+    return isNaN(f.getTime()) ? String(fecha) : f.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function _htmlEstadoEvaluacion(e, extraClass = '') {
+    if (e.aprobado) {
+        return `<span class="badge bg-success text-white ${extraClass} px-2 py-1"><i class="bi bi-check-circle-fill me-1"></i>Aprobado</span>`;
+    }
+    let html = `<span class="badge bg-danger text-white ${extraClass} px-2 py-1"><i class="bi bi-x-circle-fill me-1"></i>Reprobado</span>`;
+    if (e.bloqueado) {
+        html += `<div class="mt-1"><span class="badge bg-dark text-white px-2 py-1"><i class="bi bi-lock-fill me-1"></i>Sin intentos</span></div>`;
+    } else if (e.reintentoPendiente) {
+        html += `<div class="mt-1"><span class="badge bg-info text-dark px-2 py-1"><i class="bi bi-unlock-fill me-1"></i>Reintento habilitado</span></div>`;
+    }
+    return html;
+}
+
+function _htmlIntentosEvaluacion(e) {
+    const limite = e.maxIntentosEfectivo > 0 ? ` / ${e.maxIntentosEfectivo}` : '';
+    let html = `<span class="badge bg-light text-dark border px-2 py-1" title="Intentos realizados${limite ? ' / límite vigente' : ''}">
+        <i class="bi bi-arrow-repeat me-1 text-muted"></i>${e.intentos}${limite}
+    </span>`;
+    if (e.vecesReprobado > 0) {
+        html += `<div class="small text-danger fw-semibold mt-1" style="font-size: 0.72rem;">${e.vecesReprobado} reprobado${e.vecesReprobado !== 1 ? 's' : ''}</div>`;
+    }
+    if (e.habilitaciones.length > 0) {
+        const detalle = e.habilitaciones.map(h =>
+            `${_formatearFechaCorta(h.fecha)}: +${h.intentosOtorgados} (tras ${h.intentosPrevios} intento${h.intentosPrevios !== 1 ? 's' : ''})${h.motivo ? ' — ' + h.motivo : ''}${h.activo ? '' : ' [restablecido]'}`
+        ).join('\n');
+        html += `<div class="mt-1"><span class="badge bg-info bg-opacity-25 text-dark border border-info px-2 py-0" style="font-size: 0.7rem; cursor: help;" title="${escapeHtml(detalle)}">
+            <i class="bi bi-unlock me-1"></i>Habilitado ×${e.habilitaciones.length}
+        </span></div>`;
+    }
+    return html;
+}
+
+function _htmlAccionesEvaluacion(e) {
+    if (!e.puedeHabilitar) return '';
+    const args = [e.usuarioId, e.cursoId, String(e.moduloNum)].map(v => escapeHtml(JSON.stringify(String(v)))).join(', ');
+    return `<button type="button" class="btn btn-sm ${e.bloqueado ? 'btn-warning' : 'btn-outline-warning'} text-nowrap"
+                onclick="event.stopPropagation(); abrirModalHabilitarReintento(${args})"
+                title="Permitir volver a cursar y presentar la evaluación (conserva el historial de reprobaciones)">
+        <i class="bi bi-unlock-fill me-1"></i>Habilitar
+    </button>`;
+}
+
+/**
+ * Modal para habilitar un nuevo intento sobre un módulo reprobado.
+ */
+function abrirModalHabilitarReintento(usuarioId, cursoId, moduloNum) {
+    const e = _evaluacionesRaw.find(x => x.usuarioId === usuarioId && x.cursoId === cursoId && String(x.moduloNum) === String(moduloNum));
+    if (!e) return;
+
+    document.getElementById('modal-habilitar-reintento')?.remove();
+
+    const historialHtml = e.habilitaciones.length
+        ? `<ul class="small text-muted mb-0 ps-3">${e.habilitaciones.map(h => `
+            <li>${escapeHtml(_formatearFechaCorta(h.fecha))}: +${h.intentosOtorgados} intento(s) tras ${h.intentosPrevios} realizado(s)${h.motivo ? ' — ' + escapeHtml(h.motivo) : ''}${h.activo ? '' : ' <em>(restablecido)</em>'}</li>`).join('')}
+           </ul>`
+        : '<div class="small text-muted">Sin habilitaciones previas.</div>';
+
+    const limiteTxt = e.maxIntentosBase > 0
+        ? `${e.intentos} de ${e.maxIntentosEfectivo} intento(s) usados (límite del módulo: ${e.maxIntentosBase}${e.intentosExtra ? ` + ${e.intentosExtra} habilitado(s)` : ''})`
+        : `${e.intentos} intento(s) realizados (el módulo permite intentos ilimitados)`;
+
+    const modalDiv = document.createElement('div');
+    modalDiv.id = 'modal-habilitar-reintento';
+    modalDiv.className = 'modal fade';
+    modalDiv.tabIndex = -1;
+    modalDiv.innerHTML = `
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg" style="border-radius: 1rem; overflow: hidden;">
+                <div class="modal-header bg-warning text-dark border-0 py-3">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-unlock-fill me-2"></i>Habilitar reintento</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body px-4">
+                    <div class="mb-3">
+                        <div class="fw-bold text-dark">${escapeHtml(e.usuarioNombre)} <span class="text-muted fw-normal small">(CI: ${escapeHtml(e.usuarioId)})</span></div>
+                        <div class="small text-primary">${escapeHtml(e.cursoTitulo)}</div>
+                        <div class="small fw-semibold">${escapeHtml(e.moduloTitulo)}</div>
+                    </div>
+                    <div class="alert alert-light border small mb-3">
+                        <div><i class="bi bi-x-circle text-danger me-1"></i>Última calificación: <strong>${Math.round(e.calificacion)} pts</strong> — ${e.vecesReprobado} reprobación(es)</div>
+                        <div><i class="bi bi-arrow-repeat me-1"></i>${limiteTxt}</div>
+                    </div>
+                    ${e.maxIntentosBase > 0 ? `
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold" for="hab-intentos">Intentos adicionales a otorgar</label>
+                        <input type="number" class="form-control form-control-sm" id="hab-intentos" min="1" max="10" value="1" style="max-width: 120px;">
+                    </div>` : ''}
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="hab-repasar" checked>
+                        <label class="form-check-label small" for="hab-repasar">
+                            Exigir volver a cursar las lecciones del módulo antes de la evaluación
+                        </label>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold" for="hab-motivo">Motivo / observación (opcional)</label>
+                        <textarea class="form-control form-control-sm" id="hab-motivo" rows="2" maxlength="500" placeholder="Ej.: Solicitud del supervisor tras refuerzo presencial"></textarea>
+                    </div>
+                    <div class="small fw-semibold text-secondary mb-1">Historial de habilitaciones</div>
+                    ${historialHtml}
+                    <div class="small text-muted mt-3"><i class="bi bi-info-circle me-1"></i>Las reprobaciones e intentos previos se conservan en los reportes.</div>
+                </div>
+                <div class="modal-footer bg-light border-0 py-3 px-4">
+                    <button type="button" class="btn btn-secondary px-4 fw-semibold" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-warning px-4 fw-semibold shadow-sm" id="hab-btn-confirmar">
+                        <i class="bi bi-unlock-fill me-1"></i>Habilitar
+                    </button>
+                </div>
+            </div>
+        </div>`;
+    document.body.appendChild(modalDiv);
+
+    const bsModal = new bootstrap.Modal(modalDiv);
+    modalDiv.addEventListener('hidden.bs.modal', () => modalDiv.remove());
+
+    const btn = modalDiv.querySelector('#hab-btn-confirmar');
+    btn.addEventListener('click', async () => {
+        const payload = {
+            usuario_id: e.usuarioId,
+            curso_id: e.cursoId,
+            modulo_idx: parseInt(e.moduloNum, 10),
+            intentos: parseInt(modalDiv.querySelector('#hab-intentos')?.value, 10) || 1,
+            repasar_lecciones: modalDiv.querySelector('#hab-repasar').checked,
+            motivo: modalDiv.querySelector('#hab-motivo').value.trim()
+        };
+        try {
+            await window.withLoading(btn, () => window.API.habilitarReintento(payload), 'Habilitando...');
+            bsModal.hide();
+            showToast(`Reintento habilitado para ${e.usuarioNombre}. El historial de reprobaciones se conserva.`, 'success');
+            await cargarDatosDelServidor();
+            renderReporteEvaluaciones();
+        } catch (err) {
+            showToast('No se pudo habilitar el reintento: ' + err.message, 'danger');
+        }
+    });
+
+    bsModal.show();
+}
+
 /**
  * Inicializa selectores dinámicos de colaboradores y cursos para el filtro
  */
@@ -979,6 +1148,8 @@ function filtrarTablaEvaluaciones() {
         if (estadoVal === 'aprobado' && !item.aprobado) return false;
         if (estadoVal === 'reprobado' && item.aprobado) return false;
         if (estadoVal === 'manual' && !item.marcadoManual) return false;
+        if (estadoVal === 'bloqueado' && !item.bloqueado) return false;
+        if (estadoVal === 'habilitado' && item.habilitaciones.length === 0) return false;
 
         if (searchVal) {
             const matchSearch = item.usuarioNombre.toLowerCase().includes(searchVal) ||
@@ -1174,9 +1345,7 @@ function renderEvaluacionesAgrupadasPaginada() {
         u.evaluaciones.forEach((e, mIdx) => {
             const mBadgeInfo = _obtenerBadgeCalificacion(e.calificacion);
 
-            const estadoBadgeHtml = e.aprobado
-                ? `<span class="badge bg-success text-white px-2 py-1"><i class="bi bi-check-circle-fill me-1"></i>Aprobado</span>`
-                : `<span class="badge bg-danger text-white px-2 py-1"><i class="bi bi-x-circle-fill me-1"></i>Reprobado</span>`;
+            const estadoBadgeHtml = _htmlEstadoEvaluacion(e);
 
             const origenBadgeHtml = e.marcadoManual
                 ? `<span class="badge bg-warning text-dark border px-2 py-1"><i class="bi bi-pencil-square me-1"></i>Manual (Rectoría)</span>`
@@ -1221,14 +1390,13 @@ function renderEvaluacionesAgrupadasPaginada() {
                 </td>
                 <td>${estadoBadgeHtml}</td>
                 <td class="text-center">
-                    <span class="badge bg-light text-dark border px-2 py-1">
-                        <i class="bi bi-arrow-repeat me-1 text-muted"></i>${e.intentos}
-                    </span>
+                    ${_htmlIntentosEvaluacion(e)}
                 </td>
                 <td>${origenBadgeHtml}</td>
-                <td class="small text-muted pe-3" style="white-space: nowrap;">
+                <td class="small text-muted" style="white-space: nowrap;">
                     <i class="bi bi-calendar3 me-1 opacity-75"></i>${fechaFormat}
                 </td>
+                <td class="text-end pe-3">${_htmlAccionesEvaluacion(e)}</td>
             </tr>`;
         });
 
@@ -1292,7 +1460,8 @@ function renderEvaluacionesAgrupadasPaginada() {
                                 <th style="width: 110px;">Estado</th>
                                 <th style="width: 90px;" class="text-center">Intentos</th>
                                 <th>Modalidad</th>
-                                <th class="pe-3">Fecha</th>
+                                <th>Fecha</th>
+                                <th class="text-end pe-3">Acciones</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1316,7 +1485,7 @@ function renderTablaEvaluacionesPaginada() {
     if (!tbody) return;
 
     if (_evaluacionesFiltradas.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="9" class="text-center py-5 text-muted">
+        tbody.innerHTML = `<tr><td colspan="10" class="text-center py-5 text-muted">
             <i class="bi bi-search fs-3 d-block mb-2 text-muted opacity-50"></i>
             No se encontraron evaluaciones con los filtros aplicados.
         </td></tr>`;
@@ -1338,9 +1507,7 @@ function renderTablaEvaluacionesPaginada() {
         const iniciales = (e.usuarioNombre || 'U').split(' ').filter(Boolean).map(p => p[0]).slice(0, 2).join('').toUpperCase();
         const badgeInfo = _obtenerBadgeCalificacion(e.calificacion);
 
-        const estadoBadgeHtml = e.aprobado
-            ? `<span class="badge bg-success text-white shadow-sm px-2 py-1"><i class="bi bi-check-circle-fill me-1"></i>Aprobado</span>`
-            : `<span class="badge bg-danger text-white shadow-sm px-2 py-1"><i class="bi bi-x-circle-fill me-1"></i>Reprobado</span>`;
+        const estadoBadgeHtml = _htmlEstadoEvaluacion(e, 'shadow-sm');
 
         const origenBadgeHtml = e.marcadoManual
             ? `<span class="badge bg-warning text-dark border px-2 py-1"><i class="bi bi-pencil-square me-1"></i>Manual (Rectoría)</span>`
@@ -1398,14 +1565,13 @@ function renderTablaEvaluacionesPaginada() {
             </td>
             <td>${estadoBadgeHtml}</td>
             <td class="text-center">
-                <span class="badge bg-light text-dark border px-2 py-1">
-                    <i class="bi bi-arrow-repeat me-1 text-muted"></i>${e.intentos}
-                </span>
+                ${_htmlIntentosEvaluacion(e)}
             </td>
             <td>${origenBadgeHtml}</td>
             <td class="small text-muted" style="white-space: nowrap;">
                 <i class="bi bi-calendar3 me-1 opacity-75"></i>${fechaFormat}
             </td>
+            <td class="text-end">${_htmlAccionesEvaluacion(e)}</td>
         </tr>`;
     });
 
@@ -1508,6 +1674,9 @@ function exportarEvaluacionesXLSX() {
         'Calificación (pts)': e.calificacion,
         'Estado': e.aprobado ? 'APROBADO' : 'REPROBADO',
         'Intentos': e.intentos,
+        'Veces Reprobado': e.vecesReprobado,
+        'Reintentos Habilitados': e.habilitaciones.length,
+        'Intentos Extra Vigentes': e.intentosExtra,
         'Modalidad': e.marcadoManual ? 'Marcado Manual (Rectoría)' : 'Examen Online',
         'Fecha': e.fecha || 'Sin registro'
     }));
@@ -1528,6 +1697,9 @@ function exportarEvaluacionesXLSX() {
             { wch: 18 },  // Calificación
             { wch: 14 },  // Estado
             { wch: 10 },  // Intentos
+            { wch: 16 },  // Veces Reprobado
+            { wch: 22 },  // Reintentos Habilitados
+            { wch: 22 },  // Intentos Extra Vigentes
             { wch: 26 },  // Modalidad
             { wch: 22 }   // Fecha
         ];
@@ -1563,7 +1735,7 @@ function exportarEvaluacionesCSV() {
         return a.moduloNum - b.moduloNum;
     });
 
-    const headers = ['#', 'Cedula', 'Colaborador', 'Cargo', 'Codigo_Curso', 'Curso', 'Modulo', 'Calificacion', 'Estado', 'Intentos', 'Modalidad', 'Fecha'];
+    const headers = ['#', 'Cedula', 'Colaborador', 'Cargo', 'Codigo_Curso', 'Curso', 'Modulo', 'Calificacion', 'Estado', 'Intentos', 'Veces_Reprobado', 'Reintentos_Habilitados', 'Intentos_Extra_Vigentes', 'Modalidad', 'Fecha'];
     const rows = dataOrdenada.map((e, idx) => [
         idx + 1,
         `"${e.usuarioId}"`,
@@ -1575,6 +1747,9 @@ function exportarEvaluacionesCSV() {
         e.calificacion,
         e.aprobado ? 'APROBADO' : 'REPROBADO',
         e.intentos,
+        e.vecesReprobado,
+        e.habilitaciones.length,
+        e.intentosExtra,
         e.marcadoManual ? 'Manual' : 'Online',
         `"${(e.fecha || '').replace(/"/g, '""')}"`
     ]);
@@ -1621,7 +1796,7 @@ function imprimirReporteEvaluaciones() {
                     <td>${e.moduloTitulo}</td>
                     <td style="text-align:center; font-weight:bold; color:${e.aprobado ? '#059669' : '#dc2626'};">${e.calificacion.toFixed(1)} pts</td>
                     <td style="text-align:center;">${e.aprobado ? '<span style="color:#059669; font-weight:bold;">Aprobado</span>' : '<span style="color:#dc2626; font-weight:bold;">Reprobado</span>'}</td>
-                    <td style="text-align:center;">${e.intentos}</td>
+                    <td style="text-align:center;">${e.intentos}${e.vecesReprobado > 0 ? `<br><small style="color:#b91c1c;">${e.vecesReprobado} reprob.${e.habilitaciones.length ? ' · ' + e.habilitaciones.length + ' habilit.' : ''}</small>` : ''}</td>
                     <td>${e.marcadoManual ? 'Manual (Rectoría)' : 'Online'}</td>
                     <td style="font-size:11px;">${e.fecha || '—'}</td>
                 </tr>`;
@@ -1670,7 +1845,7 @@ function imprimirReporteEvaluaciones() {
                 <td>${e.moduloTitulo}</td>
                 <td style="text-align:center; font-weight:bold; color:${e.aprobado ? '#059669' : '#dc2626'};">${e.calificacion.toFixed(1)} pts</td>
                 <td style="text-align:center;">${e.aprobado ? '<span style="color:#059669; font-weight:bold;">Aprobado</span>' : '<span style="color:#dc2626; font-weight:bold;">Reprobado</span>'}</td>
-                <td style="text-align:center;">${e.intentos}</td>
+                <td style="text-align:center;">${e.intentos}${e.vecesReprobado > 0 ? `<br><small style="color:#b91c1c;">${e.vecesReprobado} reprob.${e.habilitaciones.length ? ' · ' + e.habilitaciones.length + ' habilit.' : ''}</small>` : ''}</td>
                 <td>${e.marcadoManual ? 'Manual (Rectoría)' : 'Online'}</td>
                 <td style="font-size:11px;">${e.fecha || '—'}</td>
             </tr>`;
@@ -1758,6 +1933,7 @@ function renderRobustReports() {
 // Exportar al scope global
 window.renderRobustReports            = renderRobustReports;
 window.renderReporteEvaluaciones     = renderReporteEvaluaciones;
+window.abrirModalHabilitarReintento  = abrirModalHabilitarReintento;
 window.renderVistaEvaluaciones       = renderVistaEvaluaciones;
 window.cambiarModoVistaEvaluaciones  = cambiarModoVistaEvaluaciones;
 window.expandirTodosColaboradores    = expandirTodosColaboradores;

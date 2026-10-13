@@ -24,3 +24,6 @@ Thumbs.db
 
 # Configuración local con secretos (ver config.local.example.php)
 config.local.php
+
+# Sesiones PHP (generadas por api.php)
+sessions/

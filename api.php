@@ -13,11 +13,30 @@
 // ============================================================
 // SESIÓN + HEADERS DE SEGURIDAD + CORS
 // ============================================================
+// Inactividad máxima del servidor antes de descartar la sesión. El cliente envía un
+// latido periódico (js/api.js) para que la sesión no expire mientras la pestaña está abierta,
+// p. ej. viendo un video largo sin hacer otras peticiones.
+const SESSION_IDLE_SECONDS = 8 * 3600;
+
 if (session_status() === PHP_SESSION_NONE) {
+    // Directorio propio: en hosting compartido el /tmp común lo limpian otras apps con el
+    // gc_maxlifetime por defecto (24 min), lo que cerraría sesiones aunque aquí sea mayor.
+    $sessionDir = __DIR__ . '/sessions';
+    if (!is_dir($sessionDir)) {
+        @mkdir($sessionDir, 0700, true);
+        @file_put_contents($sessionDir . '/.htaccess', "Require all denied\n");
+    }
+    if (is_dir($sessionDir) && is_writable($sessionDir)) {
+        session_save_path($sessionDir);
+    }
+    ini_set('session.gc_maxlifetime', (string)SESSION_IDLE_SECONDS);
+
+    $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
     session_set_cookie_params([
         'lifetime' => 0,             // Cookie de sesión (dura hasta cerrar el browser)
         'path'     => '/',
-        'secure'   => false,         // Cambiar a true en producción HTTPS
+        'secure'   => $isHttps,
         'httponly' => true,          // No accesible desde JS
         'samesite' => 'Lax',
     ]);
@@ -879,6 +898,40 @@ switch ($action) {
         }
         break;
 
+    // ------ HABILITAR REINTENTO DE EVALUACIÓN REPROBADA ------------
+    // Otorga intentos adicionales sin borrar el historial de reprobaciones.
+    case 'habilitar_reintento':
+        require_admin();
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body = jsonBody();
+        $uid  = trim((string)($body['usuario_id'] ?? ''));
+        $cid  = trim((string)($body['curso_id']   ?? ''));
+        $mIdx = isset($body['modulo_idx']) && is_numeric($body['modulo_idx']) ? (int)$body['modulo_idx'] : -1;
+        if (!$uid || !$cid || $mIdx < 0) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Se requieren usuario_id, curso_id y modulo_idx']);
+            break;
+        }
+        try {
+            $adminId = (string)($_SESSION['user_id'] ?? 'admin');
+            $res = db_habilitar_reintento(
+                $conn, $uid, $cid, $mIdx,
+                (int)($body['intentos'] ?? 1),
+                !empty($body['repasar_lecciones']),
+                (string)($body['motivo'] ?? ''),
+                $adminId
+            );
+            db_log_activity($conn, $adminId, 'HABILITAR_REINTENTO', "Usuario: $uid, Curso: $cid, Módulo: $mIdx, Intentos: {$res['intentosExtra']}", $_SERVER['REMOTE_ADDR'] ?? '');
+            echo json_encode($res, JSON_UNESCAPED_UNICODE);
+        } catch (InvalidArgumentException $e) {
+            http_response_code(400);
+            echo json_encode(['error' => $e->getMessage()]);
+        } catch (Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Error al habilitar reintento: ' . $e->getMessage()]);
+        }
+        break;
+
     // ------ SOLICITUDES ------------------------------------------
     case 'solicitar_acceso_curso':
         require_session();
@@ -1345,11 +1398,10 @@ switch ($action) {
         break;
 
     // ------ HEALTH CHECK (PING BASICO) ---------------------------
+    // Latido de sesión: session_start() ya renovó la marca de actividad de la sesión.
     case 'ping':
         echo json_encode([
             'status'       => 'ok',
-            'db'           => MYSQL_DB,
-            'host'         => MYSQL_HOST,
             'time'         => date('c'),
             'authenticated'=> !empty($_SESSION['user_id']),
             'user_id'      => $_SESSION['user_id'] ?? null,

@@ -172,9 +172,34 @@
         return texto ? texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : "";
     };
 
+    /**
+     * Escapa texto para insertarlo de forma segura en HTML (contenido o atributos).
+     * Usar SIEMPRE que se interpolen datos de usuario/BD en plantillas innerHTML.
+     */
+    const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    window.escapeHtml = function (str) {
+        if (str === null || str === undefined) return '';
+        return String(str).replace(/[&<>"']/g, ch => HTML_ESCAPES[ch]);
+    };
+    // Alias histórico usado por los módulos de administración
+    window.escapeAttr = window.escapeHtml;
+
+    /**
+     * Retrasa la ejecución de fn hasta que pasen `wait` ms sin nuevas llamadas.
+     * Útil para filtros en vivo (oninput) sobre listas grandes.
+     */
+    window.debounce = function (fn, wait = 200) {
+        let timer = null;
+        return function (...args) {
+            clearTimeout(timer);
+            timer = setTimeout(() => fn.apply(this, args), wait);
+        };
+    };
+
     window.extraerID = function (input) {
+        if (!input) return "";
         const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-        const match = input.match(regExp);
+        const match = String(input).match(regExp);
         return (match && match[2].length === 11) ? match[2] : input;
     };
 

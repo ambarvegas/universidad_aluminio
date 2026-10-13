@@ -16,6 +16,27 @@ define('MYSQL_DB',   getenv('DB_NAME') ?: 'alufletes_universidad');
 define('MYSQL_PORT', (int)(getenv('DB_PORT') ?: 3306));
 define('MYSQL_CHARSET', 'utf8mb4');
 
+// Historial de reintentos habilitados por un administrador sobre evaluaciones reprobadas.
+// Cada fila suma `intentos_otorgados` al límite del módulo mientras `activo` = 1; nunca se
+// borra al restablecer progreso (solo se desactiva) para conservar el historial en reportes.
+define('DB_SQL_USUARIO_HABILITACIONES', "CREATE TABLE IF NOT EXISTS `usuario_habilitaciones` (
+    `id`                  INT           NOT NULL AUTO_INCREMENT,
+    `usuario_id`          VARCHAR(50)   NOT NULL,
+    `curso_id`            VARCHAR(100)  NOT NULL,
+    `modulo_num`          VARCHAR(50)   NOT NULL,
+    `intentos_otorgados`  INT           NOT NULL DEFAULT 1,
+    `intentos_previos`    INT           NOT NULL DEFAULT 0,
+    `calificacion_previa` DECIMAL(5,2)  DEFAULT NULL,
+    `repasar_lecciones`   TINYINT(1)    NOT NULL DEFAULT 0,
+    `motivo`              VARCHAR(500)  NOT NULL DEFAULT '',
+    `admin_id`            VARCHAR(50)   NOT NULL DEFAULT '',
+    `fecha`               DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `activo`              TINYINT(1)    NOT NULL DEFAULT 1,
+    PRIMARY KEY (`id`),
+    INDEX `idx_uh_user_curso_mod` (`usuario_id`, `curso_id`, `modulo_num`),
+    FOREIGN KEY (`usuario_id`) REFERENCES `usuarios`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
 /**
  * Retorna una conexión mysqli activa.
  * Lanza una excepción si no puede conectarse.
@@ -341,6 +362,8 @@ function db_create_tables(mysqli $conn): void {
             INDEX `idx_ta_usado` (`usado`),
             FOREIGN KEY (`usuario_id`) REFERENCES `usuarios`(`id`) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        DB_SQL_USUARIO_HABILITACIONES,
     ];
 
     foreach ($statements as $sql) {
@@ -556,6 +579,13 @@ function db_read_all(mysqli $conn): array {
                     'intentos'             => empty($ints) ? (object)[] : $ints,
                 ];
             }
+        }
+    }
+
+    // Reintentos habilitados por administración (intentos extra + historial para reportes)
+    foreach (db_habilitaciones_map($conn) as $uid => $habUsuario) {
+        if (isset($usuariosMap[$uid])) {
+            $usuariosMap[$uid]['progreso'] = db_habilitaciones_aplicar_a_progreso($usuariosMap[$uid]['progreso'] ?? [], $habUsuario);
         }
     }
 
@@ -1371,6 +1401,8 @@ function db_verify_login(mysqli $conn, string $id, string $clave): ?array {
             ];
         }
     }
+    $habUsuario = db_habilitaciones_map($conn, $id)[$id] ?? [];
+    $usuario['progreso'] = db_habilitaciones_aplicar_a_progreso($usuario['progreso'] ?? [], $habUsuario);
     if (empty($usuario['progreso'])) $usuario['progreso'] = (object)[];
 
     // Certificados Curso
@@ -1552,7 +1584,8 @@ function db_read_catalogo(mysqli $conn, string $userId, string $userRol): array 
                 'intentos'             => is_array($ints) ? $ints : (object)[],
             ];
         }
-        $miUsuario['progreso'] = empty($userProg) ? (object)[] : $userProg;
+        $habUsuario = db_habilitaciones_map($conn, $userId)[$userId] ?? [];
+        $miUsuario['progreso'] = empty($userProg) ? (object)[] : db_habilitaciones_aplicar_a_progreso($userProg, $habUsuario);
 
         // Certificados
         $stmtCc = $conn->prepare("SELECT curso_id FROM `usuario_certificados_curso` WHERE usuario_id = ?");
@@ -2167,8 +2200,13 @@ function db_evaluar_modulo(mysqli $conn, string $userId, string $cursoId, int $m
         $prevIntentos = (int)$rInt['intentos'];
     }
 
+    // Límite efectivo = máximo del módulo + reintentos habilitados por un administrador
+    $maxIntentosBase = $maxIntentos;
+    $intentosExtra = $maxIntentos > 0 ? db_intentos_extra($conn, $userId, $cursoId, $mNumStr) : 0;
+    $maxIntentos += $intentosExtra;
+
     if (!$yaAprobado && $maxIntentos > 0 && $prevIntentos >= $maxIntentos) {
-        throw new InvalidArgumentException("Has alcanzado el límite máximo de $maxIntentos intentos permitidos para esta evaluación. Contacta a un administrador para restablecer tus intentos.");
+        throw new InvalidArgumentException("Has alcanzado el límite máximo de $maxIntentos intentos permitidos para esta evaluación. Contacta a un administrador para habilitar un nuevo intento.");
     }
 
     // 3. Obtener el banco de preguntas del módulo en orden
@@ -2498,6 +2536,8 @@ function db_evaluar_modulo(mysqli $conn, string $userId, string $cursoId, int $m
         'total'                => $total,
         'minAprobacion'        => $minAprobacion,
         'maxIntentos'          => $maxIntentos,
+        'maxIntentosBase'      => $maxIntentosBase,
+        'intentosExtra'        => $intentosExtra,
         'numIntentos'          => $numIntentos,
         'bloqueado'            => ($maxIntentos > 0 && !$aprobado && $numIntentos >= $maxIntentos),
         'intentosAgotados'     => $bloqueadoRecien,
@@ -2529,6 +2569,8 @@ function db_evaluar_modulo(mysqli $conn, string $userId, string $cursoId, int $m
  * @return array Estado resultante
  */
 function db_restablecer_progreso(mysqli $conn, string $userId, string $cursoId, ?array $modulos = null): array {
+    // Fuera de la transacción: un CREATE TABLE haría commit implícito
+    db_habilitaciones_ensure_table($conn);
     $conn->begin_transaction();
     try {
         $userId = trim($userId);
@@ -2560,6 +2602,11 @@ function db_restablecer_progreso(mysqli $conn, string $userId, string $cursoId, 
             $stmtIn = $conn->prepare("DELETE FROM `usuario_intentos` WHERE usuario_id = ? AND curso_id = ?");
             $stmtIn->bind_param('ss', $userId, $cursoId);
             $stmtIn->execute();
+
+            // Los reintentos habilitados dejan de sumar al límite, pero se conservan en el historial
+            $stmtHab = $conn->prepare("UPDATE `usuario_habilitaciones` SET activo = 0 WHERE usuario_id = ? AND curso_id = ?");
+            $stmtHab->bind_param('ss', $userId, $cursoId);
+            $stmtHab->execute();
 
             $stmtCert = $conn->prepare("DELETE FROM `usuario_certificados_curso` WHERE usuario_id = ? AND curso_id = ?");
             $stmtCert->bind_param('ss', $userId, $cursoId);
@@ -2609,6 +2656,10 @@ function db_restablecer_progreso(mysqli $conn, string $userId, string $cursoId, 
                 $sIn = $conn->prepare("DELETE FROM `usuario_intentos` WHERE usuario_id = ? AND curso_id = ? AND modulo_num = ?");
                 $sIn->bind_param('sss', $userId, $cursoId, $mNumStr);
                 $sIn->execute();
+
+                $sHab = $conn->prepare("UPDATE `usuario_habilitaciones` SET activo = 0 WHERE usuario_id = ? AND curso_id = ? AND modulo_num = ?");
+                $sHab->bind_param('sss', $userId, $cursoId, $mNumStr);
+                $sHab->execute();
 
                 // Eliminar lecciones con prefijo $mNumStr-
                 $prefix = $mNumStr . '-%';
@@ -2705,6 +2756,183 @@ function db_restablecer_progreso(mysqli $conn, string $userId, string $cursoId, 
     }
 }
 
+
+// ============================================================
+// HABILITACIÓN DE REINTENTOS (evaluaciones reprobadas)
+// ============================================================
+
+/**
+ * Garantiza que exista la tabla de habilitaciones (bases desplegadas antes de esta función).
+ * Se ejecuta una sola vez por petición.
+ */
+function db_habilitaciones_ensure_table(mysqli $conn): void {
+    static $verificada = false;
+    if ($verificada) return;
+    if (!$conn->query(DB_SQL_USUARIO_HABILITACIONES)) {
+        throw new RuntimeException('Error creando tabla usuario_habilitaciones: ' . $conn->error);
+    }
+    $verificada = true;
+}
+
+/**
+ * Devuelve las habilitaciones agrupadas: [usuario][curso] => ['intentosExtra' => [mod => n], 'habilitaciones' => [mod => [...]]].
+ * Si se indica $userId, solo las de ese usuario.
+ */
+function db_habilitaciones_map(mysqli $conn, ?string $userId = null): array {
+    db_habilitaciones_ensure_table($conn);
+    $sql = "SELECT id, usuario_id, curso_id, modulo_num, intentos_otorgados, intentos_previos, calificacion_previa,
+                   repasar_lecciones, motivo, admin_id, fecha, activo
+            FROM `usuario_habilitaciones`";
+    if ($userId !== null) {
+        $stmt = $conn->prepare($sql . " WHERE usuario_id = ? ORDER BY fecha ASC, id ASC");
+        $stmt->bind_param('s', $userId);
+        $stmt->execute();
+        $res = $stmt->get_result();
+    } else {
+        $res = $conn->query($sql . " ORDER BY fecha ASC, id ASC");
+    }
+
+    $map = [];
+    while ($res && $r = $res->fetch_assoc()) {
+        $u = $r['usuario_id']; $c = $r['curso_id']; $m = (string)$r['modulo_num'];
+        if (!isset($map[$u][$c])) $map[$u][$c] = ['intentosExtra' => [], 'habilitaciones' => []];
+        $activo = (bool)$r['activo'];
+        if ($activo) {
+            $map[$u][$c]['intentosExtra'][$m] = ($map[$u][$c]['intentosExtra'][$m] ?? 0) + (int)$r['intentos_otorgados'];
+        }
+        $map[$u][$c]['habilitaciones'][$m][] = [
+            'id'                 => (int)$r['id'],
+            'intentosOtorgados'  => (int)$r['intentos_otorgados'],
+            'intentosPrevios'    => (int)$r['intentos_previos'],
+            'calificacionPrevia' => $r['calificacion_previa'] !== null ? (float)$r['calificacion_previa'] : null,
+            'repasarLecciones'   => (bool)$r['repasar_lecciones'],
+            'motivo'             => $r['motivo'],
+            'adminId'            => $r['admin_id'],
+            'fecha'              => $r['fecha'],
+            'activo'             => $activo,
+        ];
+    }
+    return $map;
+}
+
+/**
+ * Inserta intentosExtra/habilitaciones en el progreso de un usuario (array curso => progreso).
+ */
+function db_habilitaciones_aplicar_a_progreso($progreso, array $mapUsuario) {
+    if (empty($mapUsuario)) return $progreso;
+    $progreso = is_object($progreso) ? (array)$progreso : (array)$progreso;
+    foreach ($mapUsuario as $cid => $info) {
+        if (!isset($progreso[$cid])) continue;
+        $progreso[$cid]['intentosExtra']  = empty($info['intentosExtra']) ? (object)[] : (object)$info['intentosExtra'];
+        $progreso[$cid]['habilitaciones'] = empty($info['habilitaciones']) ? (object)[] : (object)$info['habilitaciones'];
+    }
+    return empty($progreso) ? (object)[] : $progreso;
+}
+
+/**
+ * Intentos adicionales vigentes otorgados a un usuario para un módulo.
+ */
+function db_intentos_extra(mysqli $conn, string $userId, string $cursoId, string $mNumStr): int {
+    db_habilitaciones_ensure_table($conn);
+    $stmt = $conn->prepare("SELECT COALESCE(SUM(intentos_otorgados), 0) AS extra FROM `usuario_habilitaciones`
+                            WHERE usuario_id = ? AND curso_id = ? AND modulo_num = ? AND activo = 1");
+    $stmt->bind_param('sss', $userId, $cursoId, $mNumStr);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    return (int)($row['extra'] ?? 0);
+}
+
+/**
+ * Habilita un nuevo intento de evaluación sobre un módulo reprobado SIN borrar los intentos
+ * ni la calificación registrada: el historial de reprobaciones se conserva para los reportes.
+ * Opcionalmente obliga a repasar las lecciones del módulo antes de volver a evaluar.
+ */
+function db_habilitar_reintento(mysqli $conn, string $userId, string $cursoId, int $moduloIdx, int $intentosOtorgados, bool $repasarLecciones, string $motivo, string $adminId): array {
+    db_habilitaciones_ensure_table($conn);
+    $userId  = trim($userId);
+    $cursoId = trim($cursoId);
+    $mNumStr = (string)$moduloIdx;
+    $intentosOtorgados = max(1, min(10, $intentosOtorgados));
+    $motivo = mb_substr(trim($motivo), 0, 500);
+
+    $stmtM = $conn->prepare("SELECT max_intentos FROM `curso_modulos` WHERE curso_id = ? AND orden = ?");
+    $stmtM->bind_param('si', $cursoId, $moduloIdx);
+    $stmtM->execute();
+    $mRow = $stmtM->get_result()->fetch_assoc();
+    if (!$mRow) {
+        throw new InvalidArgumentException("Módulo no encontrado en curso $cursoId con orden $moduloIdx");
+    }
+    $maxIntentos = (int)($mRow['max_intentos'] ?? 0);
+
+    $stmtApr = $conn->prepare("SELECT 1 FROM `usuario_modulos_aprobados` WHERE usuario_id = ? AND curso_id = ? AND modulo_num = ?");
+    $stmtApr->bind_param('sss', $userId, $cursoId, $mNumStr);
+    $stmtApr->execute();
+    if ($stmtApr->get_result()->num_rows > 0) {
+        throw new InvalidArgumentException('El módulo ya está aprobado; no requiere habilitar un reintento.');
+    }
+
+    $stmtInt = $conn->prepare("SELECT intentos FROM `usuario_intentos` WHERE usuario_id = ? AND curso_id = ? AND modulo_num = ?");
+    $stmtInt->bind_param('sss', $userId, $cursoId, $mNumStr);
+    $stmtInt->execute();
+    $intRow = $stmtInt->get_result()->fetch_assoc();
+    $intentosPrevios = (int)($intRow['intentos'] ?? 0);
+    if ($intentosPrevios < 1) {
+        throw new InvalidArgumentException('El colaborador no registra intentos reprobados en este módulo.');
+    }
+
+    $stmtEv = $conn->prepare("SELECT calificacion FROM `usuario_evaluaciones` WHERE usuario_id = ? AND curso_id = ? AND modulo_num = ?");
+    $stmtEv->bind_param('sss', $userId, $cursoId, $mNumStr);
+    $stmtEv->execute();
+    $evRow = $stmtEv->get_result()->fetch_assoc();
+    $califPrevia = $evRow ? (float)$evRow['calificacion'] : null;
+
+    $conn->begin_transaction();
+    try {
+        $repasarInt = $repasarLecciones ? 1 : 0;
+        $stmtIns = $conn->prepare("INSERT INTO `usuario_habilitaciones`
+            (usuario_id, curso_id, modulo_num, intentos_otorgados, intentos_previos, calificacion_previa, repasar_lecciones, motivo, admin_id)
+            VALUES (?,?,?,?,?,?,?,?,?)");
+        $stmtIns->bind_param('sssiidiss', $userId, $cursoId, $mNumStr, $intentosOtorgados, $intentosPrevios, $califPrevia, $repasarInt, $motivo, $adminId);
+        $stmtIns->execute();
+        $habId = (int)$conn->insert_id;
+
+        if ($repasarLecciones) {
+            // Las lecciones del módulo vuelven a quedar pendientes (tabla relacional + espejo JSON legacy)
+            $prefix = $mNumStr . '-%';
+            $sLec = $conn->prepare("DELETE FROM `usuario_lecciones_completadas` WHERE usuario_id = ? AND curso_id = ? AND leccion_codigo LIKE ?");
+            $sLec->bind_param('sss', $userId, $cursoId, $prefix);
+            $sLec->execute();
+
+            $sProg = $conn->prepare("SELECT lecciones_completadas FROM `usuario_progreso` WHERE usuario_id = ? AND curso_id = ?");
+            $sProg->bind_param('ss', $userId, $cursoId);
+            $sProg->execute();
+            if ($pRow = $sProg->get_result()->fetch_assoc()) {
+                $lecs = json_decode($pRow['lecciones_completadas'] ?? '[]', true) ?: [];
+                $lecs = array_values(array_filter($lecs, fn($l) => !str_starts_with((string)$l, $mNumStr . '-')));
+                $lecJson = json_encode($lecs);
+                $sUp = $conn->prepare("UPDATE `usuario_progreso` SET lecciones_completadas = ? WHERE usuario_id = ? AND curso_id = ?");
+                $sUp->bind_param('sss', $lecJson, $userId, $cursoId);
+                $sUp->execute();
+            }
+        }
+
+        $conn->commit();
+    } catch (Throwable $e) {
+        $conn->rollback();
+        throw $e;
+    }
+
+    $extra = db_intentos_extra($conn, $userId, $cursoId, $mNumStr);
+    return [
+        'success'             => true,
+        'habilitacionId'      => $habId,
+        'intentos'            => $intentosPrevios,
+        'intentosExtra'       => $extra,
+        'maxIntentos'         => $maxIntentos,
+        'maxIntentosEfectivo' => $maxIntentos > 0 ? $maxIntentos + $extra : 0,
+        'repasarLecciones'    => $repasarLecciones,
+    ];
+}
 
 /**
  * Si la imagen viene como cadena data:image/... en Base64,
