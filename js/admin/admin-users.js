@@ -771,8 +771,8 @@ window.confirmarMarcarCompletado = async () => {
                 }
             }
 
-            if (!progreso.intentos) progreso.intentos = {};
-            progreso.intentos[mIdx] = 1;
+            // No se registra un intento: la acreditación manual no es un examen presentado,
+            // y los intentos reales previos (si los hay) se conservan para los reportes.
             marcadosExitosos++;
         }
 

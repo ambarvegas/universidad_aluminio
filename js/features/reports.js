@@ -825,9 +825,11 @@ function _obtenerTodasEvaluaciones() {
                 const fecha = ev.fecha || '';
                 const fechaTimestamp = fecha ? new Date(fecha).getTime() : 0;
 
-                // Reprobaciones históricas: los intentos nunca se borran al habilitar un reintento
+                // Reprobaciones históricas: los intentos nunca se borran al habilitar un reintento.
+                // Los módulos acreditados manualmente por Rectoría no cuentan reprobaciones: el
+                // flujo "Marcar completado" registraba un intento artificial (intentos = 1).
                 const vecesReprobado = aprobado
-                    ? (marcadoManual ? intentosReales : Math.max(0, intentosReales - 1))
+                    ? (marcadoManual ? 0 : Math.max(0, intentosReales - 1))
                     : Math.max(intentosReales, 1);
                 const moduloObj = cursoObj && Array.isArray(cursoObj.modulos) ? cursoObj.modulos[modIdx] : null;
                 const maxIntentosBase = moduloObj ? (parseInt(moduloObj.maxIntentos ?? moduloObj.max_intentos) || 0) : 0;
