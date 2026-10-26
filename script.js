@@ -6,7 +6,7 @@
 // ============================================================
 // GESTIÓN DE VERSIONES Y HARD RESET AUTOMÁTICO
 // ============================================================
-const APP_CLIENT_VERSION = '2026.10.13.v7';
+const APP_CLIENT_VERSION = '2026.10.26.v8';
 
 (function verificarVersionCliente() {
     try {
@@ -36,9 +36,11 @@ const APP_CLIENT_VERSION = '2026.10.13.v7';
 
 document.addEventListener('DOMContentLoaded', async () => {
     try {
-        // 1. Cargar datos frescos del backend MySQL
+        // 1. Cargar datos frescos del backend MySQL (los módulos suscritos con App.on('datos')
+        //    se redibujan solos al terminar)
+        let datosCargados = false;
         if (typeof cargarDatosDelServidor === 'function') {
-            await cargarDatosDelServidor();
+            datosCargados = await cargarDatosDelServidor();
         }
 
         // 2. Aplicar personalización institucional (colores, logo, nombre)
@@ -71,7 +73,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // 6. Si estamos en admin.php, renderizar tablas del dashboard
         if (document.getElementById('admin-kpi-cursos') || document.getElementById('tabla-cursos-body')) {
-            if (typeof actualizarTablas === 'function') {
+            // El panel se dibuja al recibir 'datos'; si la carga falló, se dibuja vacío
+            if (!datosCargados && typeof actualizarTablas === 'function') {
                 actualizarTablas();
             }
 

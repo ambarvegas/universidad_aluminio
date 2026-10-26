@@ -732,206 +732,69 @@ function exportarReporteXLSX() {
 // REPORTE DETALLADO DE EVALUACIONES (RELACIONAL)
 // ============================================================
 
-let _evaluacionesRaw = [];
-let _evaluacionesFiltradas = [];
-let _usuariosAgrupados = [];
-let _modoVistaEval = 'agrupada'; // 'agrupada' o 'plana'
+// El reporte se calcula, filtra y pagina en el servidor (lib/reportes.php). Aquí solo se
+// guarda la página visible y los totales de la última respuesta.
+let _evaluacionesFiltradas = [];   // calificaciones de la página visible
+let _usuariosAgrupados = [];       // colaboradores de la página visible (vista agrupada)
+let _reporteEval = null;           // última respuesta: totales, KPIs y paginación
+let _modoVistaEval = 'agrupada';   // 'agrupada' o 'plana'
 let _evalCurrentPage = 1;
 let _evalPerPage = 15;
+let _evalSolicitud = 0;            // descarta respuestas que llegan fuera de orden
 
-/**
- * Recopila todas las evaluaciones de la base de datos relacional/memoria
- */
-function _obtenerTodasEvaluaciones() {
-    const lista = [];
-    (usuarios || []).forEach(u => {
-        const uProg = u.progreso || {};
-        const rolNombre = _obtenerNombreRol(u.rol);
-
-        // Iterar únicamente sobre los cursos en los que el colaborador tiene registro de progreso
-        Object.keys(uProg).forEach(cursoId => {
-            const progCurso = uProg[cursoId] || {};
-            const cursoObj = (cursos || []).find(c => c.id === cursoId);
-            const cursoTitulo = cursoObj ? (cursoObj.titulo || cursoId) : cursoId;
-
-            // Manejar evaluaciones e intentos de forma robusta (array u objeto)
-            const rawEvals = progCurso.evaluaciones || {};
-            const evals = {};
-            if (Array.isArray(rawEvals)) {
-                rawEvals.forEach((ev, idx) => {
-                    if (ev && typeof ev === 'object') evals[String(idx)] = { ...ev };
-                });
-            } else if (typeof rawEvals === 'object') {
-                Object.keys(rawEvals).forEach(k => {
-                    if (rawEvals[k] && typeof rawEvals[k] === 'object') evals[String(k)] = { ...rawEvals[k] };
-                });
-            }
-
-            const rawIntentos = progCurso.intentos || {};
-            const intentosObj = {};
-            if (Array.isArray(rawIntentos)) {
-                rawIntentos.forEach((val, idx) => {
-                    if (val != null) intentosObj[String(idx)] = val;
-                });
-            } else if (typeof rawIntentos === 'object') {
-                Object.assign(intentosObj, rawIntentos);
-            }
-
-            const modsAprobados = Array.isArray(progCurso.modulosAprobados) ? progCurso.modulosAprobados : [];
-
-            // Normalización estricta:
-            // 1. SÓLO para módulos efectivamente APROBADOS por el usuario (en modsAprobados).
-            // 2. Si el módulo aprobado NO tiene evaluación en evals, se normaliza en 100%.
-            // 3. Si el módulo aprobado ya tiene evaluación cargada, se deja tal cual (no se modifica su nota).
-            // 4. Los módulos por cursar (no aprobados) NUNCA se cargan; quedan sin calificación.
-            modsAprobados.forEach(modRef => {
-                const modNumStr = String(modRef);
-                const modIdx = parseInt(modRef);
-                const yaTieneEval = !!(evals[modNumStr] || (!isNaN(modIdx) && evals[modIdx]));
-
-                if (!yaTieneEval) {
-                    evals[modNumStr] = {
-                        calificacion: 100,
-                        aprobado: true,
-                        marcadoManual: true,
-                        fecha: ''
-                    };
-                }
-            });
-
-            Object.keys(evals).forEach(modNum => {
-                const ev = evals[modNum];
-                if (!ev || typeof ev !== 'object') return;
-
-                const modIdx = parseInt(modNum);
-                const modNumStr = String(modNum);
-
-                // No incluir evaluaciones artificiales si el módulo no está aprobado (módulos por cursar)
-                const estaAprobado = modsAprobados.includes(modNumStr) || (!isNaN(modIdx) && modsAprobados.includes(String(modIdx))) || (!isNaN(modIdx) && modsAprobados.includes(modIdx));
-                if (!estaAprobado && ev.marcadoManual && ev.calificacion === 100) {
-                    return;
-                }
-
-                let modTitulo = `Módulo ${modIdx + 1}`;
-                if (cursoObj && Array.isArray(cursoObj.modulos) && cursoObj.modulos[modIdx]) {
-                    modTitulo = `Módulo ${modIdx + 1}: ${cursoObj.modulos[modIdx].titulo}`;
-                }
-
-                const calif = typeof ev.calificacion === 'number' ? ev.calificacion : (typeof ev.nota === 'number' ? ev.nota : 0);
-                const aprobado = typeof ev.aprobado === 'boolean' ? ev.aprobado : (calif >= 70);
-                const marcadoManual = !!ev.marcadoManual;
-                const intentosReales = parseInt(intentosObj[modNum]) || 0;
-                const intentos = intentosReales || 1;
-                const fecha = ev.fecha || '';
-                const fechaTimestamp = fecha ? new Date(fecha).getTime() : 0;
-
-                // Reprobaciones históricas: los intentos nunca se borran al habilitar un reintento.
-                // Los módulos acreditados manualmente por Rectoría no cuentan reprobaciones: el
-                // flujo "Marcar completado" registraba un intento artificial (intentos = 1).
-                const vecesReprobado = aprobado
-                    ? (marcadoManual ? 0 : Math.max(0, intentosReales - 1))
-                    : Math.max(intentosReales, 1);
-                const moduloObj = cursoObj && Array.isArray(cursoObj.modulos) ? cursoObj.modulos[modIdx] : null;
-                const maxIntentosBase = moduloObj ? (parseInt(moduloObj.maxIntentos ?? moduloObj.max_intentos) || 0) : 0;
-                const intentosExtra = parseInt(progCurso.intentosExtra?.[modNumStr]) || 0;
-                const maxIntentosEfectivo = maxIntentosBase > 0 ? maxIntentosBase + intentosExtra : 0;
-                const habilitaciones = Array.isArray(progCurso.habilitaciones?.[modNumStr]) ? progCurso.habilitaciones[modNumStr] : [];
-                const bloqueado = !aprobado && maxIntentosEfectivo > 0 && intentosReales >= maxIntentosEfectivo;
-                const reintentoPendiente = !aprobado && intentosExtra > 0 && !bloqueado;
-
-                lista.push({
-                    usuarioId: u.id,
-                    usuarioNombre: u.nombre,
-                    usuarioRol: u.rol,
-                    rolNombre: rolNombre,
-                    cursoId: cursoId,
-                    cursoTitulo: cursoTitulo,
-                    moduloNum: isNaN(modIdx) ? modNum : modIdx,
-                    moduloTitulo: modTitulo,
-                    calificacion: calif,
-                    aprobado: aprobado,
-                    marcadoManual: marcadoManual,
-                    intentos: intentos,
-                    vecesReprobado: vecesReprobado,
-                    maxIntentosBase: maxIntentosBase,
-                    maxIntentosEfectivo: maxIntentosEfectivo,
-                    intentosExtra: intentosExtra,
-                    habilitaciones: habilitaciones,
-                    bloqueado: bloqueado,
-                    reintentoPendiente: reintentoPendiente,
-                    puedeHabilitar: !aprobado && intentosReales >= 1,
-                    fecha: fecha,
-                    fechaTimestamp: isNaN(fechaTimestamp) ? 0 : fechaTimestamp
-                });
-            });
-        });
-    });
-    return lista;
+function _filtrosEvaluaciones() {
+    return {
+        search:  (document.getElementById('filtro-eval-search')?.value || '').trim(),
+        usuario: document.getElementById('filtro-eval-usuario')?.value || '',
+        curso:   document.getElementById('filtro-eval-curso')?.value || '',
+        estado:  document.getElementById('filtro-eval-estado')?.value || '',
+        orden:   document.getElementById('filtro-eval-orden')?.value || 'nombre_asc',
+        modo:    _modoVistaEval,
+    };
 }
 
 /**
- * Agrupa una lista plana de evaluaciones por cada colaborador
- * y ordena los módulos de cada colaborador por curso y por módulo
+ * Pide al servidor la página actual con los filtros de la pantalla y la dibuja.
  */
-function _agruparEvaluacionesPorUsuario(evaluaciones) {
-    const map = new Map();
-    evaluaciones.forEach(ev => {
-        if (!map.has(ev.usuarioId)) {
-            map.set(ev.usuarioId, {
-                usuarioId: ev.usuarioId,
-                usuarioNombre: ev.usuarioNombre,
-                usuarioRol: ev.usuarioRol,
-                rolNombre: ev.rolNombre,
-                evaluaciones: [],
-                totalModulos: 0,
-                aprobados: 0,
-                reprobados: 0,
-                sumaNotas: 0,
-                promedio: 0,
-                tasaAprob: 0,
-                ultimaFecha: '',
-                ultimaFechaTimestamp: 0
-            });
-        }
-        const u = map.get(ev.usuarioId);
-        u.evaluaciones.push(ev);
-        u.totalModulos++;
-        if (ev.aprobado) u.aprobados++;
-        else u.reprobados++;
-        u.sumaNotas += ev.calificacion;
-        if (ev.fechaTimestamp > u.ultimaFechaTimestamp) {
-            u.ultimaFechaTimestamp = ev.fechaTimestamp;
-            u.ultimaFecha = ev.fecha;
-        }
-    });
-
-    const arr = Array.from(map.values());
-    arr.forEach(u => {
-        // Ordenar las calificaciones de cada usuario por curso y por módulo
-        u.evaluaciones.sort((a, b) => {
-            const cmpC = (a.cursoTitulo || '').localeCompare(b.cursoTitulo || '');
-            if (cmpC !== 0) return cmpC;
-            return (parseInt(a.moduloNum) || 0) - (parseInt(b.moduloNum) || 0);
+async function cargarReporteEvaluaciones() {
+    const solicitud = ++_evalSolicitud;
+    try {
+        const r = await window.API.cargarReporteEvaluaciones({
+            ..._filtrosEvaluaciones(), page: _evalCurrentPage, limit: _evalPerPage,
         });
-        u.promedio = u.totalModulos > 0 ? parseFloat((u.sumaNotas / u.totalModulos).toFixed(1)) : 0;
-        u.tasaAprob = u.totalModulos > 0 ? Math.round((u.aprobados / u.totalModulos) * 100) : 0;
-    });
-
-    return arr;
+        if (solicitud !== _evalSolicitud) return;
+        _reporteEval = r;
+        _evalCurrentPage = r.pagina || 1;
+        _usuariosAgrupados = Array.isArray(r.grupos) ? r.grupos : [];
+        _evaluacionesFiltradas = r.modo === 'agrupada'
+            ? _usuariosAgrupados.flatMap(u => u.evaluaciones)
+            : (Array.isArray(r.evaluaciones) ? r.evaluaciones : []);
+        renderVistaEvaluaciones();
+        actualizarKPIsEvaluaciones();
+    } catch (err) {
+        if (solicitud !== _evalSolicitud) return;
+        console.error('Error al cargar el reporte de evaluaciones:', err);
+        if (typeof showToast === 'function') showToast('No se pudo cargar el reporte de evaluaciones: ' + err.message, 'danger');
+    }
 }
 
 /**
- * Ordena la lista de colaboradores agrupados según el filtro de orden activo
+ * Todas las calificaciones que cumplen los filtros (sin paginar), para exportar o imprimir.
+ * Devuelve { evaluaciones, grupos } o null si no hay datos.
  */
-function _ordenarUsuariosAgrupados(usuariosArr, ordenVal) {
-    usuariosArr.sort((a, b) => {
-        if (ordenVal === 'calif_desc') return b.promedio - a.promedio;
-        if (ordenVal === 'calif_asc')  return a.promedio - b.promedio;
-        if (ordenVal === 'fecha_desc') return b.ultimaFechaTimestamp - a.ultimaFechaTimestamp;
-        if (ordenVal === 'curso_asc')  return a.usuarioNombre.localeCompare(b.usuarioNombre);
-        // Default o nombre_asc: Por colaborador A-Z
-        return a.usuarioNombre.localeCompare(b.usuarioNombre);
-    });
+async function _cargarEvaluacionesParaExportar() {
+    try {
+        const r = await window.API.cargarReporteEvaluaciones({ ..._filtrosEvaluaciones(), todo: true });
+        const evaluaciones = Array.isArray(r.evaluaciones) ? r.evaluaciones : [];
+        if (evaluaciones.length === 0) {
+            alert('No hay evaluaciones filtradas para exportar.');
+            return null;
+        }
+        return { evaluaciones, grupos: Array.isArray(r.grupos) ? r.grupos : [] };
+    } catch (err) {
+        if (typeof showToast === 'function') showToast('No se pudo obtener el reporte: ' + err.message, 'danger');
+        return null;
+    }
 }
 
 /**
@@ -1022,7 +885,7 @@ function _htmlAccionesEvaluacion(e) {
  * Modal para habilitar un nuevo intento sobre un módulo reprobado.
  */
 function abrirModalHabilitarReintento(usuarioId, cursoId, moduloNum) {
-    const e = _evaluacionesRaw.find(x => x.usuarioId === usuarioId && x.cursoId === cursoId && String(x.moduloNum) === String(moduloNum));
+    const e = _evaluacionesFiltradas.find(x => x.usuarioId === usuarioId && x.cursoId === cursoId && String(x.moduloNum) === String(moduloNum));
     if (!e) return;
 
     document.getElementById('modal-habilitar-reintento')?.remove();
@@ -1104,8 +967,8 @@ function abrirModalHabilitarReintento(usuarioId, cursoId, moduloNum) {
             await window.withLoading(btn, () => window.API.habilitarReintento(payload), 'Habilitando...');
             bsModal.hide();
             showToast(`Reintento habilitado para ${e.usuarioNombre}. El historial de reprobaciones se conserva.`, 'success');
-            await cargarDatosDelServidor();
-            renderReporteEvaluaciones();
+            window.App?.invalidarProgreso(e.usuarioId);
+            await cargarReporteEvaluaciones();
         } catch (err) {
             showToast('No se pudo habilitar el reintento: ' + err.message, 'danger');
         }
@@ -1123,93 +986,34 @@ function inicializarFiltrosEvaluaciones() {
         const prevU = selU.value;
         const usersList = (usuarios || []).filter(u => u.rol !== 'admin');
         selU.innerHTML = `<option value="">— Colaborador —</option>` +
-            usersList.map(u => `<option value="${u.id}" ${u.id === prevU ? 'selected' : ''}>${u.nombre} (${u.id})</option>`).join('');
+            usersList.map(u => `<option value="${escapeHtml(u.id)}" ${u.id === prevU ? 'selected' : ''}>${escapeHtml(u.nombre)} (${escapeHtml(u.id)})</option>`).join('');
     }
 
     const selC = document.getElementById('filtro-eval-curso');
     if (selC) {
         const prevC = selC.value;
         selC.innerHTML = `<option value="">— Curso —</option>` +
-            (cursos || []).map(c => `<option value="${c.id}" ${c.id === prevC ? 'selected' : ''}>${c.titulo}</option>`).join('');
+            (cursos || []).map(c => `<option value="${escapeHtml(c.id)}" ${c.id === prevC ? 'selected' : ''}>${escapeHtml(c.titulo)}</option>`).join('');
     }
 }
 
 /**
- * Aplica los filtros seleccionados en la UI y actualiza la vista
+ * Aplica los filtros de la pantalla: vuelve a la primera página y consulta al servidor.
  */
 function filtrarTablaEvaluaciones() {
-    const searchVal = (document.getElementById('filtro-eval-search')?.value || '').toLowerCase().trim();
-    const userVal   = document.getElementById('filtro-eval-usuario')?.value || '';
-    const cursoVal  = document.getElementById('filtro-eval-curso')?.value || '';
-    const estadoVal = document.getElementById('filtro-eval-estado')?.value || '';
-    const ordenVal  = document.getElementById('filtro-eval-orden')?.value || 'nombre_asc';
-
-    _evaluacionesFiltradas = _evaluacionesRaw.filter(item => {
-        if (userVal && item.usuarioId !== userVal) return false;
-        if (cursoVal && item.cursoId !== cursoVal) return false;
-        if (estadoVal === 'aprobado' && !item.aprobado) return false;
-        if (estadoVal === 'reprobado' && item.aprobado) return false;
-        if (estadoVal === 'manual' && !item.marcadoManual) return false;
-        if (estadoVal === 'bloqueado' && !item.bloqueado) return false;
-        if (estadoVal === 'habilitado' && item.habilitaciones.length === 0) return false;
-
-        if (searchVal) {
-            const matchSearch = item.usuarioNombre.toLowerCase().includes(searchVal) ||
-                                item.usuarioId.toLowerCase().includes(searchVal) ||
-                                item.cursoTitulo.toLowerCase().includes(searchVal) ||
-                                item.moduloTitulo.toLowerCase().includes(searchVal) ||
-                                item.rolNombre.toLowerCase().includes(searchVal);
-            if (!matchSearch) return false;
-        }
-        return true;
-    });
-
-    // Ordenamiento lista plana
-    _evaluacionesFiltradas.sort((a, b) => {
-        if (ordenVal === 'calif_desc') return b.calificacion - a.calificacion;
-        if (ordenVal === 'calif_asc')  return a.calificacion - b.calificacion;
-        if (ordenVal === 'fecha_desc') return b.fechaTimestamp - a.fechaTimestamp;
-        if (ordenVal === 'curso_asc') {
-            const cmpC = (a.cursoTitulo || '').localeCompare(b.cursoTitulo || '');
-            if (cmpC !== 0) return cmpC;
-            const cmpU = (a.usuarioNombre || '').localeCompare(b.usuarioNombre || '');
-            if (cmpU !== 0) return cmpU;
-            return (parseInt(a.moduloNum) || 0) - (parseInt(b.moduloNum) || 0);
-        }
-        // nombre_asc o por defecto: Colaborador -> Curso -> Módulo
-        const cmpU = (a.usuarioNombre || '').localeCompare(b.usuarioNombre || '');
-        if (cmpU !== 0) return cmpU;
-        const cmpC = (a.cursoTitulo || '').localeCompare(b.cursoTitulo || '');
-        if (cmpC !== 0) return cmpC;
-        return (parseInt(a.moduloNum) || 0) - (parseInt(b.moduloNum) || 0);
-    });
-
-    // Agrupamiento estructurado por colaborador
-    _usuariosAgrupados = _agruparEvaluacionesPorUsuario(_evaluacionesFiltradas);
-    _ordenarUsuariosAgrupados(_usuariosAgrupados, ordenVal);
-
     _evalCurrentPage = 1;
-    renderVistaEvaluaciones();
-    actualizarKPIsEvaluaciones();
+    return cargarReporteEvaluaciones();
 }
 
+// El buscador de texto consulta al servidor cuando se deja de escribir
+const buscarEvaluacionesDebounced = window.debounce(() => filtrarTablaEvaluaciones(), 300);
+
 /**
- * Actualiza las tarjetas resumen de métricas (KPIs)
+ * Actualiza las tarjetas resumen de métricas (KPIs) con los totales del servidor
  */
 function actualizarKPIsEvaluaciones() {
-    const total = _evaluacionesFiltradas.length;
-    let sumaCalif = 0;
-    let totalAprob = 0;
-    let totalPerfectas = 0;
-
-    _evaluacionesFiltradas.forEach(e => {
-        sumaCalif += e.calificacion;
-        if (e.aprobado) totalAprob++;
-        if (e.calificacion >= 100) totalPerfectas++;
-    });
-
-    const promedio = total > 0 ? (sumaCalif / total).toFixed(1) : "0.0";
-    const tasaAprob = total > 0 ? Math.round((totalAprob / total) * 100) : 0;
+    const k = _reporteEval?.kpis || { total: 0, promedio: 0, tasaAprob: 0, perfectas: 0 };
+    const total = k.total;
 
     const elTotal = document.getElementById('kpi-eval-total');
     const elProm = document.getElementById('kpi-eval-promedio');
@@ -1218,13 +1022,13 @@ function actualizarKPIsEvaluaciones() {
     const elBadge = document.getElementById('evaluaciones-count-badge');
 
     if (elTotal) elTotal.textContent = total.toLocaleString();
-    if (elProm)  elProm.textContent  = `${promedio} pts`;
-    if (elTasa)  elTasa.textContent  = `${tasaAprob}%`;
-    if (elPerf)  elPerf.textContent  = totalPerfectas.toLocaleString();
+    if (elProm)  elProm.textContent  = `${Number(k.promedio).toFixed(1)} pts`;
+    if (elTasa)  elTasa.textContent  = `${k.tasaAprob}%`;
+    if (elPerf)  elPerf.textContent  = k.perfectas.toLocaleString();
 
     if (elBadge) {
         if (_modoVistaEval === 'agrupada') {
-            const numU = _usuariosAgrupados.length;
+            const numU = _reporteEval?.totalUsuarios || 0;
             elBadge.textContent = `${numU} colaborador${numU !== 1 ? 'es' : ''} (${total} calificaciones)`;
         } else {
             elBadge.textContent = `${total} calificación${total !== 1 ? 'es' : ''}`;
@@ -1270,8 +1074,7 @@ function cambiarModoVistaEvaluaciones(modo) {
     }
 
     _evalCurrentPage = 1;
-    renderVistaEvaluaciones();
-    actualizarKPIsEvaluaciones();
+    return cargarReporteEvaluaciones();
 }
 
 /**
@@ -1329,17 +1132,13 @@ function renderEvaluacionesAgrupadasPaginada() {
         return;
     }
 
-    const perPage = _evalPerPage === 'all' ? _usuariosAgrupados.length : parseInt(_evalPerPage);
-    const totalPaginas = Math.ceil(_usuariosAgrupados.length / perPage) || 1;
-    if (_evalCurrentPage > totalPaginas) _evalCurrentPage = totalPaginas;
-
-    const startIdx = (_evalCurrentPage - 1) * perPage;
-    const endIdx   = Math.min(startIdx + perPage, _usuariosAgrupados.length);
-    const usuariosPagina = _usuariosAgrupados.slice(startIdx, endIdx);
+    const usuariosPagina = _usuariosAgrupados;
 
     let html = '';
-    usuariosPagina.forEach((u, uIdx) => {
-        const globalUserIdx = startIdx + uIdx + 1;
+    usuariosPagina.forEach((u) => {
+        // Id de elemento seguro aunque la cédula traiga caracteres especiales
+        const domKey = String(u.usuarioId).replace(/[^\w-]/g, '_');
+        const domId = `user-eval-collapse-${domKey}`;
         const iniciales = (u.usuarioNombre || 'U').split(' ').filter(Boolean).map(p => p[0]).slice(0, 2).join('').toUpperCase();
         const badgeInfo = _obtenerBadgeCalificacion(u.promedio);
 
@@ -1360,9 +1159,9 @@ function renderEvaluacionesAgrupadasPaginada() {
                     if (!isNaN(fObj.getTime())) {
                         fechaFormat = fObj.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
                     } else {
-                        fechaFormat = e.fecha;
+                        fechaFormat = escapeHtml(e.fecha);
                     }
-                } catch (_) { fechaFormat = e.fecha; }
+                } catch (_) { fechaFormat = escapeHtml(e.fecha); }
             } else if (e.marcadoManual) {
                 fechaFormat = '<span class="text-success small fw-semibold"><i class="bi bi-patch-check-fill me-1"></i>Acreditado</span>';
             }
@@ -1372,12 +1171,12 @@ function renderEvaluacionesAgrupadasPaginada() {
                 <td class="text-muted small text-center ps-3">${mIdx + 1}</td>
                 <td>
                     <div class="fw-semibold text-primary mb-0" style="max-width: 280px; white-space: normal;">
-                        <i class="bi bi-book me-1 opacity-75"></i>${e.cursoTitulo}
+                        <i class="bi bi-book me-1 opacity-75"></i>${escapeHtml(e.cursoTitulo)}
                     </div>
-                    <div class="text-muted small" style="font-size: 0.72rem;">Código: ${e.cursoId}</div>
+                    <div class="text-muted small" style="font-size: 0.72rem;">Código: ${escapeHtml(e.cursoId)}</div>
                 </td>
                 <td>
-                    <div class="small fw-semibold text-dark">${e.moduloTitulo}</div>
+                    <div class="small fw-semibold text-dark">${escapeHtml(e.moduloTitulo)}</div>
                 </td>
                 <td>
                     <div class="d-flex flex-column" style="width: 140px;">
@@ -1405,21 +1204,21 @@ function renderEvaluacionesAgrupadasPaginada() {
         html += `
         <div class="card user-eval-card shadow-sm mb-3">
             <div class="card-header user-eval-header p-3 d-flex flex-wrap align-items-center justify-content-between"
-                 onclick="toggleColaboradorAcordeon('user-eval-collapse-${u.usuarioId}', this)"
-                 id="user-eval-header-${u.usuarioId}"
+                 onclick="toggleColaboradorAcordeon('${domId}', this)"
+                 id="user-eval-header-${domKey}"
                  role="button"
                  title="Clic para expandir u ocultar los módulos de este colaborador">
                 <div class="d-flex align-items-center gap-3">
                     <div class="user-eval-avatar">
-                        ${iniciales}
+                        ${escapeHtml(iniciales)}
                     </div>
                     <div>
                         <div class="fw-bold text-dark fs-6 d-flex align-items-center gap-2 mb-1">
-                            <span>${u.usuarioNombre}</span>
-                            <span class="badge bg-light text-secondary border px-2 py-0" style="font-size: 0.725rem;">${u.rolNombre}</span>
+                            <span>${escapeHtml(u.usuarioNombre)}</span>
+                            <span class="badge bg-light text-secondary border px-2 py-0" style="font-size: 0.725rem;">${escapeHtml(u.rolNombre)}</span>
                         </div>
                         <div class="text-muted small d-flex flex-wrap align-items-center gap-2">
-                            <span><i class="bi bi-person-vcard me-1"></i>CI: <strong>${u.usuarioId}</strong></span>
+                            <span><i class="bi bi-person-vcard me-1"></i>CI: <strong>${escapeHtml(u.usuarioId)}</strong></span>
                             <span>•</span>
                             <span class="text-primary fw-semibold"><i class="bi bi-journal-check me-1"></i>${u.totalModulos} ${u.totalModulos === 1 ? 'módulo cursado' : 'módulos cursados'}</span>
                         </div>
@@ -1450,7 +1249,7 @@ function renderEvaluacionesAgrupadasPaginada() {
                 </div>
             </div>
 
-            <div class="collapse show user-eval-collapse" id="user-eval-collapse-${u.usuarioId}">
+            <div class="collapse show user-eval-collapse" id="${domId}">
                 <div class="table-responsive border-top">
                     <table class="table table-hover align-middle mb-0">
                         <thead class="table-light text-muted" style="font-size: 0.735rem; text-transform: uppercase; letter-spacing: 0.5px;">
@@ -1476,7 +1275,7 @@ function renderEvaluacionesAgrupadasPaginada() {
     });
 
     contenedor.innerHTML = html;
-    actualizarControlesPaginacion(startIdx + 1, endIdx, _usuariosAgrupados.length);
+    actualizarControlesPaginacion(_reporteEval.desde, _reporteEval.hasta, _reporteEval.totalItems);
 }
 
 /**
@@ -1495,13 +1294,8 @@ function renderTablaEvaluacionesPaginada() {
         return;
     }
 
-    const perPage = _evalPerPage === 'all' ? _evaluacionesFiltradas.length : parseInt(_evalPerPage);
-    const totalPaginas = Math.ceil(_evaluacionesFiltradas.length / perPage) || 1;
-    if (_evalCurrentPage > totalPaginas) _evalCurrentPage = totalPaginas;
-
-    const startIdx = (_evalCurrentPage - 1) * perPage;
-    const endIdx   = Math.min(startIdx + perPage, _evaluacionesFiltradas.length);
-    const itemsPagina = _evaluacionesFiltradas.slice(startIdx, endIdx);
+    const startIdx = Math.max(0, (_reporteEval?.desde || 1) - 1);
+    const itemsPagina = _evaluacionesFiltradas;
 
     let html = '';
     itemsPagina.forEach((e, idx) => {
@@ -1522,9 +1316,9 @@ function renderTablaEvaluacionesPaginada() {
                 if (!isNaN(fObj.getTime())) {
                     fechaFormat = fObj.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
                 } else {
-                    fechaFormat = e.fecha;
+                    fechaFormat = escapeHtml(e.fecha);
                 }
-            } catch (_) { fechaFormat = e.fecha; }
+            } catch (_) { fechaFormat = escapeHtml(e.fecha); }
         } else if (e.marcadoManual) {
             fechaFormat = '<span class="text-success small fw-semibold"><i class="bi bi-patch-check-fill me-1"></i>Acreditado</span>';
         }
@@ -1535,24 +1329,24 @@ function renderTablaEvaluacionesPaginada() {
             <td>
                 <div class="d-flex align-items-center gap-2">
                     <div class="rounded-circle bg-primary bg-opacity-10 text-primary fw-bold d-flex align-items-center justify-content-center" style="width: 34px; height: 34px; font-size: 0.75rem; flex-shrink: 0;">
-                        ${iniciales}
+                        ${escapeHtml(iniciales)}
                     </div>
                     <div>
-                        <div class="fw-bold text-dark lh-sm">${e.usuarioNombre}</div>
+                        <div class="fw-bold text-dark lh-sm">${escapeHtml(e.usuarioNombre)}</div>
                         <div class="text-muted small d-flex align-items-center gap-1">
-                            <span>CI: ${e.usuarioId}</span>
+                            <span>CI: ${escapeHtml(e.usuarioId)}</span>
                             <span>•</span>
-                            <span class="badge bg-light text-secondary border px-1 py-0" style="font-size: 0.7rem;">${e.rolNombre}</span>
+                            <span class="badge bg-light text-secondary border px-1 py-0" style="font-size: 0.7rem;">${escapeHtml(e.rolNombre)}</span>
                         </div>
                     </div>
                 </div>
             </td>
             <td>
-                <div class="fw-semibold text-primary mb-0" style="max-width: 240px; white-space: normal;">${e.cursoTitulo}</div>
-                <div class="text-muted small" style="font-size: 0.72rem;">Código: ${e.cursoId}</div>
+                <div class="fw-semibold text-primary mb-0" style="max-width: 240px; white-space: normal;">${escapeHtml(e.cursoTitulo)}</div>
+                <div class="text-muted small" style="font-size: 0.72rem;">Código: ${escapeHtml(e.cursoId)}</div>
             </td>
             <td>
-                <div class="small fw-semibold text-dark">${e.moduloTitulo}</div>
+                <div class="small fw-semibold text-dark">${escapeHtml(e.moduloTitulo)}</div>
             </td>
             <td>
                 <div class="d-flex flex-column" style="width: 140px;">
@@ -1578,7 +1372,7 @@ function renderTablaEvaluacionesPaginada() {
     });
 
     tbody.innerHTML = html;
-    actualizarControlesPaginacion(startIdx + 1, endIdx, _evaluacionesFiltradas.length);
+    actualizarControlesPaginacion(_reporteEval.desde, _reporteEval.hasta, _reporteEval.totalItems);
 }
 
 function actualizarControlesPaginacion(desde, hasta, total) {
@@ -1589,18 +1383,14 @@ function actualizarControlesPaginacion(desde, hasta, total) {
     if (info) {
         if (total === 0) {
             info.textContent = (_modoVistaEval === 'agrupada') ? 'Mostrando 0 de 0 colaboradores' : 'Mostrando 0 de 0 evaluaciones';
+        } else if (_modoVistaEval === 'agrupada') {
+            info.textContent = `Mostrando ${desde} a ${hasta} de ${total} colaboradores (${_reporteEval?.total || 0} calificaciones en total)`;
         } else {
-            if (_modoVistaEval === 'agrupada') {
-                info.textContent = `Mostrando ${desde} a ${hasta} de ${total} colaboradores (${_evaluacionesFiltradas.length} calificaciones en total)`;
-            } else {
-                info.textContent = `Mostrando ${desde} a ${hasta} de ${total} evaluaciones`;
-            }
+            info.textContent = `Mostrando ${desde} a ${hasta} de ${total} evaluaciones`;
         }
     }
 
-    const perPage = _evalPerPage === 'all' ? total : parseInt(_evalPerPage);
-    const totalPaginas = Math.ceil(total / perPage) || 1;
-
+    const totalPaginas = _reporteEval?.paginas || 1;
     if (btnPrev) btnPrev.disabled = (_evalCurrentPage <= 1);
     if (btnNext) btnNext.disabled = (_evalCurrentPage >= totalPaginas);
 }
@@ -1608,23 +1398,20 @@ function actualizarControlesPaginacion(desde, hasta, total) {
 function cambiarFilasPorPaginaEval(val) {
     _evalPerPage = val;
     _evalCurrentPage = 1;
-    renderVistaEvaluaciones();
+    return cargarReporteEvaluaciones();
 }
 
 function paginaAnteriorEval() {
     if (_evalCurrentPage > 1) {
         _evalCurrentPage--;
-        renderVistaEvaluaciones();
+        return cargarReporteEvaluaciones();
     }
 }
 
 function paginaSiguienteEval() {
-    const listLen = (_modoVistaEval === 'agrupada') ? _usuariosAgrupados.length : _evaluacionesFiltradas.length;
-    const perPage = _evalPerPage === 'all' ? listLen : parseInt(_evalPerPage);
-    const totalPaginas = Math.ceil(listLen / perPage) || 1;
-    if (_evalCurrentPage < totalPaginas) {
+    if (_evalCurrentPage < (_reporteEval?.paginas || 1)) {
         _evalCurrentPage++;
-        renderVistaEvaluaciones();
+        return cargarReporteEvaluaciones();
     }
 }
 
@@ -1633,8 +1420,7 @@ function paginaSiguienteEval() {
  */
 function renderReporteEvaluaciones() {
     inicializarFiltrosEvaluaciones();
-    _evaluacionesRaw = _obtenerTodasEvaluaciones();
-    filtrarTablaEvaluaciones();
+    return filtrarTablaEvaluaciones();
 }
 
 // ============================================================
@@ -1645,16 +1431,15 @@ function renderReporteEvaluaciones() {
  * Exporta las evaluaciones filtradas a archivo Excel (XLSX)
  * Garantiza orden consecutivo agrupado por Colaborador
  */
-function exportarEvaluacionesXLSX() {
+async function exportarEvaluacionesXLSX() {
     if (typeof XLSX === 'undefined') {
         alert('Cargando librería Excel, por favor reintenta en unos momentos...');
         return;
     }
 
-    if (_evaluacionesFiltradas.length === 0) {
-        alert('No hay evaluaciones filtradas para exportar.');
-        return;
-    }
+    const datos = await _cargarEvaluacionesParaExportar();
+    if (!datos) return;
+    const _evaluacionesFiltradas = datos.evaluaciones;
 
     // Ordenar por Colaborador -> Curso -> Módulo
     const dataOrdenada = [..._evaluacionesFiltradas].sort((a, b) => {
@@ -1723,11 +1508,10 @@ function exportarEvaluacionesXLSX() {
  * Exporta las evaluaciones filtradas a archivo CSV compatible
  * Ordenado por Colaborador
  */
-function exportarEvaluacionesCSV() {
-    if (_evaluacionesFiltradas.length === 0) {
-        alert('No hay evaluaciones filtradas para exportar.');
-        return;
-    }
+async function exportarEvaluacionesCSV() {
+    const datos = await _cargarEvaluacionesParaExportar();
+    if (!datos) return;
+    const _evaluacionesFiltradas = datos.evaluaciones;
 
     const dataOrdenada = [..._evaluacionesFiltradas].sort((a, b) => {
         const cmpU = a.usuarioNombre.localeCompare(b.usuarioNombre);
@@ -1775,13 +1559,16 @@ function exportarEvaluacionesCSV() {
 /**
  * Genera vista de impresión / PDF profesional con soporte para formato agrupado
  */
-function imprimirReporteEvaluaciones() {
-    if (_evaluacionesFiltradas.length === 0) {
-        alert('No hay datos para imprimir.');
+async function imprimirReporteEvaluaciones() {
+    // La ventana se abre antes de esperar al servidor para que no la bloquee el navegador
+    const w = window.open('', '_blank');
+    const datos = await _cargarEvaluacionesParaExportar();
+    if (!datos) {
+        if (w) w.close();
         return;
     }
-
-    const w = window.open('', '_blank');
+    const _evaluacionesFiltradas = datos.evaluaciones;
+    const _usuariosAgrupados = datos.grupos;
     const hoy = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
 
     let bodyHtml = '';
@@ -1794,8 +1581,8 @@ function imprimirReporteEvaluaciones() {
                 modRows += `
                 <tr>
                     <td style="text-align:center; width:30px;">${mIdx + 1}</td>
-                    <td><strong>${e.cursoTitulo}</strong></td>
-                    <td>${e.moduloTitulo}</td>
+                    <td><strong>${escapeHtml(e.cursoTitulo)}</strong></td>
+                    <td>${escapeHtml(e.moduloTitulo)}</td>
                     <td style="text-align:center; font-weight:bold; color:${e.aprobado ? '#059669' : '#dc2626'};">${e.calificacion.toFixed(1)} pts</td>
                     <td style="text-align:center;">${e.aprobado ? '<span style="color:#059669; font-weight:bold;">Aprobado</span>' : '<span style="color:#dc2626; font-weight:bold;">Reprobado</span>'}</td>
                     <td style="text-align:center;">${e.intentos}${e.vecesReprobado > 0 ? `<br><small style="color:#b91c1c;">${e.vecesReprobado} reprob.${e.habilitaciones.length ? ' · ' + e.habilitaciones.length + ' habilit.' : ''}</small>` : ''}</td>
@@ -1808,8 +1595,8 @@ function imprimirReporteEvaluaciones() {
             <div style="margin-bottom: 22px; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; page-break-inside: avoid;">
                 <div style="background-color: #f1f5f9; padding: 10px 14px; border-bottom: 1px solid #cbd5e1; display: flex; justify-content: space-between; align-items: center;">
                     <div>
-                        <strong style="font-size: 14px; color: #0f2b48;">${uIdx + 1}. ${u.usuarioNombre}</strong>
-                        <span style="color: #64748b; font-size: 12px; margin-left: 8px;">(CI: ${u.usuarioId} • ${u.rolNombre})</span>
+                        <strong style="font-size: 14px; color: #0f2b48;">${uIdx + 1}. ${escapeHtml(u.usuarioNombre)}</strong>
+                        <span style="color: #64748b; font-size: 12px; margin-left: 8px;">(CI: ${escapeHtml(u.usuarioId)} • ${escapeHtml(u.rolNombre)})</span>
                     </div>
                     <div style="font-size: 12px;">
                         <strong>Promedio:</strong> <span style="color: ${u.promedio >= 70 ? '#059669' : '#dc2626'}; font-weight: bold;">${u.promedio} pts</span> •
@@ -1842,9 +1629,9 @@ function imprimirReporteEvaluaciones() {
             rowsHtml += `
             <tr>
                 <td style="text-align:center;">${idx + 1}</td>
-                <td><strong>${e.usuarioNombre}</strong><br><small style="color:#666;">CI: ${e.usuarioId} • ${e.rolNombre}</small></td>
-                <td>${e.cursoTitulo}</td>
-                <td>${e.moduloTitulo}</td>
+                <td><strong>${escapeHtml(e.usuarioNombre)}</strong><br><small style="color:#666;">CI: ${escapeHtml(e.usuarioId)} • ${escapeHtml(e.rolNombre)}</small></td>
+                <td>${escapeHtml(e.cursoTitulo)}</td>
+                <td>${escapeHtml(e.moduloTitulo)}</td>
                 <td style="text-align:center; font-weight:bold; color:${e.aprobado ? '#059669' : '#dc2626'};">${e.calificacion.toFixed(1)} pts</td>
                 <td style="text-align:center;">${e.aprobado ? '<span style="color:#059669; font-weight:bold;">Aprobado</span>' : '<span style="color:#dc2626; font-weight:bold;">Reprobado</span>'}</td>
                 <td style="text-align:center;">${e.intentos}${e.vecesReprobado > 0 ? `<br><small style="color:#b91c1c;">${e.vecesReprobado} reprob.${e.habilitaciones.length ? ' · ' + e.habilitaciones.length + ' habilit.' : ''}</small>` : ''}</td>
@@ -1926,10 +1713,46 @@ function imprimirReporteEvaluaciones() {
 
 function renderRobustReports() {
     renderReporteEvaluaciones();
-    renderTopLearners();
-    renderCumplimientoCargo();
-    inicializarFiltroUsuariosBrechas();
-    renderBrechasAprendizaje();
+    // Las demás vistas necesitan el progreso de todos: solo se dibuja la que está a la vista
+    const visible = (id) => {
+        const el = document.getElementById(id);
+        return !!el && el.style.display !== 'none';
+    };
+    if (visible('vista-learners')) {
+        renderTopLearners();
+        renderCumplimientoCargo();
+    }
+    if (visible('vista-brechas')) {
+        inicializarFiltroUsuariosBrechas();
+        renderBrechasAprendizaje();
+    }
+}
+
+/**
+ * Envuelve una vista que recorre el progreso de todos los usuarios: en el panel admin el
+ * progreso se descarga bajo demanda (App.asegurarProgreso) la primera vez que se necesita.
+ */
+function _conProgresoCompleto(fn) {
+    return function (...args) {
+        if (!window.App || App.get('progresoCompleto')) return fn.apply(this, args);
+        return App.asegurarProgreso()
+            .then(() => fn.apply(this, args))
+            .catch(err => {
+                console.error('Error al cargar el progreso de los usuarios:', err);
+                if (typeof showToast === 'function') showToast('No se pudo cargar el progreso: ' + err.message, 'danger');
+            });
+    };
+}
+renderTopLearners        = _conProgresoCompleto(renderTopLearners);
+renderCumplimientoCargo  = _conProgresoCompleto(renderCumplimientoCargo);
+renderBrechasAprendizaje = _conProgresoCompleto(renderBrechasAprendizaje);
+exportarReporteXLSX      = _conProgresoCompleto(exportarReporteXLSX);
+
+// Tras recargar los datos, si la pestaña de reportes está abierta se vuelve a dibujar
+if (window.App) {
+    App.on('datos', () => {
+        if (document.getElementById('tab-reportes')?.classList.contains('active')) renderRobustReports();
+    });
 }
 
 // Exportar al scope global
@@ -1947,6 +1770,7 @@ window.imprimirReporteEvaluaciones   = imprimirReporteEvaluaciones;
 window.cambiarFilasPorPaginaEval     = cambiarFilasPorPaginaEval;
 window.paginaAnteriorEval            = paginaAnteriorEval;
 window.paginaSiguienteEval           = paginaSiguienteEval;
+window.buscarEvaluacionesDebounced   = buscarEvaluacionesDebounced;
 window.renderBrechasAprendizaje      = renderBrechasAprendizaje;
 window.renderTopLearners             = renderTopLearners;
 window.renderCumplimientoCargo       = renderCumplimientoCargo;

@@ -19,6 +19,7 @@ require_once __DIR__ . '/lib/lectura.php';       // progreso, carga admin/partic
 require_once __DIR__ . '/lib/respaldo.php';      // importación masiva de respaldos
 require_once __DIR__ . '/lib/usuarios.php';      // login, contraseñas, perfil, tokens
 require_once __DIR__ . '/lib/progreso.php';      // guardar progreso, evaluar, restablecer, reintentos
+require_once __DIR__ . '/lib/reportes.php';      // reporte de evaluaciones (filtros y paginación)
 require_once __DIR__ . '/lib/catalogo.php';      // cursos, carreras, roles, configuración, solicitudes
 require_once __DIR__ . '/lib/seguridad.php';     // log de actividad y rate limiting
 require_once __DIR__ . '/lib/certificados.php';  // códigos y verificación de certificados

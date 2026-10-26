@@ -48,8 +48,10 @@ switch ($action) {
             require_session();
             try {
                 if (is_admin()) {
-                    // Admin: recibe todos los datos (sin claves)
-                    echo json_encode(db_read_safe($conn), JSON_UNESCAPED_UNICODE);
+                    // Admin: recibe todos los datos (sin claves). Con ligero=1, sin el progreso
+                    // de cada usuario, que se pide aparte con progreso_usuarios.
+                    $conProgreso = empty($_GET['ligero']);
+                    echo json_encode(db_read_safe($conn, $conProgreso), JSON_UNESCAPED_UNICODE);
                 } else {
                     // Participante: solo sus datos
                     $data = db_read_for_participant($conn, $_SESSION['user_id'], $_SESSION['user_rol']);
@@ -78,6 +80,32 @@ switch ($action) {
             break;
         }
         http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break;
+
+    // ------ PROGRESO BAJO DEMANDA (admin) ------------------------
+    // GET: progreso de todos los usuarios. POST {ids: [...]}: solo esos usuarios.
+    // Respuesta: { progreso: { usuario_id: { curso_id: {...} } } }
+    case 'progreso_usuarios':
+        require_admin();
+        try {
+            if ($method === 'GET') {
+                $progreso = db_leer_progreso($conn);
+            } elseif ($method === 'POST') {
+                $ids = jsonBody()['ids'] ?? null;
+                if (!is_array($ids) || count($ids) === 0 || count($ids) > 200) {
+                    http_response_code(400); echo json_encode(['error' => 'Se requiere ids (1 a 200 usuarios)']); break;
+                }
+                $progreso = [];
+                foreach (array_unique(array_map('strval', $ids)) as $id) {
+                    $progreso += db_leer_progreso($conn, $id);
+                }
+            } else {
+                http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break;
+            }
+            echo json_encode(['progreso' => (object)$progreso], JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $e) {
+            http_response_code(500); echo json_encode(['error' => $e->getMessage()]);
+        }
+        break;
 
     // ------ LECTURA INDIVIDUAL -----------------------------------
     case 'usuarios':

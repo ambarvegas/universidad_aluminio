@@ -295,12 +295,9 @@ function db_read_usuarios_paginados(mysqli $conn, int $page = 1, int $limit = 25
 
     if ($search !== '') {
         $searchWild = '%' . $search . '%';
-        $where[] = "(id LIKE ? OR nombre LIKE ? OR email LIKE ? OR telefono LIKE ?)";
-        $params[] = $searchWild;
-        $params[] = $searchWild;
-        $params[] = $searchWild;
-        $params[] = $searchWild;
-        $types .= 'ssss';
+        $where[] = "(id LIKE ? OR nombre LIKE ? OR email LIKE ? OR telefono LIKE ? OR rol LIKE ?)";
+        array_push($params, $searchWild, $searchWild, $searchWild, $searchWild, $searchWild);
+        $types .= 'sssss';
     }
 
     if ($rol !== '') {

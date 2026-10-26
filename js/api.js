@@ -132,8 +132,15 @@ window.API = (() => {
         },
 
         // ---- DB COMPLETA ----
-        async cargarDB() {
-            return _get(null);
+        // ligero: el panel admin recibe los usuarios sin progreso (ver cargarProgresoUsuarios)
+        async cargarDB({ ligero = false } = {}) {
+            return _get(ligero ? 'db&ligero=1' : null);
+        },
+
+        // Progreso por usuario ({ progreso: { [id]: {...} } }). Sin ids: todos los usuarios.
+        async cargarProgresoUsuarios(ids = null) {
+            if (!ids || ids.length === 0) return _get('progreso_usuarios');
+            return _post('progreso_usuarios', { ids });
         },
 
         // ---- RESTAURACION DE BACKUP (Admin) ----
@@ -213,6 +220,16 @@ window.API = (() => {
             if (rol) params.set('rol', rol);
             if (estado) params.set('estado', estado);
             return _get('usuarios_paginados&' + params.toString());
+        },
+
+        // ---- REPORTE DE EVALUACIONES (paginado y filtrado en el servidor) ----
+        // filtros: { page, limit, modo: 'agrupada'|'plana', search, usuario, curso, estado, orden, todo }
+        async cargarReporteEvaluaciones(filtros = {}) {
+            const params = new URLSearchParams();
+            Object.entries(filtros).forEach(([k, v]) => {
+                if (v !== undefined && v !== null && v !== '' && v !== false) params.set(k, v === true ? '1' : v);
+            });
+            return _get('reporte_evaluaciones&' + params.toString());
         },
 
         async guardarUsuario(usuario) {

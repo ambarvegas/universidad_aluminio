@@ -28,18 +28,18 @@ const jsArg = (v) => esc(JSON.stringify(String(v ?? '')));
 
 window.cambiarPaginaUsuarios = (nuevaPagina) => {
     usuariosPaginaActual = nuevaPagina;
-    renderTablaUsuariosAdmin();
+    return renderTablaUsuariosAdmin();
 };
 
 window.cambiarLimiteUsuarios = (nuevoLimite) => {
     usuariosPorPagina = parseInt(nuevoLimite, 10) || 25;
     usuariosPaginaActual = 1;
-    renderTablaUsuariosAdmin();
+    return renderTablaUsuariosAdmin();
 };
 
 // Los filtros en vivo solo re-renderizan su propia tabla, con debounce para no
-// reconstruir el DOM en cada pulsación de tecla.
-const renderUsuariosDebounced = window.debounce(() => renderTablaUsuariosAdmin(), 150);
+// reconstruir el DOM (ni consultar al servidor, en usuarios) en cada pulsación de tecla.
+const renderUsuariosDebounced = window.debounce(() => renderTablaUsuariosAdmin(), 300);
 const renderCursosDebounced = window.debounce(() => renderTablaCursosAdmin(), 150);
 
 window.filtrarTablaUsuariosAdmin = () => {
@@ -199,7 +199,10 @@ function renderPaginacionUsuarios(totalPaginas) {
     return partes.join('');
 }
 
-function renderTablaUsuariosAdmin() {
+// La tabla de colaboradores se pagina y filtra en el servidor (acción usuarios_paginados).
+let _usuariosSolicitud = 0;   // descarta respuestas que llegan fuera de orden
+
+async function renderTablaUsuariosAdmin() {
     const userTable = document.getElementById('tabla-usuarios-body');
     if (!userTable) return;
 
@@ -208,25 +211,36 @@ function renderTablaUsuariosAdmin() {
     const searchUserInputEl = document.getElementById('search-admin-usuarios');
     const clearUserBtnEl = document.getElementById('btn-clear-search-usuarios');
     const rawUserSearchVal = searchUserInputEl?.value || '';
-    const searchUserQuery = normalizar(rawUserSearchVal.trim());
 
     if (clearUserBtnEl) {
         clearUserBtnEl.style.display = rawUserSearchVal ? 'flex' : 'none';
     }
 
-    const listaUsuarios = usuarios || [];
-    const usuariosFiltrados = searchUserQuery
-        ? listaUsuarios.filter(u => normalizar(u.nombre || '').includes(searchUserQuery) ||
-                                    normalizar(String(u.id || '')).includes(searchUserQuery) ||
-                                    normalizar(u.rol || '').includes(searchUserQuery))
-        : listaUsuarios;
+    const solicitud = ++_usuariosSolicitud;
+    let r;
+    try {
+        r = await window.API.cargarUsuariosPaginados({
+            page: usuariosPaginaActual, limit: usuariosPorPagina, search: rawUserSearchVal.trim(),
+        });
+    } catch (err) {
+        if (solicitud !== _usuariosSolicitud) return;
+        userTable.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-4"><i class="bi bi-exclamation-triangle me-1"></i>No se pudo cargar la lista de colaboradores: ${esc(err.message)}</td></tr>`;
+        if (userPaginationInfo) userPaginationInfo.textContent = '';
+        if (userPaginationNav) userPaginationNav.innerHTML = '';
+        return;
+    }
+    if (solicitud !== _usuariosSolicitud) return;
 
-    const totalUsuarios = usuariosFiltrados.length;
-    const totalPaginas = Math.max(1, Math.ceil(totalUsuarios / usuariosPorPagina));
-    usuariosPaginaActual = Math.max(1, Math.min(usuariosPaginaActual, totalPaginas));
+    const totalUsuarios = r.total || 0;
+    const totalPaginas = Math.max(1, r.totalPages || 1);
+    // La página quedó fuera de rango (p. ej. tras eliminar al último de la página)
+    if (totalUsuarios > 0 && usuariosPaginaActual > totalPaginas) {
+        usuariosPaginaActual = totalPaginas;
+        return renderTablaUsuariosAdmin();
+    }
 
     if (totalUsuarios === 0) {
-        userTable.innerHTML = searchUserQuery
+        userTable.innerHTML = rawUserSearchVal.trim()
             ? `<tr><td colspan="5" class="text-center text-muted py-4"><i class="bi bi-search me-1"></i>No se encontraron colaboradores coincidentes con "<strong>${esc(rawUserSearchVal)}</strong>". <button type="button" class="btn btn-sm btn-link text-primary p-0 ms-2 text-decoration-none" onclick="document.getElementById('search-admin-usuarios').value=''; filtrarTablaUsuariosAdmin();"><i class="bi bi-x-circle me-1"></i>Limpiar búsqueda</button></td></tr>`
             : '<tr><td colspan="5" class="text-center text-muted py-4"><i class="bi bi-people me-1"></i>No hay colaboradores registrados.</td></tr>';
         if (userPaginationInfo) userPaginationInfo.textContent = 'Mostrando 0 de 0';
@@ -234,9 +248,9 @@ function renderTablaUsuariosAdmin() {
         return;
     }
 
-    const inicio = (usuariosPaginaActual - 1) * usuariosPorPagina;
-    const fin = Math.min(inicio + usuariosPorPagina, totalUsuarios);
-    const usuariosPagina = usuariosFiltrados.slice(inicio, fin);
+    const usuariosPagina = Array.isArray(r.usuarios) ? r.usuarios : [];
+    const inicio = (r.page - 1) * r.limit;
+    const fin = inicio + usuariosPagina.length;
     const carrerasPorId = new Map((carreras || []).map(c => [c.id, c]));
 
     userTable.innerHTML = usuariosPagina.map(u => {
@@ -424,6 +438,9 @@ function actualizarTablas() {
     renderTablaCarrerasAdmin();
 }
 window.actualizarTablas = actualizarTablas;
+
+// Cada recarga de datos desde el servidor (inicio, botón "refrescar") redibuja el panel
+App.on('datos', () => actualizarTablas());
 window.renderTablaCursosAdmin = renderTablaCursosAdmin;
 window.renderTablaUsuariosAdmin = renderTablaUsuariosAdmin;
 

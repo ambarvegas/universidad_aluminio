@@ -176,6 +176,7 @@ const API_RUTAS = [
     'cursos'                     => 'lectura',
     'carreras'                   => 'lectura',
     'config'                     => 'lectura',
+    'progreso_usuarios'          => 'lectura',
     // usuarios
     'usuarios_paginados'         => 'usuarios',
     'guardar_usuario'            => 'usuarios',

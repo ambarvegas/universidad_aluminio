@@ -27,9 +27,9 @@ TEST_DB_HOST=127.0.0.1  TEST_DB_USER=root  TEST_DB_PASS=  TEST_DB_NAME=universid
 | Carpeta | Qué prueba |
 |---|---|
 | `Unidad/` | Funciones puras: códigos de certificado (fijados para no invalidar QR emitidos), filtro de configuración pública, etc. |
-| `Integracion/` | Capa de datos (`lib/`) contra la base de prueba: progreso, evaluación, reintentos habilitados, restablecer, lecturas admin/login/campus, importación de respaldos. |
+| `Integracion/` | Capa de datos (`lib/`) contra la base de prueba: progreso, evaluación, reintentos habilitados, restablecer, lecturas admin/login/campus, carga ligera del panel, reporte de evaluaciones (cálculo, filtros, paginación), importación de respaldos. |
 | `Api/` | `api.php` por HTTP con un servidor PHP local: enrutado, permisos por rol, CORS, flujos completos (reprobar → habilitar → aprobar). |
-| `js/` | Frontend con el ejecutor de Node y un DOM simulado: escape de HTML, tablas y paginación del panel, reporte de evaluaciones. |
+| `js/` | Frontend con el ejecutor de Node, un DOM y una API simulados: estado central `App` (y las variables históricas), progreso bajo demanda, escape de HTML, tablas y paginación del panel, reporte de evaluaciones. |
 
 `support/` contiene la clase base (`BaseDatosTestCase`, con los datos de ejemplo descritos en
 `sembrarDatosBase()`), el servidor HTTP de pruebas y la conexión segura a la base de prueba.

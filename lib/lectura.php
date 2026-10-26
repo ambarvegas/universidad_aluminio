@@ -77,7 +77,7 @@ function db_leer_progreso(mysqli $conn, ?string $userId = null): array {
  * con la misma estructura que tenía db.json (compatibilidad con frontend).
  * Lee directamente de las tablas relacionales normalizadas.
  */
-function db_read_all(mysqli $conn): array {
+function db_read_all(mysqli $conn, bool $conProgreso = true): array {
     $db = [
         'usuarios'            => [],
         'cursos'              => [],
@@ -119,11 +119,16 @@ function db_read_all(mysqli $conn): array {
         }
     }
 
-    // Progreso de cursos (tablas normalizadas + reintentos habilitados)
-    foreach (db_leer_progreso($conn) as $uid => $progUsuario) {
-        if (isset($usuariosMap[$uid])) {
-            $usuariosMap[$uid]['progreso'] = $progUsuario;
+    // Progreso de cursos (tablas normalizadas + reintentos habilitados). Sin progreso, el
+    // cliente lo pide después por usuario (acción progreso_usuarios).
+    if ($conProgreso) {
+        foreach (db_leer_progreso($conn) as $uid => $progUsuario) {
+            if (isset($usuariosMap[$uid])) {
+                $usuariosMap[$uid]['progreso'] = $progUsuario;
+            }
         }
+    } else {
+        $db['progresoIncluido'] = false;
     }
 
     // Formatear progreso vacío como objeto para JSON
@@ -319,8 +324,8 @@ function db_config_publica($config): array {
     return $config;
 }
 
-function db_read_safe(mysqli $conn): array {
-    $data = db_read_all($conn);
+function db_read_safe(mysqli $conn, bool $conProgreso = true): array {
+    $data = db_read_all($conn, $conProgreso);
     foreach ($data['usuarios'] as &$u) {
         unset($u['clave']);
     }

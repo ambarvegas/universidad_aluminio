@@ -424,7 +424,7 @@ if (!function_exists('v_asset')) {
                             <div class="col-12 col-md-4">
                                 <div class="input-group input-group-sm">
                                     <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
-                                    <input type="search" id="filtro-eval-search" name="search_no_autofill_eval" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other" class="form-control" placeholder="Buscar colaborador, cédula, curso..." oninput="filtrarTablaEvaluaciones()">
+                                    <input type="search" id="filtro-eval-search" name="search_no_autofill_eval" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other" class="form-control" placeholder="Buscar colaborador, cédula, curso..." oninput="buscarEvaluacionesDebounced()">
                                 </div>
                             </div>
                             <div class="col-6 col-md-2">

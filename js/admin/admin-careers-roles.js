@@ -262,8 +262,7 @@ window.eliminarRol = async (id) => {
 
 window.actualizarMinAprobacionGlobal = async (val) => {
     const num = parseInt(val) || 70;
-    if (!db.configuracion) db.configuracion = {};
-    db.configuracion.minAprobacion = num;
+    App.get('configuracion').minAprobacion = num;
     try {
         await window.API.guardarConfig('minAprobacion', num);
         showToast('Porcentaje de aprobación actualizado.', 'success');
@@ -272,8 +271,15 @@ window.actualizarMinAprobacionGlobal = async (val) => {
     }
 };
 
-window.exportarBaseDeDatos = () => {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db, null, 2));
+window.exportarBaseDeDatos = async () => {
+    // El panel carga los usuarios sin progreso: el respaldo debe incluirlo completo
+    try {
+        await App.asegurarProgreso();
+    } catch (err) {
+        showToast('No se pudo cargar el progreso para el respaldo: ' + err.message, 'danger');
+        return;
+    }
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(App.comoDB(), null, 2));
     const downloadAnchorNode = document.createElement('a');
     downloadAnchorNode.setAttribute("href", dataStr);
     downloadAnchorNode.setAttribute("download", "universidad_aluminio_db.json");
@@ -309,14 +315,8 @@ window.importarBaseDeDatos = (event) => {
                 icon: 'bi-database-fill-down'
             });
             if (ok) {
-                db = importedData;
-                usuarios = db.usuarios || [];
-                cursos = db.cursos || [];
-                carreras = db.carreras || [];
-                rolesConfig = db.rolesConfig || [];
-                solicitudesRegistro = db.solicitudesRegistro || [];
-                solicitudesCursos = db.solicitudesCursos || [];
-                await window.API.importarBackupDB(db);
+                // La página se recarga después: no hace falta actualizar el estado local
+                await window.API.importarBackupDB(importedData);
                 showToast('Base de datos importada y sincronizada exitosamente.', 'success');
                 setTimeout(() => location.reload(), 1500);
             }

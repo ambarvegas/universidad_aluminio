@@ -83,6 +83,7 @@ final class ApiTest extends BaseDatosTestCase
         self::$srv->login('ana', '2000');
         $this->assertSame(403, self::$srv->api('ana', 'GET', 'usuarios')['status']);
         $this->assertSame(403, self::$srv->api('ana', 'GET', 'reporte_evaluaciones')['status']);
+        $this->assertSame(403, self::$srv->api('ana', 'GET', 'progreso_usuarios')['status']);
         $this->assertSame(403, self::$srv->api('ana', 'POST', 'habilitar_reintento', ['usuario_id' => '2000', 'curso_id' => 'C1', 'modulo_idx' => 0])['status']);
         $this->assertSame(403, self::$srv->api('ana', 'POST', 'guardar_progreso', ['usuario_id' => '3000', 'curso_id' => 'C1'])['status']);
     }
@@ -148,11 +149,14 @@ final class ApiTest extends BaseDatosTestCase
         $this->assertTrue($r['json']['aprobado']);
         $this->assertSame(3, $r['json']['numIntentos']);
 
-        $rep = self::$srv->api('admin', 'GET', 'reporte_evaluaciones');
+        $rep = self::$srv->api('admin', 'GET', 'reporte_evaluaciones&modo=plana&usuario=2000&curso=C1');
         $this->assertSame(200, $rep['status']);
-        $fila = array_values(array_filter($rep['json']['evaluaciones'], fn($e) => $e['usuario_id'] === '2000' && $e['curso_id'] === 'C1'))[0];
+        $this->assertSame(1, $rep['json']['total']);
+        $fila = $rep['json']['evaluaciones'][0];
         $this->assertSame(3, $fila['intentos']);
         $this->assertTrue($fila['aprobado']);
+        $this->assertSame(2, $fila['vecesReprobado'], 'las reprobaciones previas se conservan');
+        $this->assertCount(1, $fila['habilitaciones']);
     }
 
     public function testParticipanteNoPuedeColarEvaluacionesNiAprobarModulosConPreguntas(): void
@@ -188,6 +192,10 @@ final class ApiTest extends BaseDatosTestCase
         $this->assertSame(200, self::$srv->api('admin', 'POST', 'guardar_usuario', ['id' => '5000', 'nombre' => 'Nuevo', 'clave' => 'abc', 'rol' => 'asesor', 'estado' => 'activo'])['status']);
         $this->assertSame('1', $this->valor("SELECT COUNT(*) FROM usuarios WHERE id='5000'"));
 
+        // La búsqueda también cubre el rol; el orden es alfabético por nombre
+        $busq = self::$srv->api('admin', 'GET', 'usuarios_paginados&search=asesor');
+        $this->assertSame(['Ana Pérez', 'Beto', 'Nuevo'], array_column($busq['json']['usuarios'], 'nombre'));
+
         // El tamaño de página se limita a 5..100: limit=2 se convierte en 5
         $pag = self::$srv->api('admin', 'GET', 'usuarios_paginados&page=1&limit=2');
         $this->assertSame(200, $pag['status']);
@@ -199,5 +207,26 @@ final class ApiTest extends BaseDatosTestCase
 
         $this->assertSame(200, self::$srv->api('admin', 'POST', 'eliminar_usuario', ['id' => '3000'])['status']);
         $this->assertSame('0', $this->valor("SELECT COUNT(*) FROM usuarios WHERE id='3000'"));
+    }
+
+    // ---------- Carga ligera del panel y progreso bajo demanda ----------
+
+    public function testPanelLigeroYProgresoBajoDemanda(): void
+    {
+        self::$srv->login('admin', '1000');
+        $db = self::$srv->api('admin', 'GET', 'db&ligero=1');
+        $this->assertSame(200, $db['status']);
+        $this->assertFalse($db['json']['progresoIncluido']);
+        $this->assertSame([], self::buscarUsuario($db['json'], '2000')['progreso']);
+
+        $todos = self::$srv->api('admin', 'GET', 'progreso_usuarios');
+        $this->assertSame(200, $todos['status']);
+        $this->assertSame(2, $todos['json']['progreso']['2000']['C1']['intentos']['0']);
+
+        $uno = self::$srv->api('admin', 'POST', 'progreso_usuarios', ['ids' => ['2000', '3000']]);
+        $this->assertSame(200, $uno['status']);
+        $this->assertSame(['2000'], array_map('strval', array_keys($uno['json']['progreso'])), 'Beto no tiene progreso');
+
+        $this->assertSame(400, self::$srv->api('admin', 'POST', 'progreso_usuarios', ['ids' => []])['status']);
     }
 }

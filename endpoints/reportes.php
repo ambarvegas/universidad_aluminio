@@ -1,7 +1,7 @@
 <?php
 /**
  * endpoints/reportes.php — Reportes e integraciones
- * Reporte de evaluaciones y KPI para el dashboard Alu-Cultura.
+ * Reporte de evaluaciones (paginado) y KPI para el dashboard Alu-Cultura.
  *
  * Lo incluye el router de api.php según la acción: comparte su ámbito ($conn, $method,
  * $action y los helpers jsonBody(), require_session(), require_admin(), is_admin(),
@@ -10,38 +10,15 @@
 
 switch ($action) {
 
-    // ------ REPORTE DIRECTO DE EVALUACIONES ----------------------
+    // ------ REPORTE DE EVALUACIONES (paginado en el servidor) ----
+    // GET ?search=&usuario=&curso=&estado=&orden=&modo=agrupada|plana&page=&limit=&todo=1
+    // Ver db_reporte_evaluaciones() en lib/reportes.php para el formato de respuesta.
     case 'reporte_evaluaciones':
         require_admin();
         if ($method !== 'GET') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
         try {
-            $sql = "SELECT
-                        e.usuario_id,
-                        u.nombre AS usuario_nombre,
-                        u.rol AS usuario_rol,
-                        e.curso_id,
-                        c.titulo AS curso_titulo,
-                        e.modulo_num,
-                        e.calificacion,
-                        e.aprobado,
-                        e.marcado_manual,
-                        e.fecha,
-                        COALESCE(i.intentos, 1) AS intentos
-                    FROM `usuario_evaluaciones` e
-                    JOIN `usuarios` u ON u.id = e.usuario_id
-                    JOIN `cursos` c ON c.id = e.curso_id
-                    LEFT JOIN `usuario_intentos` i ON (i.usuario_id = e.usuario_id AND i.curso_id = e.curso_id AND i.modulo_num = e.modulo_num)
-                    ORDER BY e.calificacion DESC, e.fecha DESC";
-            $res = $conn->query($sql);
-            $evaluaciones = [];
-            while ($row = $res->fetch_assoc()) {
-                $row['calificacion']   = (float)$row['calificacion'];
-                $row['aprobado']       = (bool)$row['aprobado'];
-                $row['marcado_manual'] = (bool)$row['marcado_manual'];
-                $row['intentos']       = (int)$row['intentos'];
-                $evaluaciones[] = $row;
-            }
-            echo json_encode(['evaluaciones' => $evaluaciones], JSON_UNESCAPED_UNICODE);
+            $filtros = array_intersect_key($_GET, array_flip(['search', 'usuario', 'curso', 'estado', 'orden', 'modo', 'page', 'limit', 'todo']));
+            echo json_encode(db_reporte_evaluaciones($conn, $filtros), JSON_UNESCAPED_UNICODE);
         } catch (Throwable $e) {
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);

@@ -1,46 +1,190 @@
 /**
  * js/core/state.js — Universidad del Aluminio
- * Módulo central de estado global reactivo y utilidades compartidas.
+ * Estado central de la aplicación (window.App) y utilidades compartidas.
  */
 
 (function () {
     'use strict';
 
-    const DB_KEY = 'uniDatabase';
+    // ------------------------------------------------------------
+    // ESTADO CENTRAL (window.App)
+    // ------------------------------------------------------------
+    // Todo el estado vive en App.estado. Las variables globales históricas (usuarios,
+    // cursos, db, sesion, tempModulos...) siguen funcionando: son accesos (get/set) a
+    // App.estado, de modo que el código existente puede migrarse poco a poco.
+    //
+    //   App.get('usuarios')              leer
+    //   App.set('usuarios', lista)       reemplazar y avisar a los suscriptores
+    //   App.on('datos', fn)              tras cada carga desde el servidor
+    //   App.on('cambio:usuarios', fn)    tras App.set('usuarios', ...)
+    //   App.buscarUsuario(id)            búsqueda por id (string)
+    //   App.asegurarProgreso([ids])      en el panel admin, carga bajo demanda el progreso
 
-    const initialDB = {
-        usuarios: [
-            { id: "25482938", clave: "12345", nombre: "Ambar Vegas", rol: "admin", estado: "activo", asignados: [], carreras: [], carrerasAsignadas: [], examenesAprobados: {}, progreso: {}, certificadosCurso: [], certificadosCarrera: [] }
-        ],
+    const COLECCIONES = ['usuarios', 'cursos', 'carreras', 'rolesConfig', 'solicitudesRegistro', 'solicitudesCursos'];
+    const CONFIG_POR_DEFECTO = { nombreInstitucion: 'Universidad del Aluminio', logo: '', minAprobacion: 70 };
+
+    function leerSesionGuardada() {
+        try {
+            return JSON.parse(sessionStorage.getItem('aluSesion')) || null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    const estado = {
+        usuarios: [],
         cursos: [],
         carreras: [],
         rolesConfig: [],
         solicitudesRegistro: [],
         solicitudesCursos: [],
-        configuracion: { nombreInstitucion: "Universidad del Aluminio", logo: "", minAprobacion: 70 }
+        configuracion: { ...CONFIG_POR_DEFECTO },
+        sesion: leerSesionGuardada(),
+        // false cuando el servidor envió los usuarios sin progreso (panel admin)
+        progresoCompleto: true,
+        // Editor de cursos (admin)
+        tempModulos: [],
+        tempModuloEvaluacion: { preguntas: [] },
+        tempImagenPortada: '',
+        // Aula virtual
+        cursoActualData: null,
+        moduloActualIdx: 0,
+        leccionActualIdx: 0,
     };
 
-    window.initialDB = initialDB;
-    window.db = window.db || JSON.parse(JSON.stringify(initialDB));
-    window.usuarios = window.usuarios || window.db.usuarios || [];
-    window.cursos = window.cursos || window.db.cursos || [];
-    window.carreras = window.carreras || window.db.carreras || [];
-    window.rolesConfig = window.rolesConfig || window.db.rolesConfig || [];
-    window.solicitudesRegistro = window.solicitudesRegistro || window.db.solicitudesRegistro || [];
-    window.solicitudesCursos = window.solicitudesCursos || window.db.solicitudesCursos || [];
+    const oyentes = new Map();
 
-    try {
-        window.sesion = JSON.parse(sessionStorage.getItem('aluSesion')) || null;
-    } catch (_) {
-        window.sesion = null;
+    function emitir(evento, detalle) {
+        (oyentes.get(evento) || []).slice().forEach(fn => {
+            try {
+                fn(detalle);
+            } catch (err) {
+                console.error(`[App] Error en suscriptor de "${evento}":`, err);
+            }
+        });
     }
 
-    window.tempModulos = window.tempModulos || [];
-    window.tempModuloEvaluacion = window.tempModuloEvaluacion || { preguntas: [] };
-    window.tempImagenPortada = window.tempImagenPortada || "";
-    window.cursoActualData = window.cursoActualData || null;
-    window.moduloActualIdx = window.moduloActualIdx || 0;
-    window.leccionActualIdx = window.leccionActualIdx || 0;
+    const App = {
+        estado,
+
+        get(clave) {
+            return estado[clave];
+        },
+
+        set(clave, valor) {
+            if (COLECCIONES.includes(clave) && !Array.isArray(valor)) valor = [];
+            estado[clave] = valor;
+            emitir('cambio:' + clave, valor);
+            return valor;
+        },
+
+        on(evento, fn) {
+            if (!oyentes.has(evento)) oyentes.set(evento, []);
+            oyentes.get(evento).push(fn);
+            return () => App.off(evento, fn);
+        },
+
+        off(evento, fn) {
+            const lista = oyentes.get(evento);
+            if (lista) oyentes.set(evento, lista.filter(f => f !== fn));
+        },
+
+        emitir,
+
+        /** Reemplaza los datos con la respuesta del servidor y emite 'datos' (salvo silencioso). */
+        cargarDatos(data, { silencioso = false } = {}) {
+            if (!data || typeof data !== 'object' || Array.isArray(data)) return;
+            COLECCIONES.forEach(clave => {
+                if (clave in data) estado[clave] = Array.isArray(data[clave]) ? data[clave] : [];
+            });
+            if (data.configuracion && typeof data.configuracion === 'object') {
+                estado.configuracion = { ...CONFIG_POR_DEFECTO, ...data.configuracion };
+            }
+            progresoBajoDemanda = data.progresoIncluido === false;
+            estado.progresoCompleto = !progresoBajoDemanda;
+            conProgreso.clear();
+            if (!silencioso) emitir('datos', estado);
+        },
+
+        /** Vista de compatibilidad con el objeto `db` histórico (mismas referencias). */
+        comoDB() {
+            const db = {};
+            COLECCIONES.forEach(clave => { db[clave] = estado[clave]; });
+            db.configuracion = estado.configuracion;
+            return db;
+        },
+
+        buscarUsuario(id) {
+            const idStr = String(id);
+            return estado.usuarios.find(u => String(u.id) === idStr) || null;
+        },
+
+        /**
+         * Garantiza que los usuarios tengan su progreso cargado. El panel admin recibe los
+         * usuarios sin progreso para no descargar el de todos al entrar; las vistas que lo
+         * necesitan (reportes, restablecer, marcar completado, respaldo) llaman aquí antes.
+         * Sin ids, carga el de todos. Devuelve una promesa.
+         */
+        asegurarProgreso(ids) {
+            if (estado.progresoCompleto) return Promise.resolve();
+            const pendientes = ids
+                ? [...new Set([].concat(ids).map(String))].filter(id => !conProgreso.has(id) && App.buscarUsuario(id))
+                : null;
+            if (pendientes && pendientes.length === 0) return Promise.resolve();
+            if (!pendientes && cargaProgresoTodos) return cargaProgresoTodos;
+
+            const carga = window.API.cargarProgresoUsuarios(pendientes).then(r => {
+                const mapa = (r && r.progreso) || {};
+                const objetivo = pendientes || estado.usuarios.map(u => String(u.id));
+                objetivo.forEach(id => {
+                    const u = App.buscarUsuario(id);
+                    if (!u) return;
+                    const p = mapa[id];
+                    u.progreso = p && typeof p === 'object' && !Array.isArray(p) ? p : {};
+                    conProgreso.add(id);
+                });
+                if (!pendientes) estado.progresoCompleto = true;
+                emitir('progreso', objetivo);
+            });
+            if (!pendientes) {
+                cargaProgresoTodos = carga.finally(() => { cargaProgresoTodos = null; });
+                return cargaProgresoTodos;
+            }
+            return carga;
+        },
+
+        /** Marca el progreso como desactualizado tras cambiarlo en el servidor (solo panel admin). */
+        invalidarProgreso(ids) {
+            if (!progresoBajoDemanda) return;
+            if (ids) [].concat(ids).forEach(id => conProgreso.delete(String(id)));
+            else conProgreso.clear();
+            estado.progresoCompleto = false;
+        },
+    };
+    // Panel admin: los usuarios llegan sin progreso y se completa bajo demanda
+    let progresoBajoDemanda = false;
+    const conProgreso = new Set();
+    let cargaProgresoTodos = null;
+
+    // Accesos globales de compatibilidad: window.usuarios, usuarios = [...], etc.
+    const GLOBALES = [...COLECCIONES, 'sesion', 'tempModulos', 'tempModuloEvaluacion', 'tempImagenPortada',
+        'cursoActualData', 'moduloActualIdx', 'leccionActualIdx'];
+    GLOBALES.forEach(clave => {
+        Object.defineProperty(window, clave, {
+            configurable: true,
+            enumerable: true,
+            get: () => estado[clave],
+            set: (valor) => App.set(clave, valor),
+        });
+    });
+    Object.defineProperty(window, 'db', {
+        configurable: true,
+        enumerable: true,
+        get: () => App.comoDB(),
+        set: (valor) => App.cargarDatos(valor),
+    });
+
+    window.App = App;
 
     // ------------------------------------------------------------
     // UTILIDADES DE BOTÓN Y LOADING
@@ -294,7 +438,8 @@
             const isAdminPage = window.location.pathname.includes('admin.php') || window.location.pathname.includes('admin.html');
             let data;
             if (isAdminPage) {
-                data = await window.API.cargarDB();
+                // Sin progreso: cada vista lo pide con App.asegurarProgreso() cuando lo necesita
+                data = await window.API.cargarDB({ ligero: true });
             } else {
                 try {
                     data = await window.API.cargarCatalogo();
@@ -304,26 +449,19 @@
                 }
             }
 
-            if (data && typeof data === 'object' && !Array.isArray(data)) {
-                window.db = data;
+            App.cargarDatos(data, { silencioso: true });
+
+            // Sincronizar la sesión antes de avisar a los suscriptores. Sin progreso (panel
+            // admin) no se recalculan las carreras: se marcarían incompletas por error.
+            const sesionActual = App.get('sesion');
+            const updatedUser = sesionActual ? App.buscarUsuario(sesionActual.id) : null;
+            if (updatedUser && App.get('progresoCompleto')) {
+                window.actualizarEstadoCarrerasUsuario(updatedUser);
+                window.sesion = JSON.parse(JSON.stringify(updatedUser));
+                sessionStorage.setItem('aluSesion', JSON.stringify(window.sesion));
             }
 
-            window.usuarios = window.db.usuarios || [];
-            window.cursos = window.db.cursos || [];
-            window.carreras = window.db.carreras || [];
-            window.rolesConfig = (window.db && Array.isArray(window.db.rolesConfig)) ? window.db.rolesConfig : (window.rolesConfig || []);
-            window.solicitudesRegistro = window.db.solicitudesRegistro || [];
-            window.solicitudesCursos = window.db.solicitudesCursos || [];
-
-            // Sincronizar sesión si está autenticado
-            if (window.sesion) {
-                const updatedUser = window.usuarios.find(u => u.id === window.sesion.id);
-                if (updatedUser) {
-                    window.actualizarEstadoCarrerasUsuario(updatedUser);
-                    window.sesion = JSON.parse(JSON.stringify(updatedUser));
-                    sessionStorage.setItem('aluSesion', JSON.stringify(window.sesion));
-                }
-            }
+            App.emitir('datos', App.estado);
 
             return true;
         } catch (err) {
@@ -335,15 +473,4 @@
             }
         }
     };
-
-    // Deprecated alias
-    window.guardarTodo = async function () {
-        console.warn("[DEPRECATED] guardarTodo() ha sido reemplazado por mutaciones atómicas vía window.API. Usando importarBackupDB.");
-        return window.API.importarBackupDB(window.db);
-    };
-    window.guardar = window.guardarTodo;
-    window.guardarCarreras = window.guardarTodo;
-    window.guardarUsuarios = window.guardarTodo;
-    window.guardarRoles = window.guardarTodo;
-    window.guardarSolicitudes = window.guardarTodo;
 })();

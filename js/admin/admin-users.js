@@ -871,3 +871,23 @@ window.exportarUsuariosCSV = () => {
     URL.revokeObjectURL(url);
     showToast('Planilla de usuarios exportada exitosamente a CSV.', 'success');
 };
+
+// ============================================================
+// PROGRESO BAJO DEMANDA
+// ============================================================
+// El panel recibe los usuarios sin progreso (App.asegurarProgreso). Las acciones que lo
+// leen esperan a tenerlo: del usuario indicado o, para exportar, de todos.
+(function () {
+    const conProgreso = (fn, deTodos = false) => async (...args) => {
+        try {
+            await App.asegurarProgreso(deTodos ? undefined : [args[0]]);
+        } catch (err) {
+            showToast('No se pudo cargar el progreso: ' + err.message, 'danger');
+            return;
+        }
+        return fn(...args);
+    };
+    window.abrirRestablecerAvance = conProgreso(window.abrirRestablecerAvance);
+    window.abrirMarcarCompletado = conProgreso(window.abrirMarcarCompletado);
+    window.exportarUsuariosCSV = conProgreso(window.exportarUsuariosCSV, true);
+})();
