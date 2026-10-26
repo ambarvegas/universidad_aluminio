@@ -1,6 +1,10 @@
 <?php
 /**
  * Copiar como config.local.php en el servidor (NO se versiona) y completar.
+ * El acceso web a config.local*.php está bloqueado en .htaccess.
+ *
+ * db_*: conexión MySQL (obligatoria; sin ella la API responde 503).
+ * Alternativa: variables de entorno DB_HOST, DB_USER, DB_PASS, DB_NAME, DB_PORT.
  *
  * kpi_api_key: clave compartida con el servidor PHP de Alu-Cultura (ruta
  * heredada de kpi_humildad con X-Api-Key; se retirará junto con ese servidor).
@@ -15,6 +19,12 @@
  * En producción debe quedar en null.
  */
 return [
+    'db_host' => '',
+    'db_user' => '',
+    'db_pass' => '',
+    'db_name' => '',
+    'db_port' => 3306,
+
     'kpi_api_key' => '',
 
     'firebase_project_id' => 'opening-c3cf5',

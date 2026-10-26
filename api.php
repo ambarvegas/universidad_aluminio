@@ -47,9 +47,13 @@ if (!headers_sent()) {
     if (extension_loaded('zlib') && !in_array('ob_gzhandler', ob_list_handlers())) {
         ob_start('ob_gzhandler');
     }
-    header("Access-Control-Allow-Origin: *");
-    header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
-    header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Api-Key");
+    // CORS solo para el endpoint que consume la app Alu-Cultura (autenticado con token
+    // Bearer / X-Api-Key, sin cookies). El resto de la API solo la usan páginas del mismo origen.
+    if (($_GET['action'] ?? '') === 'kpi_humildad') {
+        header("Access-Control-Allow-Origin: *");
+        header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
+        header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Api-Key");
+    }
     header("Content-Type: application/json; charset=utf-8");
     header("X-Content-Type-Options: nosniff");
     header("X-Frame-Options: SAMEORIGIN");
@@ -70,8 +74,10 @@ require_once __DIR__ . '/firebase_auth.php';
 try {
     $conn = db_connect();
 } catch (Throwable $e) {
+    // El detalle (host, usuario) queda en el log del servidor, no en la respuesta pública
+    error_log('[api.php] ' . $e->getMessage());
     http_response_code(503);
-    echo json_encode(['error' => 'No se pudo conectar a la base de datos: ' . $e->getMessage()]);
+    echo json_encode(['error' => 'No se pudo conectar a la base de datos. Intenta de nuevo en unos minutos.']);
     exit;
 }
 
@@ -125,14 +131,7 @@ function is_admin(): bool {
  * Sin clave configurada, el endpoint queda deshabilitado.
  */
 function kpi_api_key(): string {
-    $key = getenv('KPI_API_KEY');
-    if ($key) return $key;
-    $file = __DIR__ . '/config.local.php';
-    if (is_file($file)) {
-        $cfg = include $file;
-        if (is_array($cfg) && !empty($cfg['kpi_api_key'])) return (string)$cfg['kpi_api_key'];
-    }
-    return '';
+    return (string)app_secret('KPI_API_KEY', 'kpi_api_key', '');
 }
 
 /**
@@ -1030,7 +1029,11 @@ switch ($action) {
     case 'config':
         require_session();
         if ($method !== 'GET') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
-        try { $d = db_read_safe($conn); echo json_encode(['configuracion' => $d['configuracion']], JSON_UNESCAPED_UNICODE); }
+        try {
+            $d = db_read_safe($conn);
+            $cfg = is_admin() ? $d['configuracion'] : db_config_publica($d['configuracion']);
+            echo json_encode(['configuracion' => $cfg], JSON_UNESCAPED_UNICODE);
+        }
         catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 

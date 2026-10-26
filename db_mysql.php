@@ -9,11 +9,34 @@
 // CONFIGURACIÓN DE CONEXIÓN
 // ============================================================
 
-define('MYSQL_HOST', getenv('DB_HOST') ?: '185.2.168.16');
-define('MYSQL_USER', getenv('DB_USER') ?: 'alufletes_admin');
-define('MYSQL_PASS', getenv('DB_PASS') ?: '2fjy68PjsK7u2Hi');
-define('MYSQL_DB',   getenv('DB_NAME') ?: 'alufletes_universidad');
-define('MYSQL_PORT', (int)(getenv('DB_PORT') ?: 3306));
+/**
+ * Lee un valor de config.local.php (no versionado; ver config.local.example.php).
+ * El archivo se carga una sola vez por petición.
+ */
+function app_config(string $clave, $default = null) {
+    static $cfg = null;
+    if ($cfg === null) {
+        $file = __DIR__ . '/config.local.php';
+        $loaded = is_file($file) ? include $file : [];
+        $cfg = is_array($loaded) ? $loaded : [];
+    }
+    return array_key_exists($clave, $cfg) ? $cfg[$clave] : $default;
+}
+
+/**
+ * Valor de configuración: variable de entorno primero, luego config.local.php.
+ */
+function app_secret(string $envVar, string $clave, $default = '') {
+    $env = getenv($envVar);
+    return ($env !== false && $env !== '') ? $env : app_config($clave, $default);
+}
+
+// Sin valores por defecto: las credenciales nunca deben vivir en el repositorio.
+define('MYSQL_HOST', (string)app_secret('DB_HOST', 'db_host'));
+define('MYSQL_USER', (string)app_secret('DB_USER', 'db_user'));
+define('MYSQL_PASS', (string)app_secret('DB_PASS', 'db_pass'));
+define('MYSQL_DB',   (string)app_secret('DB_NAME', 'db_name'));
+define('MYSQL_PORT', (int)app_secret('DB_PORT', 'db_port', 3306));
 define('MYSQL_CHARSET', 'utf8mb4');
 
 // Historial de reintentos habilitados por un administrador sobre evaluaciones reprobadas.
@@ -42,6 +65,9 @@ define('DB_SQL_USUARIO_HABILITACIONES', "CREATE TABLE IF NOT EXISTS `usuario_hab
  * Lanza una excepción si no puede conectarse.
  */
 function db_connect(): mysqli {
+    if (MYSQL_HOST === '' || MYSQL_USER === '' || MYSQL_DB === '') {
+        throw new RuntimeException('Configuración de base de datos incompleta: crea config.local.php a partir de config.local.example.php (db_host, db_user, db_pass, db_name).');
+    }
     $conn = mysqli_init();
     if (!$conn) {
         throw new RuntimeException('Error al inicializar mysqli');
@@ -1445,6 +1471,20 @@ function db_hash_all_passwords(mysqli $conn): int {
  * Modifica db_read_all para que NO incluya claves en la respuesta.
  * Llama a db_read_all y limpia las claves.
  */
+/**
+ * Configuración apta para usuarios no administradores: excluye credenciales SMTP y
+ * datos de contacto internos que solo necesita el panel de administración.
+ */
+function db_config_publica($config): array {
+    $config = is_array($config) ? $config : (array)$config;
+    foreach (array_keys($config) as $clave) {
+        if (str_starts_with((string)$clave, 'smtp_') || $clave === 'email_admin') {
+            unset($config[$clave]);
+        }
+    }
+    return $config;
+}
+
 function db_read_safe(mysqli $conn): array {
     $data = db_read_all($conn);
     foreach ($data['usuarios'] as &$u) {
@@ -1523,7 +1563,7 @@ function db_read_for_participant(mysqli $conn, string $userId, string $userRol):
         'rolesConfig'         => $rolConfig ? [$rolConfig] : [],
         'solicitudesRegistro' => [],
         'solicitudesCursos'   => [],
-        'configuracion'       => $full['configuracion'],
+        'configuracion'       => db_config_publica($full['configuracion']),
     ];
 }
 
@@ -1781,7 +1821,7 @@ function db_read_catalogo(mysqli $conn, string $userId, string $userRol): array 
         'rolesConfig'         => $miRolConfig ? [$miRolConfig] : [],
         'solicitudesRegistro' => [],
         'solicitudesCursos'   => [],
-        'configuracion'       => $configuracion,
+        'configuracion'       => db_config_publica($configuracion),
     ];
 }
 
