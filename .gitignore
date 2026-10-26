@@ -27,3 +27,7 @@ config.local.php
 
 # Sesiones PHP (generadas por api.php)
 sessions/
+
+# Dependencias y caché de pruebas (composer install / phpunit)
+vendor/
+.phpunit.cache/

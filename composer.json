@@ -1,0 +1,22 @@
+{
+    "name": "ambarvegas/universidad-aluminio",
+    "description": "Universidad del Aluminio",
+    "type": "project",
+    "license": "proprietary",
+    "require-dev": {
+        "phpunit/phpunit": "^11"
+    },
+    "scripts": {
+        "test": [
+            "phpunit",
+            "node --test \"tests/js/*.test.mjs\""
+        ],
+        "test:php": "phpunit",
+        "test:js": "node --test \"tests/js/*.test.mjs\""
+    },
+    "scripts-descriptions": {
+        "test": "Ejecuta todas las pruebas (PHP y JavaScript). Requiere MySQL local encendido.",
+        "test:php": "Pruebas PHP: unidad, integración con base de prueba y API por HTTP.",
+        "test:js": "Pruebas del frontend con el ejecutor integrado de Node."
+    }
+}

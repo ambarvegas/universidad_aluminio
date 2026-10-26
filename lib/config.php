@@ -28,11 +28,14 @@ function app_secret(string $envVar, string $clave, $default = '') {
 }
 
 // Sin valores por defecto: las credenciales nunca deben vivir en el repositorio.
-define('MYSQL_HOST', (string)app_secret('DB_HOST', 'db_host'));
-define('MYSQL_USER', (string)app_secret('DB_USER', 'db_user'));
-define('MYSQL_PASS', (string)app_secret('DB_PASS', 'db_pass'));
-define('MYSQL_DB',   (string)app_secret('DB_NAME', 'db_name'));
-define('MYSQL_PORT', (int)app_secret('DB_PORT', 'db_port', 3306));
+// Si ya vienen definidas (p. ej. tests/bootstrap.php apuntando a una base de prueba), se respetan.
+if (!defined('MYSQL_HOST')) {
+    define('MYSQL_HOST', (string)app_secret('DB_HOST', 'db_host'));
+    define('MYSQL_USER', (string)app_secret('DB_USER', 'db_user'));
+    define('MYSQL_PASS', (string)app_secret('DB_PASS', 'db_pass'));
+    define('MYSQL_DB',   (string)app_secret('DB_NAME', 'db_name'));
+    define('MYSQL_PORT', (int)app_secret('DB_PORT', 'db_port', 3306));
+}
 define('MYSQL_CHARSET', 'utf8mb4');
 
 /**
