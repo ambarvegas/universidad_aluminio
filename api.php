@@ -812,28 +812,23 @@ switch ($action) {
             if (!is_admin()) {
                 // Participante: solo puede marcar lecciones completadas libremente.
                 // Evaluaciones, intentos y módulos con examen solo se actualizan vía 'evaluar_modulo'.
-                $stmtCheck = $conn->prepare("SELECT modulos_aprobados, medallas, evaluaciones, intentos FROM `usuario_progreso` WHERE usuario_id = ? AND curso_id = ?");
+                $stmtCheck = $conn->prepare("SELECT modulo_num FROM `usuario_modulos_aprobados` WHERE usuario_id = ? AND curso_id = ?");
                 $stmtCheck->bind_param('ss', $uid, $cid);
                 $stmtCheck->execute();
                 $resCheck = $stmtCheck->get_result();
                 $dbModAprob = [];
-                $dbMedallas = [];
-                $dbEvals    = [];
-                $dbIntentos = [];
-                if ($resCheck && $rCheck = $resCheck->fetch_assoc()) {
-                    $dbModAprob = json_decode($rCheck['modulos_aprobados'] ?? '[]', true) ?? [];
-                    $dbMedallas = json_decode($rCheck['medallas'] ?? '[]', true) ?? [];
-                    $dbEvals    = json_decode($rCheck['evaluaciones'] ?? '{}', true) ?? [];
-                    $dbIntentos = json_decode($rCheck['intentos'] ?? '{}', true) ?? [];
+                while ($resCheck && $rCheck = $resCheck->fetch_assoc()) {
+                    $dbModAprob[] = (string)$rCheck['modulo_num'];
                 }
 
-                // Permitir aprobar módulos sin preguntas (solo lectura/video) si el frontend los envió
+                // Permitir aprobar módulos sin preguntas (solo lectura/video) si el frontend los envió.
+                // El guardado es aditivo: solo se envían los módulos nuevos permitidos.
                 $incomingMod = (array)($body['modulosAprobados'] ?? []);
-                $allowedMod = $dbModAprob;
-                $allowedMed = $dbMedallas;
+                $allowedMod = [];
+                $allowedMed = [];
                 foreach ($incomingMod as $mNum) {
                     $mNumStr = (string)$mNum;
-                    if (in_array($mNumStr, $allowedMod, true)) continue;
+                    if (in_array($mNumStr, $dbModAprob, true)) continue;
                     $mIdxInt = (int)$mNum;
                     $sQ = $conn->prepare("SELECT COUNT(p.id) as num_q FROM `curso_modulos` m LEFT JOIN `curso_preguntas` p ON p.modulo_id = m.id WHERE m.curso_id = ? AND m.orden = ?");
                     $sQ->bind_param('si', $cid, $mIdxInt);
@@ -849,8 +844,8 @@ switch ($action) {
                     'leccionesCompletadas' => $body['leccionesCompletadas'] ?? [],
                     'modulosAprobados'     => array_values(array_unique($allowedMod)),
                     'medallas'             => array_values(array_unique($allowedMed)),
-                    'evaluaciones'         => (object)$dbEvals,
-                    'intentos'             => (object)$dbIntentos,
+                    'evaluaciones'         => [],
+                    'intentos'             => [],
                 ];
                 db_upsert_progreso($conn, $uid, $cid, $prog);
             } else {
@@ -1157,18 +1152,20 @@ switch ($action) {
                 "SELECT
                     COUNT(*)                       AS asignados,
                     SUM(cert.curso_id IS NOT NULL) AS completados,
-                    SUM(cert.curso_id IS NULL
-                        AND JSON_LENGTH(COALESCE(p.lecciones_completadas, JSON_ARRAY())) > 0) AS en_progreso
+                    SUM(cert.curso_id IS NULL AND EXISTS (
+                        SELECT 1 FROM `usuario_lecciones_completadas` l
+                        WHERE l.usuario_id = ? AND l.curso_id = a.curso_id
+                    )) AS en_progreso
                  FROM (
                     SELECT curso_id FROM `usuario_asignados` WHERE usuario_id = ?
                     UNION
                     SELECT curso_id FROM `rol_cursos` WHERE rol_id = ?
                  ) a
                  JOIN `cursos` c ON c.id = a.curso_id AND c.en_construccion = 0
-                 LEFT JOIN `usuario_certificados_curso` cert ON cert.usuario_id = ? AND cert.curso_id = a.curso_id
-                 LEFT JOIN `usuario_progreso` p              ON p.usuario_id    = ? AND p.curso_id    = a.curso_id"
+                 LEFT JOIN `usuario_certificados_curso` cert ON cert.usuario_id = ? AND cert.curso_id = a.curso_id"
             );
-            $stmt->bind_param('ssss', $ci, $u['rol'], $ci, $ci);
+            // Orden de los ? en el texto SQL: EXISTS (en_progreso), asignados, rol, certificados
+            $stmt->bind_param('ssss', $ci, $ci, $u['rol'], $ci);
             $stmt->execute();
             $r = $stmt->get_result()->fetch_assoc();
 

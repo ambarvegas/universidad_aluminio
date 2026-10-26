@@ -121,19 +121,6 @@ function db_create_tables(mysqli $conn): void {
             FOREIGN KEY (`usuario_id`) REFERENCES `usuarios`(`id`) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
-        // Progreso por curso de cada usuario (datos JSON para flexibilidad)
-        "CREATE TABLE IF NOT EXISTS `usuario_progreso` (
-            `usuario_id`            VARCHAR(50)  NOT NULL,
-            `curso_id`              VARCHAR(100) NOT NULL,
-            `lecciones_completadas` JSON,
-            `modulos_aprobados`     JSON,
-            `medallas`              JSON,
-            `evaluaciones`          JSON,
-            `intentos`              JSON,
-            PRIMARY KEY (`usuario_id`, `curso_id`),
-            FOREIGN KEY (`usuario_id`) REFERENCES `usuarios`(`id`) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
-
         // Certificados de cursos
         "CREATE TABLE IF NOT EXISTS `usuario_certificados_curso` (
             `usuario_id` VARCHAR(50)  NOT NULL,
@@ -437,6 +424,73 @@ function db_create_tables(mysqli $conn): void {
 // ============================================================
 
 /**
+ * Progreso de cursos desde las tablas normalizadas (única fuente de verdad).
+ * Retorna [usuario_id => [curso_id => progreso]] con el formato que consume el frontend:
+ * leccionesCompletadas, modulosAprobados, medallas, evaluaciones, intentos, más
+ * intentosExtra/habilitaciones cuando existen reintentos habilitados.
+ * Con $userId se limita a ese usuario.
+ */
+function db_leer_progreso(mysqli $conn, ?string $userId = null): array {
+    $vacio = ['leccionesCompletadas' => [], 'modulosAprobados' => [], 'medallas' => [], 'evaluaciones' => [], 'intentos' => []];
+    $prog = [];
+
+    $consultar = function (string $sql) use ($conn, $userId) {
+        if ($userId === null) return $conn->query($sql);
+        $stmt = $conn->prepare($sql . ' WHERE usuario_id = ?');
+        $stmt->bind_param('s', $userId);
+        $stmt->execute();
+        return $stmt->get_result();
+    };
+
+    $listas = [
+        'leccionesCompletadas' => "SELECT usuario_id, curso_id, leccion_codigo AS v FROM `usuario_lecciones_completadas`",
+        'modulosAprobados'     => "SELECT usuario_id, curso_id, modulo_num AS v FROM `usuario_modulos_aprobados`",
+        'medallas'             => "SELECT usuario_id, curso_id, medalla_num AS v FROM `usuario_medallas`",
+    ];
+    foreach ($listas as $campo => $sql) {
+        $res = $consultar($sql);
+        while ($res && $r = $res->fetch_assoc()) {
+            $prog[$r['usuario_id']][$r['curso_id']] ??= $vacio;
+            $prog[$r['usuario_id']][$r['curso_id']][$campo][] = $r['v'];
+        }
+    }
+
+    $res = $consultar("SELECT usuario_id, curso_id, modulo_num, calificacion, aprobado, marcado_manual, fecha FROM `usuario_evaluaciones`");
+    while ($res && $r = $res->fetch_assoc()) {
+        $prog[$r['usuario_id']][$r['curso_id']] ??= $vacio;
+        $eItem = ['calificacion' => (float)$r['calificacion'], 'aprobado' => (bool)$r['aprobado']];
+        if (!empty($r['marcado_manual'])) $eItem['marcadoManual'] = true;
+        if (!empty($r['fecha'])) $eItem['fecha'] = $r['fecha'];
+        $prog[$r['usuario_id']][$r['curso_id']]['evaluaciones'][$r['modulo_num']] = $eItem;
+    }
+
+    $res = $consultar("SELECT usuario_id, curso_id, modulo_num, intentos FROM `usuario_intentos`");
+    while ($res && $r = $res->fetch_assoc()) {
+        $prog[$r['usuario_id']][$r['curso_id']] ??= $vacio;
+        $prog[$r['usuario_id']][$r['curso_id']]['intentos'][$r['modulo_num']] = (int)$r['intentos'];
+    }
+
+    // Mapas vacíos como objeto JSON ({}), no como arreglo ([])
+    foreach ($prog as &$cursosUsuario) {
+        foreach ($cursosUsuario as &$p) {
+            $p['evaluaciones'] = (object)$p['evaluaciones'];
+            $p['intentos']     = (object)$p['intentos'];
+        }
+        unset($p);
+    }
+    unset($cursosUsuario);
+
+    // Reintentos habilitados por administración (intentos extra + historial para reportes)
+    foreach (db_habilitaciones_map($conn, $userId) as $uid => $habUsuario) {
+        if (isset($prog[$uid])) {
+            $prog[$uid] = db_habilitaciones_aplicar_a_progreso($prog[$uid], $habUsuario);
+        }
+    }
+
+    return $prog;
+}
+
+/**
  * Lee todos los datos de MySQL y los retorna como un array
  * con la misma estructura que tenía db.json (compatibilidad con frontend).
  * Lee directamente de las tablas relacionales normalizadas.
@@ -483,135 +537,10 @@ function db_read_all(mysqli $conn): array {
         }
     }
 
-    // --- Progreso desde tablas relacionales normalizadas ---
-    $normProgreso = [];
-
-    // Lecciones completadas
-    $resLec = $conn->query("SELECT usuario_id, curso_id, leccion_codigo FROM `usuario_lecciones_completadas`");
-    if ($resLec) {
-        while ($r = $resLec->fetch_assoc()) {
-            $u = $r['usuario_id']; $c = $r['curso_id'];
-            if (!isset($normProgreso[$u][$c])) {
-                $normProgreso[$u][$c] = ['leccionesCompletadas' => [], 'modulosAprobados' => [], 'medallas' => [], 'evaluaciones' => (object)[], 'intentos' => (object)[]];
-            }
-            $normProgreso[$u][$c]['leccionesCompletadas'][] = $r['leccion_codigo'];
-        }
-    }
-
-    // Módulos aprobados
-    $resMod = $conn->query("SELECT usuario_id, curso_id, modulo_num FROM `usuario_modulos_aprobados`");
-    if ($resMod) {
-        while ($r = $resMod->fetch_assoc()) {
-            $u = $r['usuario_id']; $c = $r['curso_id'];
-            if (!isset($normProgreso[$u][$c])) {
-                $normProgreso[$u][$c] = ['leccionesCompletadas' => [], 'modulosAprobados' => [], 'medallas' => [], 'evaluaciones' => (object)[], 'intentos' => (object)[]];
-            }
-            $normProgreso[$u][$c]['modulosAprobados'][] = $r['modulo_num'];
-        }
-    }
-
-    // Medallas
-    $resMed = $conn->query("SELECT usuario_id, curso_id, medalla_num FROM `usuario_medallas`");
-    if ($resMed) {
-        while ($r = $resMed->fetch_assoc()) {
-            $u = $r['usuario_id']; $c = $r['curso_id'];
-            if (!isset($normProgreso[$u][$c])) {
-                $normProgreso[$u][$c] = ['leccionesCompletadas' => [], 'modulosAprobados' => [], 'medallas' => [], 'evaluaciones' => (object)[], 'intentos' => (object)[]];
-            }
-            $normProgreso[$u][$c]['medallas'][] = $r['medalla_num'];
-        }
-    }
-
-    // Auto-normalización estricta: Si un módulo está APROBADO por el usuario pero carece de evaluación,
-    // cargar dicha evaluación faltante con 100%. Si el usuario tiene módulos por cursar (no aprobados),
-    // dejarlos sin calificación. Si ya tiene una evaluación cargada, preservarla intacta (INSERT IGNORE).
-    $conn->query("
-        INSERT IGNORE INTO `usuario_evaluaciones` (`usuario_id`, `curso_id`, `modulo_num`, `calificacion`, `aprobado`, `marcado_manual`, `fecha`)
-        SELECT uma.usuario_id, uma.curso_id, uma.modulo_num, 100.00, 1, 1, NOW()
-        FROM `usuario_modulos_aprobados` uma
-    ");
-    $conn->query("
-        INSERT IGNORE INTO `usuario_intentos` (`usuario_id`, `curso_id`, `modulo_num`, `intentos`)
-        SELECT ue.usuario_id, ue.curso_id, ue.modulo_num, 1
-        FROM `usuario_evaluaciones` ue
-    ");
-
-    // Evaluaciones
-    $resEval = $conn->query("SELECT usuario_id, curso_id, modulo_num, calificacion, aprobado, marcado_manual, fecha FROM `usuario_evaluaciones`");
-    if ($resEval) {
-        while ($r = $resEval->fetch_assoc()) {
-            $u = $r['usuario_id']; $c = $r['curso_id'];
-            if (!isset($normProgreso[$u][$c])) {
-                $normProgreso[$u][$c] = ['leccionesCompletadas' => [], 'modulosAprobados' => [], 'medallas' => [], 'evaluaciones' => [], 'intentos' => (object)[]];
-            }
-            if (is_object($normProgreso[$u][$c]['evaluaciones'])) {
-                $normProgreso[$u][$c]['evaluaciones'] = (array)$normProgreso[$u][$c]['evaluaciones'];
-            }
-            $eItem = [
-                'calificacion' => (float)$r['calificacion'],
-                'aprobado'     => (bool)$r['aprobado']
-            ];
-            if (!empty($r['marcado_manual'])) $eItem['marcadoManual'] = true;
-            if (!empty($r['fecha'])) $eItem['fecha'] = $r['fecha'];
-
-            $normProgreso[$u][$c]['evaluaciones'][$r['modulo_num']] = $eItem;
-        }
-    }
-
-    // Intentos
-    $resInt = $conn->query("SELECT usuario_id, curso_id, modulo_num, intentos FROM `usuario_intentos`");
-    if ($resInt) {
-        while ($r = $resInt->fetch_assoc()) {
-            $u = $r['usuario_id']; $c = $r['curso_id'];
-            if (!isset($normProgreso[$u][$c])) {
-                $normProgreso[$u][$c] = ['leccionesCompletadas' => [], 'modulosAprobados' => [], 'medallas' => [], 'evaluaciones' => (object)[], 'intentos' => []];
-            }
-            if (is_object($normProgreso[$u][$c]['intentos'])) {
-                $normProgreso[$u][$c]['intentos'] = (array)$normProgreso[$u][$c]['intentos'];
-            }
-            $normProgreso[$u][$c]['intentos'][$r['modulo_num']] = (int)$r['intentos'];
-        }
-    }
-
-    // Asignar progreso normalizado a usuarios
-    foreach ($normProgreso as $uId => $cMap) {
-        if (isset($usuariosMap[$uId])) {
-            foreach ($cMap as $cId => $pData) {
-                $pData['evaluaciones'] = empty($pData['evaluaciones']) ? (object)[] : (object)$pData['evaluaciones'];
-                $pData['intentos']     = empty($pData['intentos'])     ? (object)[] : (object)$pData['intentos'];
-                $usuariosMap[$uId]['progreso'][$cId] = $pData;
-            }
-        }
-    }
-
-    // Fallback: Si algún usuario no tiene progreso en tablas normalizadas pero sí en usuario_progreso legacy
-    $resLeg = $conn->query("SELECT usuario_id, curso_id, lecciones_completadas, modulos_aprobados, medallas, evaluaciones, intentos FROM `usuario_progreso`");
-    if ($resLeg) {
-        while ($row = $resLeg->fetch_assoc()) {
-            $uid = $row['usuario_id'];
-            $cid = $row['curso_id'];
-            if (!isset($usuariosMap[$uid])) continue;
-            if (!isset($usuariosMap[$uid]['progreso'][$cid])) {
-                $evals = json_decode($row['evaluaciones'] ?? '{}', true);
-                if (!is_array($evals)) $evals = [];
-                $ints = json_decode($row['intentos'] ?? '{}', true);
-                if (!is_array($ints)) $ints = [];
-
-                $usuariosMap[$uid]['progreso'][$cid] = [
-                    'leccionesCompletadas' => json_decode($row['lecciones_completadas'] ?? '[]', true) ?? [],
-                    'modulosAprobados'     => json_decode($row['modulos_aprobados']     ?? '[]', true) ?? [],
-                    'medallas'             => json_decode($row['medallas']              ?? '[]', true) ?? [],
-                    'evaluaciones'         => empty($evals) ? (object)[] : $evals,
-                    'intentos'             => empty($ints) ? (object)[] : $ints,
-                ];
-            }
-        }
-    }
-
-    // Reintentos habilitados por administración (intentos extra + historial para reportes)
-    foreach (db_habilitaciones_map($conn) as $uid => $habUsuario) {
+    // Progreso de cursos (tablas normalizadas + reintentos habilitados)
+    foreach (db_leer_progreso($conn) as $uid => $progUsuario) {
         if (isset($usuariosMap[$uid])) {
-            $usuariosMap[$uid]['progreso'] = db_habilitaciones_aplicar_a_progreso($usuariosMap[$uid]['progreso'] ?? [], $habUsuario);
+            $usuariosMap[$uid]['progreso'] = $progUsuario;
         }
     }
 
@@ -836,6 +765,11 @@ function db_bulk_insert(mysqli $conn, string $table, array $columns, array $rows
 function db_write_all(mysqli $conn, array $data): void {
     @set_time_limit(600);
     @ini_set('memory_limit', '512M');
+
+    // Progreso actual (tablas normalizadas) para fusionarlo con el respaldo sin perder datos.
+    // Se lee antes de la transacción: db_leer_progreso puede crear tablas (DDL = commit implícito).
+    $existingDbProgreso = db_leer_progreso($conn);
+
     $conn->begin_transaction();
 
     try {
@@ -848,14 +782,6 @@ function db_write_all(mysqli $conn, array $data): void {
         if ($resH) {
             while ($r = $resH->fetch_assoc()) {
                 $existingHashes[$r['id']] = $r['clave'];
-            }
-        }
-
-        $existingDbProgreso = [];
-        $resP = $conn->query("SELECT usuario_id, curso_id, lecciones_completadas, modulos_aprobados, medallas, evaluaciones, intentos FROM `usuario_progreso`");
-        if ($resP) {
-            while ($r = $resP->fetch_assoc()) {
-                $existingDbProgreso[$r['usuario_id']][$r['curso_id']] = $r;
             }
         }
 
@@ -878,7 +804,6 @@ function db_write_all(mysqli $conn, array $data): void {
         // Limpiar tablas dependientes
         $conn->query("TRUNCATE TABLE `usuario_asignados`");
         $conn->query("TRUNCATE TABLE `usuario_carreras_asignadas`");
-        $conn->query("TRUNCATE TABLE `usuario_progreso`");
         $conn->query("TRUNCATE TABLE `usuario_lecciones_completadas`");
         $conn->query("TRUNCATE TABLE `usuario_modulos_aprobados`");
         $conn->query("TRUNCATE TABLE `usuario_medallas`");
@@ -896,7 +821,6 @@ function db_write_all(mysqli $conn, array $data): void {
         $usuariosRows          = [];
         $asignadosRows         = [];
         $carrerasAsignadasRows = [];
-        $progresoRows          = [];
         $normLecRows           = [];
         $normModRows           = [];
         $normMedRows           = [];
@@ -959,13 +883,13 @@ function db_write_all(mysqli $conn, array $data): void {
                 $progPayload = $progresoPayload[$cIdStr] ?? [];
                 if (is_object($progPayload)) $progPayload = (array)$progPayload;
 
-                $dbProg = $existingDbProgreso[$id][$cIdStr] ?? null;
+                $dbProg = $existingDbProgreso[$id][$cIdStr] ?? [];
 
-                $dbLec  = $dbProg ? (json_decode($dbProg['lecciones_completadas'] ?? '[]', true) ?? []) : [];
-                $dbMod  = $dbProg ? (json_decode($dbProg['modulos_aprobados']     ?? '[]', true) ?? []) : [];
-                $dbMed  = $dbProg ? (json_decode($dbProg['medallas']              ?? '[]', true) ?? []) : [];
-                $dbEval = $dbProg ? (json_decode($dbProg['evaluaciones']          ?? '{}', true) ?? []) : [];
-                $dbInt  = $dbProg ? (json_decode($dbProg['intentos']              ?? '{}', true) ?? []) : [];
+                $dbLec  = $dbProg['leccionesCompletadas'] ?? [];
+                $dbMod  = $dbProg['modulosAprobados']     ?? [];
+                $dbMed  = $dbProg['medallas']             ?? [];
+                $dbEval = (array)($dbProg['evaluaciones'] ?? []);
+                $dbInt  = (array)($dbProg['intentos']     ?? []);
 
                 $payLec  = is_array($progPayload) ? ($progPayload['leccionesCompletadas'] ?? []) : [];
                 $payMod  = is_array($progPayload) ? ($progPayload['modulosAprobados']     ?? []) : [];
@@ -986,21 +910,13 @@ function db_write_all(mysqli $conn, array $data): void {
                     if ($eDb !== null && $ePay === null) $mergedEval[$ek] = $eDb;
                     elseif ($eDb === null && $ePay !== null) $mergedEval[$ek] = $ePay;
                     else {
-                        $sDb = is_array($eDb) ? (int)($eDb['nota'] ?? 0) : 0;
-                        $sPay = is_array($ePay) ? (int)($ePay['nota'] ?? 0) : 0;
+                        $sDb = is_array($eDb) ? (float)($eDb['calificacion'] ?? $eDb['nota'] ?? 0) : 0;
+                        $sPay = is_array($ePay) ? (float)($ePay['calificacion'] ?? $ePay['nota'] ?? 0) : 0;
                         $mergedEval[$ek] = ($sDb >= $sPay) ? $eDb : $ePay;
                     }
                 }
 
                 $mergedInt  = array_replace($dbInt, $payInt);
-
-                $lec  = json_encode($mergedLec);
-                $mod  = json_encode($mergedMod);
-                $med  = json_encode($mergedMed);
-                $eval = empty($mergedEval) ? '{}' : json_encode((object)$mergedEval, JSON_FORCE_OBJECT);
-                $int  = empty($mergedInt)  ? '{}' : json_encode((object)$mergedInt,  JSON_FORCE_OBJECT);
-
-                $progresoRows[] = [$id, $cIdStr, $lec, $mod, $med, $eval, $int];
 
                 // Filas para tablas normalizadas
                 foreach ($mergedLec as $lCode) {
@@ -1050,8 +966,6 @@ function db_write_all(mysqli $conn, array $data): void {
 
         db_bulk_insert($conn, 'usuario_asignados', ['usuario_id', 'curso_id'], $asignadosRows, 200, '', true);
         db_bulk_insert($conn, 'usuario_carreras_asignadas', ['usuario_id', 'carrera_id', 'estado'], $carrerasAsignadasRows, 200, '', true);
-        db_bulk_insert($conn, 'usuario_progreso', ['usuario_id', 'curso_id', 'lecciones_completadas', 'modulos_aprobados', 'medallas', 'evaluaciones', 'intentos'], $progresoRows, 100,
-            "ON DUPLICATE KEY UPDATE lecciones_completadas=VALUES(lecciones_completadas), modulos_aprobados=VALUES(modulos_aprobados), medallas=VALUES(medallas), evaluaciones=VALUES(evaluaciones), intentos=VALUES(intentos)");
         db_bulk_insert($conn, 'usuario_lecciones_completadas', ['usuario_id', 'curso_id', 'leccion_codigo'], $normLecRows, 200, '', true);
         db_bulk_insert($conn, 'usuario_modulos_aprobados', ['usuario_id', 'curso_id', 'modulo_num'], $normModRows, 200, '', true);
         db_bulk_insert($conn, 'usuario_medallas', ['usuario_id', 'curso_id', 'medalla_num'], $normMedRows, 200, '', true);
@@ -1338,98 +1252,8 @@ function db_verify_login(mysqli $conn, string $id, string $clave): ?array {
     $resCar = $stmtCar->get_result();
     while ($r = $resCar->fetch_assoc()) $usuario['carrerasAsignadas'][] = ['id' => $r['carrera_id'], 'estado' => $r['estado']];
 
-    // Progreso desde tablas normalizadas
-    $uProg = [];
-
-    // Lecciones
-    $stmtUL = $conn->prepare("SELECT curso_id, leccion_codigo FROM `usuario_lecciones_completadas` WHERE usuario_id = ?");
-    $stmtUL->bind_param('s', $id);
-    $stmtUL->execute();
-    $resUL = $stmtUL->get_result();
-    while ($r = $resUL->fetch_assoc()) {
-        $cid = $r['curso_id'];
-        if (!isset($uProg[$cid])) $uProg[$cid] = ['leccionesCompletadas' => [], 'modulosAprobados' => [], 'medallas' => [], 'evaluaciones' => (object)[], 'intentos' => (object)[]];
-        $uProg[$cid]['leccionesCompletadas'][] = $r['leccion_codigo'];
-    }
-
-    // Módulos
-    $stmtUM = $conn->prepare("SELECT curso_id, modulo_num FROM `usuario_modulos_aprobados` WHERE usuario_id = ?");
-    $stmtUM->bind_param('s', $id);
-    $stmtUM->execute();
-    $resUM = $stmtUM->get_result();
-    while ($r = $resUM->fetch_assoc()) {
-        $cid = $r['curso_id'];
-        if (!isset($uProg[$cid])) $uProg[$cid] = ['leccionesCompletadas' => [], 'modulosAprobados' => [], 'medallas' => [], 'evaluaciones' => (object)[], 'intentos' => (object)[]];
-        $uProg[$cid]['modulosAprobados'][] = $r['modulo_num'];
-    }
-
-    // Medallas
-    $stmtUMed = $conn->prepare("SELECT curso_id, medalla_num FROM `usuario_medallas` WHERE usuario_id = ?");
-    $stmtUMed->bind_param('s', $id);
-    $stmtUMed->execute();
-    $resUMed = $stmtUMed->get_result();
-    while ($r = $resUMed->fetch_assoc()) {
-        $cid = $r['curso_id'];
-        if (!isset($uProg[$cid])) $uProg[$cid] = ['leccionesCompletadas' => [], 'modulosAprobados' => [], 'medallas' => [], 'evaluaciones' => (object)[], 'intentos' => (object)[]];
-        $uProg[$cid]['medallas'][] = $r['medalla_num'];
-    }
-
-    // Evaluaciones
-    $stmtUE = $conn->prepare("SELECT curso_id, modulo_num, calificacion, aprobado, marcado_manual, fecha FROM `usuario_evaluaciones` WHERE usuario_id = ?");
-    $stmtUE->bind_param('s', $id);
-    $stmtUE->execute();
-    $resUE = $stmtUE->get_result();
-    while ($r = $resUE->fetch_assoc()) {
-        $cid = $r['curso_id'];
-        if (!isset($uProg[$cid])) $uProg[$cid] = ['leccionesCompletadas' => [], 'modulosAprobados' => [], 'medallas' => [], 'evaluaciones' => [], 'intentos' => (object)[]];
-        if (is_object($uProg[$cid]['evaluaciones'])) $uProg[$cid]['evaluaciones'] = (array)$uProg[$cid]['evaluaciones'];
-        $eItem = ['calificacion' => (float)$r['calificacion'], 'aprobado' => (bool)$r['aprobado']];
-        if (!empty($r['marcado_manual'])) $eItem['marcadoManual'] = true;
-        if (!empty($r['fecha'])) $eItem['fecha'] = $r['fecha'];
-        $uProg[$cid]['evaluaciones'][$r['modulo_num']] = $eItem;
-    }
-
-    // Intentos
-    $stmtUI = $conn->prepare("SELECT curso_id, modulo_num, intentos FROM `usuario_intentos` WHERE usuario_id = ?");
-    $stmtUI->bind_param('s', $id);
-    $stmtUI->execute();
-    $resUI = $stmtUI->get_result();
-    while ($r = $resUI->fetch_assoc()) {
-        $cid = $r['curso_id'];
-        if (!isset($uProg[$cid])) $uProg[$cid] = ['leccionesCompletadas' => [], 'modulosAprobados' => [], 'medallas' => [], 'evaluaciones' => (object)[], 'intentos' => []];
-        if (is_object($uProg[$cid]['intentos'])) $uProg[$cid]['intentos'] = (array)$uProg[$cid]['intentos'];
-        $uProg[$cid]['intentos'][$r['modulo_num']] = (int)$r['intentos'];
-    }
-
-    foreach ($uProg as $cid => &$pData) {
-        if (empty($pData['evaluaciones'])) $pData['evaluaciones'] = (object)[];
-        if (empty($pData['intentos'])) $pData['intentos'] = (object)[];
-        $usuario['progreso'][$cid] = $pData;
-    }
-    unset($pData);
-
-    // Fallback usuario_progreso legacy
-    $stmtProg = $conn->prepare("SELECT curso_id, lecciones_completadas, modulos_aprobados, medallas, evaluaciones, intentos FROM `usuario_progreso` WHERE usuario_id = ?");
-    $stmtProg->bind_param('s', $id);
-    $stmtProg->execute();
-    $resProg = $stmtProg->get_result();
-    while ($r = $resProg->fetch_assoc()) {
-        $cid = $r['curso_id'];
-        if (!isset($usuario['progreso'][$cid])) {
-            $evals = json_decode($r['evaluaciones'] ?? '{}', true) ?: [];
-            $ints = json_decode($r['intentos'] ?? '{}', true) ?: [];
-            $usuario['progreso'][$cid] = [
-                'leccionesCompletadas' => json_decode($r['lecciones_completadas'] ?? '[]', true) ?: [],
-                'modulosAprobados'     => json_decode($r['modulos_aprobados'] ?? '[]', true) ?: [],
-                'medallas'             => json_decode($r['medallas'] ?? '[]', true) ?: [],
-                'evaluaciones'         => empty($evals) ? (object)[] : $evals,
-                'intentos'             => empty($ints) ? (object)[] : $ints,
-            ];
-        }
-    }
-    $habUsuario = db_habilitaciones_map($conn, $id)[$id] ?? [];
-    $usuario['progreso'] = db_habilitaciones_aplicar_a_progreso($usuario['progreso'] ?? [], $habUsuario);
-    if (empty($usuario['progreso'])) $usuario['progreso'] = (object)[];
+    // Progreso de cursos (tablas normalizadas + reintentos habilitados)
+    $usuario['progreso'] = db_leer_progreso($conn, $id)[$id] ?? (object)[];
 
     // Certificados Curso
     $stmtCC = $conn->prepare("SELECT curso_id FROM `usuario_certificados_curso` WHERE usuario_id = ?");
@@ -1606,26 +1430,8 @@ function db_read_catalogo(mysqli $conn, string $userId, string $userRol): array 
             ];
         }
 
-        // Progreso
-        $stmtPr = $conn->prepare("SELECT curso_id, lecciones_completadas, modulos_aprobados, medallas, evaluaciones, intentos FROM `usuario_progreso` WHERE usuario_id = ?");
-        $stmtPr->bind_param('s', $userId);
-        $stmtPr->execute();
-        $rPr = $stmtPr->get_result();
-        $userProg = [];
-        while ($row = $rPr->fetch_assoc()) {
-            $cid = $row['curso_id'];
-            $evals = json_decode($row['evaluaciones'] ?? '{}', true);
-            $ints  = json_decode($row['intentos'] ?? '{}', true);
-            $userProg[$cid] = [
-                'leccionesCompletadas' => json_decode($row['lecciones_completadas'] ?? '[]', true) ?? [],
-                'modulosAprobados'     => json_decode($row['modulos_aprobados'] ?? '[]', true) ?? [],
-                'medallas'             => json_decode($row['medallas'] ?? '[]', true) ?? [],
-                'evaluaciones'         => is_array($evals) ? $evals : (object)[],
-                'intentos'             => is_array($ints) ? $ints : (object)[],
-            ];
-        }
-        $habUsuario = db_habilitaciones_map($conn, $userId)[$userId] ?? [];
-        $miUsuario['progreso'] = empty($userProg) ? (object)[] : db_habilitaciones_aplicar_a_progreso($userProg, $habUsuario);
+        // Progreso de cursos (tablas normalizadas + reintentos habilitados)
+        $miUsuario['progreso'] = db_leer_progreso($conn, $userId)[$userId] ?? (object)[];
 
         // Certificados
         $stmtCc = $conn->prepare("SELECT curso_id FROM `usuario_certificados_curso` WHERE usuario_id = ?");
@@ -2044,7 +1850,6 @@ function db_delete_usuario(mysqli $conn, string $id): void {
         $safeId = $conn->real_escape_string($id);
         $conn->query("DELETE FROM `usuario_asignados`           WHERE usuario_id = '$safeId'");
         $conn->query("DELETE FROM `usuario_carreras_asignadas`  WHERE usuario_id = '$safeId'");
-        $conn->query("DELETE FROM `usuario_progreso`            WHERE usuario_id = '$safeId'");
         $conn->query("DELETE FROM `usuario_certificados_curso`  WHERE usuario_id = '$safeId'");
         $conn->query("DELETE FROM `usuario_certificados_carrera` WHERE usuario_id = '$safeId'");
         $conn->query("DELETE FROM `solicitudes_cursos`          WHERE user_id = '$safeId'");
@@ -2062,69 +1867,31 @@ function db_delete_usuario(mysqli $conn, string $id): void {
 }
 
 /**
- * Guarda solo el progreso de un usuario en un curso específico.
- * Actualiza la tabla legacy usuario_progreso y las tablas relacionales normalizadas.
+ * Guarda el progreso de un usuario en un curso en las tablas normalizadas.
+ * Es aditivo: lecciones, módulos y medallas se suman a los existentes (INSERT IGNORE);
+ * evaluaciones e intentos recibidos se insertan o actualizan por módulo.
  */
 function db_upsert_progreso(mysqli $conn, string $userId, string $cursoId, array $prog): void {
-    // 1. Obtener datos existentes en la BD para este usuario y curso
-    $stmtSel = $conn->prepare("SELECT lecciones_completadas, modulos_aprobados, medallas, evaluaciones, intentos FROM `usuario_progreso` WHERE usuario_id = ? AND curso_id = ?");
-    $stmtSel->bind_param('ss', $userId, $cursoId);
-    $stmtSel->execute();
-    $resSel = $stmtSel->get_result();
+    $newLec = array_values(array_unique((array)($prog['leccionesCompletadas'] ?? [])));
+    $newMod = array_values(array_unique((array)($prog['modulosAprobados']     ?? [])));
+    $newMed = array_values(array_unique((array)($prog['medallas']             ?? [])));
+    $newEval = is_array($prog['evaluaciones'] ?? null) ? $prog['evaluaciones'] : (is_object($prog['evaluaciones'] ?? null) ? (array)$prog['evaluaciones'] : []);
+    $newInt  = is_array($prog['intentos'] ?? null)     ? $prog['intentos']     : (is_object($prog['intentos'] ?? null)     ? (array)$prog['intentos']     : []);
 
-    $existingLec  = [];
-    $existingMod  = [];
-    $existingMed  = [];
-    $existingEval = [];
-    $existingInt  = [];
-
-    if ($resSel && $rowSel = $resSel->fetch_assoc()) {
-        $existingLec  = json_decode($rowSel['lecciones_completadas'] ?? '[]', true) ?? [];
-        $existingMod  = json_decode($rowSel['modulos_aprobados']     ?? '[]', true) ?? [];
-        $existingMed  = json_decode($rowSel['medallas']              ?? '[]', true) ?? [];
-        $existingEval = json_decode($rowSel['evaluaciones']         ?? '{}', true) ?? [];
-        $existingInt  = json_decode($rowSel['intentos']             ?? '{}', true) ?? [];
-    }
-
-    // 2. Fusionar lecciones, módulos y medallas (sin duplicados)
-    $newLec = array_values(array_unique(array_merge($existingLec, (array)($prog['leccionesCompletadas'] ?? []))));
-    $newMod = array_values(array_unique(array_merge($existingMod, (array)($prog['modulosAprobados']     ?? []))));
-    $newMed = array_values(array_unique(array_merge($existingMed, (array)($prog['medallas']             ?? []))));
-
-    // 3. Fusionar evaluaciones e intentos de forma segura
-    $incomingEval = is_array($prog['evaluaciones'] ?? null) ? $prog['evaluaciones'] : (is_object($prog['evaluaciones'] ?? null) ? (array)$prog['evaluaciones'] : []);
-    $incomingInt  = is_array($prog['intentos'] ?? null)     ? $prog['intentos']     : (is_object($prog['intentos'] ?? null)     ? (array)$prog['intentos']     : []);
-
-    $newEval = array_replace($existingEval, $incomingEval);
+    // Conservar la fecha original de evaluaciones que llegan sin fecha
+    $stmtFecha = $conn->prepare("SELECT fecha FROM `usuario_evaluaciones` WHERE usuario_id = ? AND curso_id = ? AND modulo_num = ?");
     foreach ($newEval as $mNum => &$eItem) {
+        if (is_object($eItem)) $eItem = (array)$eItem;
         if (is_array($eItem) && empty($eItem['fecha'])) {
-            $eItem['fecha'] = !empty($existingEval[$mNum]['fecha']) ? $existingEval[$mNum]['fecha'] : date('c');
+            $mNumStr = (string)$mNum;
+            $stmtFecha->bind_param('sss', $userId, $cursoId, $mNumStr);
+            $stmtFecha->execute();
+            $fRow = $stmtFecha->get_result()->fetch_assoc();
+            $eItem['fecha'] = !empty($fRow['fecha']) ? $fRow['fecha'] : date('c');
         }
     }
     unset($eItem);
 
-    $newInt  = array_replace($existingInt, $incomingInt);
-
-    $lec  = json_encode($newLec);
-    $mod  = json_encode($newMod);
-    $med  = json_encode($newMed);
-    $eval = empty($newEval) ? '{}' : json_encode((object)$newEval, JSON_FORCE_OBJECT);
-    $int  = empty($newInt)  ? '{}' : json_encode((object)$newInt,  JSON_FORCE_OBJECT);
-
-    $stmt = $conn->prepare(
-        "INSERT INTO `usuario_progreso` (usuario_id, curso_id, lecciones_completadas, modulos_aprobados, medallas, evaluaciones, intentos)
-         VALUES (?,?,?,?,?,?,?)
-         ON DUPLICATE KEY UPDATE
-           lecciones_completadas = VALUES(lecciones_completadas),
-           modulos_aprobados     = VALUES(modulos_aprobados),
-           medallas              = VALUES(medallas),
-           evaluaciones          = VALUES(evaluaciones),
-           intentos              = VALUES(intentos)"
-    );
-    $stmt->bind_param('sssssss', $userId, $cursoId, $lec, $mod, $med, $eval, $int);
-    $stmt->execute();
-
-    // Actualizar tablas relacionales normalizadas
     $stmtLec = $conn->prepare("INSERT IGNORE INTO `usuario_lecciones_completadas` (usuario_id, curso_id, leccion_codigo) VALUES (?,?,?)");
     foreach ($newLec as $lCode) {
         $lCodeStr = (string)$lCode;
@@ -2412,57 +2179,6 @@ function db_evaluar_modulo(mysqli $conn, string $userId, string $cursoId, int $m
         }
     }
 
-    // 8. Sincronizar espejo JSON usuario_progreso legacy
-    $stmtProg = $conn->prepare("SELECT lecciones_completadas, modulos_aprobados, medallas, evaluaciones, intentos FROM `usuario_progreso` WHERE usuario_id = ? AND curso_id = ?");
-    $stmtProg->bind_param('ss', $userId, $cursoId);
-    $stmtProg->execute();
-    $resProg = $stmtProg->get_result();
-    $curProg = [
-        'lecciones_completadas' => [],
-        'modulos_aprobados'     => [],
-        'medallas'              => [],
-        'evaluaciones'          => [],
-        'intentos'              => []
-    ];
-    if ($resProg && $pRow = $resProg->fetch_assoc()) {
-        $curProg['lecciones_completadas'] = json_decode($pRow['lecciones_completadas'] ?? '[]', true) ?? [];
-        $curProg['modulos_aprobados']     = json_decode($pRow['modulos_aprobados'] ?? '[]', true) ?? [];
-        $curProg['medallas']              = json_decode($pRow['medallas'] ?? '[]', true) ?? [];
-        $curProg['evaluaciones']          = json_decode($pRow['evaluaciones'] ?? '{}', true) ?? [];
-        $curProg['intentos']              = json_decode($pRow['intentos'] ?? '{}', true) ?? [];
-    }
-
-    $curProg['intentos'][$mNumStr] = $numIntentos;
-    $curProg['evaluaciones'][$mNumStr] = [
-        'calificacion' => $calificacion,
-        'aprobado'     => $aprobado,
-        'fecha'        => $fechaIso
-    ];
-    if ($aprobado) {
-        if (!in_array($mNumStr, $curProg['modulos_aprobados'], true)) {
-            $curProg['modulos_aprobados'][] = $mNumStr;
-        }
-        if (!in_array($mNumStr, $curProg['medallas'], true)) {
-            $curProg['medallas'][] = $mNumStr;
-        }
-    }
-
-    $lecJson  = json_encode(array_values($curProg['lecciones_completadas']));
-    $modJson  = json_encode(array_values($curProg['modulos_aprobados']));
-    $medJson  = json_encode(array_values($curProg['medallas']));
-    $evalJson = json_encode((object)$curProg['evaluaciones'], JSON_FORCE_OBJECT);
-    $intJson  = json_encode((object)$curProg['intentos'], JSON_FORCE_OBJECT);
-
-    $stmtUpProg = $conn->prepare("INSERT INTO `usuario_progreso` (usuario_id, curso_id, lecciones_completadas, modulos_aprobados, medallas, evaluaciones, intentos)
-        VALUES (?,?,?,?,?,?,?)
-        ON DUPLICATE KEY UPDATE
-            modulos_aprobados = VALUES(modulos_aprobados),
-            medallas = VALUES(medallas),
-            evaluaciones = VALUES(evaluaciones),
-            intentos = VALUES(intentos)");
-    $stmtUpProg->bind_param('sssssss', $userId, $cursoId, $lecJson, $modJson, $medJson, $evalJson, $intJson);
-    $stmtUpProg->execute();
-
     // 9. Verificar carreras completadas
     $stmtUC = $conn->prepare("SELECT curso_id FROM `usuario_certificados_curso` WHERE usuario_id = ?");
     $stmtUC->bind_param('s', $userId);
@@ -2586,12 +2302,9 @@ function db_evaluar_modulo(mysqli $conn, string $userId, string $cursoId, int $m
         'rolOtorgado'          => $rolOtorgado,
         'rolNombre'            => $rolNombre,
         'preguntasDetalle'     => $preguntasDetalle,
-        'progreso'             => [
-            'leccionesCompletadas' => array_values($curProg['lecciones_completadas']),
-            'modulosAprobados'     => array_values($curProg['modulos_aprobados']),
-            'medallas'             => array_values($curProg['medallas']),
-            'evaluaciones'         => (object)$curProg['evaluaciones'],
-            'intentos'             => (object)$curProg['intentos'],
+        'progreso'             => db_leer_progreso($conn, $userId)[$userId][$cursoId] ?? [
+            'leccionesCompletadas' => [], 'modulosAprobados' => [], 'medallas' => [],
+            'evaluaciones' => (object)[], 'intentos' => (object)[],
         ],
         'certificadosCurso'    => $userCertsCurso,
         'certificadosCarrera'  => $userCertsCarrera,
@@ -2651,32 +2364,8 @@ function db_restablecer_progreso(mysqli $conn, string $userId, string $cursoId, 
             $stmtCert = $conn->prepare("DELETE FROM `usuario_certificados_curso` WHERE usuario_id = ? AND curso_id = ?");
             $stmtCert->bind_param('ss', $userId, $cursoId);
             $stmtCert->execute();
-
-            $stmtProg = $conn->prepare("DELETE FROM `usuario_progreso` WHERE usuario_id = ? AND curso_id = ?");
-            $stmtProg->bind_param('ss', $userId, $cursoId);
-            $stmtProg->execute();
         } else {
             // 2. Limpieza selectiva por módulos
-            $stmtProg = $conn->prepare("SELECT lecciones_completadas, modulos_aprobados, medallas, evaluaciones, intentos FROM `usuario_progreso` WHERE usuario_id = ? AND curso_id = ?");
-            $stmtProg->bind_param('ss', $userId, $cursoId);
-            $stmtProg->execute();
-            $resProg = $stmtProg->get_result();
-
-            $curProg = [
-                'lecciones_completadas' => [],
-                'modulos_aprobados'     => [],
-                'medallas'              => [],
-                'evaluaciones'          => [],
-                'intentos'              => []
-            ];
-            if ($resProg && $pRow = $resProg->fetch_assoc()) {
-                $curProg['lecciones_completadas'] = json_decode($pRow['lecciones_completadas'] ?? '[]', true) ?? [];
-                $curProg['modulos_aprobados']     = json_decode($pRow['modulos_aprobados'] ?? '[]', true) ?? [];
-                $curProg['medallas']              = json_decode($pRow['medallas'] ?? '[]', true) ?? [];
-                $curProg['evaluaciones']          = json_decode($pRow['evaluaciones'] ?? '{}', true) ?? [];
-                $curProg['intentos']              = json_decode($pRow['intentos'] ?? '{}', true) ?? [];
-            }
-
             foreach ($modulos as $mVal) {
                 $mNumStr = (string)$mVal;
 
@@ -2706,41 +2395,17 @@ function db_restablecer_progreso(mysqli $conn, string $userId, string $cursoId, 
                 $sLec = $conn->prepare("DELETE FROM `usuario_lecciones_completadas` WHERE usuario_id = ? AND curso_id = ? AND leccion_codigo LIKE ?");
                 $sLec->bind_param('sss', $userId, $cursoId, $prefix);
                 $sLec->execute();
-
-                // Actualizar espejo en memoria
-                $curProg['modulos_aprobados'] = array_values(array_filter($curProg['modulos_aprobados'], fn($x) => (string)$x !== $mNumStr));
-                $curProg['medallas'] = array_values(array_filter($curProg['medallas'], fn($x) => (string)$x !== $mNumStr));
-                unset($curProg['evaluaciones'][$mNumStr]);
-                unset($curProg['intentos'][$mNumStr]);
-                $curProg['lecciones_completadas'] = array_values(array_filter($curProg['lecciones_completadas'], fn($l) => !str_starts_with((string)$l, $mNumStr . '-')));
             }
 
             // Si ya no quedan módulos aprobados, revocar certificado de curso si existía
-            if (empty($curProg['modulos_aprobados'])) {
+            $sRest = $conn->prepare("SELECT 1 FROM `usuario_modulos_aprobados` WHERE usuario_id = ? AND curso_id = ? LIMIT 1");
+            $sRest->bind_param('ss', $userId, $cursoId);
+            $sRest->execute();
+            if ($sRest->get_result()->num_rows === 0) {
                 $sCert = $conn->prepare("DELETE FROM `usuario_certificados_curso` WHERE usuario_id = ? AND curso_id = ?");
                 $sCert->bind_param('ss', $userId, $cursoId);
                 $sCert->execute();
             }
-
-            // Guardar progreso actualizado en usuario_progreso
-            $lecJson  = json_encode(array_values($curProg['lecciones_completadas']));
-            $modJson  = json_encode(array_values($curProg['modulos_aprobados']));
-            $medJson  = json_encode(array_values($curProg['medallas']));
-            $evalJson = empty($curProg['evaluaciones']) ? '{}' : json_encode((object)$curProg['evaluaciones'], JSON_FORCE_OBJECT);
-            $intJson  = empty($curProg['intentos']) ? '{}' : json_encode((object)$curProg['intentos'], JSON_FORCE_OBJECT);
-
-            $stmtUpProg = $conn->prepare(
-                "INSERT INTO `usuario_progreso` (usuario_id, curso_id, lecciones_completadas, modulos_aprobados, medallas, evaluaciones, intentos)
-                 VALUES (?,?,?,?,?,?,?)
-                 ON DUPLICATE KEY UPDATE
-                   lecciones_completadas = VALUES(lecciones_completadas),
-                   modulos_aprobados     = VALUES(modulos_aprobados),
-                   medallas              = VALUES(medallas),
-                   evaluaciones          = VALUES(evaluaciones),
-                   intentos              = VALUES(intentos)"
-            );
-            $stmtUpProg->bind_param('sssssss', $userId, $cursoId, $lecJson, $modJson, $medJson, $evalJson, $intJson);
-            $stmtUpProg->execute();
         }
 
         // 3. Recalcular estado de carreras asignadas
@@ -2937,23 +2602,11 @@ function db_habilitar_reintento(mysqli $conn, string $userId, string $cursoId, i
         $habId = (int)$conn->insert_id;
 
         if ($repasarLecciones) {
-            // Las lecciones del módulo vuelven a quedar pendientes (tabla relacional + espejo JSON legacy)
+            // Las lecciones del módulo vuelven a quedar pendientes
             $prefix = $mNumStr . '-%';
             $sLec = $conn->prepare("DELETE FROM `usuario_lecciones_completadas` WHERE usuario_id = ? AND curso_id = ? AND leccion_codigo LIKE ?");
             $sLec->bind_param('sss', $userId, $cursoId, $prefix);
             $sLec->execute();
-
-            $sProg = $conn->prepare("SELECT lecciones_completadas FROM `usuario_progreso` WHERE usuario_id = ? AND curso_id = ?");
-            $sProg->bind_param('ss', $userId, $cursoId);
-            $sProg->execute();
-            if ($pRow = $sProg->get_result()->fetch_assoc()) {
-                $lecs = json_decode($pRow['lecciones_completadas'] ?? '[]', true) ?: [];
-                $lecs = array_values(array_filter($lecs, fn($l) => !str_starts_with((string)$l, $mNumStr . '-')));
-                $lecJson = json_encode($lecs);
-                $sUp = $conn->prepare("UPDATE `usuario_progreso` SET lecciones_completadas = ? WHERE usuario_id = ? AND curso_id = ?");
-                $sUp->bind_param('sss', $lecJson, $userId, $cursoId);
-                $sUp->execute();
-            }
         }
 
         $conn->commit();
