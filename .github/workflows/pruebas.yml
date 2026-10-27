@@ -1,0 +1,64 @@
+# Ejecuta la suite completa (PHPUnit + node:test) en cada push y pull request.
+# Antes de hacer "Update from Remote" en cPanel, el último commit de main debe tener ✓ verde.
+name: Pruebas
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: pruebas-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Base desechable para la suite: mismo motor que XAMPP (MariaDB)
+    services:
+      mariadb:
+        image: mariadb:10.6
+        env:
+          MARIADB_ROOT_PASSWORD: pruebas
+          MARIADB_DATABASE: universidad_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      TEST_DB_HOST: 127.0.0.1
+      TEST_DB_USER: root
+      TEST_DB_PASS: pruebas
+      TEST_DB_NAME: universidad_test
+      TEST_DB_PORT: 3306
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PHP 8.2 (versión del hosting)
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mysqli, mbstring, curl, gd, openssl, iconv
+          coverage: none
+          tools: composer:v2
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Dependencias de desarrollo (PHPUnit)
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Pruebas PHP (unidad, integración y API)
+        run: composer test:php
+
+      - name: Pruebas JavaScript
+        run: composer test:js

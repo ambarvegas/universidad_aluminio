@@ -9,6 +9,14 @@
 También por partes: `composer test:php` (PHP) o `composer test:js` (JavaScript, solo requiere Node).
 Para una sola clase o prueba: `vendor/bin/phpunit --filter HabilitacionesTest`.
 
+## En GitHub (antes de publicar)
+
+Cada push ejecuta la suite completa en GitHub Actions (`.github/workflows/pruebas.yml`), con una
+base MariaDB desechable. El resultado aparece junto a cada commit en GitHub (✓ verde o ✗ roja).
+
+**Regla para publicar:** hacer "Update from Remote" en cPanel solo cuando el último commit de
+`main` tenga ✓. Si aparece ✗, el detalle está en la pestaña *Actions* del repositorio.
+
 ## Base de datos de prueba
 
 Las pruebas usan una base **local y desechable** (`universidad_test`), que se crea sola y se
