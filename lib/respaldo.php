@@ -49,7 +49,6 @@ function db_write_all(mysqli $conn, array $data): void {
     @ini_set('memory_limit', '512M');
 
     // Progreso actual (tablas normalizadas) para fusionarlo con el respaldo sin perder datos.
-    // Se lee antes de la transacción: db_leer_progreso puede crear tablas (DDL = commit implícito).
     $existingDbProgreso = db_leer_progreso($conn);
 
     $conn->begin_transaction();

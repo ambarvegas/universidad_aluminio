@@ -42,6 +42,18 @@ function db_get_health_status(mysqli $conn): array {
         $warnings[] = "Latencia MySQL elevada ({$latenciaMs} ms). Verifique la conectividad de red.";
     }
 
+    // Versión del esquema (migraciones aplicadas / disponibles)
+    try {
+        $esquema = db_estado_migraciones($conn);
+        if ($esquema['pendientes']) {
+            $warnings[] = 'Migraciones de base de datos pendientes: ' . implode(', ', $esquema['pendientes'])
+                        . '. Revise el log de errores del servidor ([migraciones]).';
+        }
+    } catch (Throwable $e) {
+        $esquema = ['version' => 0, 'disponible' => 0, 'pendientes' => []];
+        $warnings[] = 'No se pudo consultar el estado de las migraciones: ' . $e->getMessage();
+    }
+
     // 2. Diagnóstico de Espacio en Disco y Almacenamiento
     $diskFree = @disk_free_space(APP_ROOT);
     $diskTotal = @disk_total_space(APP_ROOT);
@@ -150,6 +162,7 @@ function db_get_health_status(mysqli $conn): array {
             'filas_estimadas' => $filasTotal,
             'tamano_bytes'    => $tamanoDbBytes,
             'tamano_formato'  => db_format_bytes($tamanoDbBytes),
+            'esquema'         => $esquema,
         ],
         'storage'        => [
             'disk_free_bytes'    => $diskFree !== false ? (int)$diskFree : null,

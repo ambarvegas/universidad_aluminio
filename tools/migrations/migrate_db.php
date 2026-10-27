@@ -73,7 +73,7 @@ try {
 // ============================================================
 log_msg('Paso 2: Creando tablas (IF NOT EXISTS)...', 'info');
 try {
-    db_create_tables($conn);
+    db_migrar($conn);
     log_msg('✅ Tablas creadas/verificadas correctamente.', 'ok');
 } catch (Throwable $e) {
     log_msg('❌ Error creando tablas: ' . $e->getMessage(), 'err');

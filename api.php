@@ -81,6 +81,14 @@ try {
     exit;
 }
 
+// Esquema al día: tras un "Update from Remote" la primera petición aplica las migraciones pendientes.
+// Si una falla, se registra y se reintenta en la siguiente petición sin bloquear el resto de la API.
+try {
+    db_migrar_si_hace_falta($conn);
+} catch (Throwable $e) {
+    error_log('[migraciones] ' . $e->getMessage());
+}
+
 // ============================================================
 // HELPERS
 // ============================================================

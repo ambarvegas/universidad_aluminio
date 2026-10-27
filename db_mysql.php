@@ -14,7 +14,7 @@ if (!defined('APP_ROOT')) {
 }
 
 require_once __DIR__ . '/lib/config.php';        // config.local.php, credenciales y db_connect()
-require_once __DIR__ . '/lib/esquema.php';       // creación de tablas (DDL)
+require_once __DIR__ . '/lib/migraciones.php';   // esquema: migraciones numeradas de migraciones/
 require_once __DIR__ . '/lib/lectura.php';       // progreso, carga admin/participante, catálogo
 require_once __DIR__ . '/lib/respaldo.php';      // importación masiva de respaldos
 require_once __DIR__ . '/lib/usuarios.php';      // login, contraseñas, perfil, tokens

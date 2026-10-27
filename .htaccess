@@ -24,7 +24,7 @@ Options -Indexes
     RewriteRule ^backups/ - [F,L]
     RewriteRule ^sessions/ - [F,L]
     RewriteRule ^scratch/ - [F,L]
-    RewriteRule ^(lib|endpoints|tests|vendor)/ - [F,L]
+    RewriteRule ^(lib|endpoints|tests|vendor|migraciones)/ - [F,L]
     RewriteRule ^\.github/ - [F,L]
     RewriteRule ^(composer\.(json|lock)|phpunit\.xml)$ - [F,L]
     RewriteRule ^config\.local - [F,L]

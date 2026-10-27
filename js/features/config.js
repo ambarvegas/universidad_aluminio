@@ -643,7 +643,11 @@ async function cargarEstadoSistemaModal() {
                             <li class="mb-1"><strong>Versión Motor:</strong> ${escapeHtml(db.server_version)}</li>
                             <li class="mb-1"><strong>Latencia Ping:</strong> <span class="badge ${Number(db.latencia_ms) < 200 ? 'bg-success' : 'bg-warning'}">${escapeHtml(db.latencia_ms)} ms</span></li>
                             <li class="mb-1"><strong>Tablas / Registros:</strong> ${escapeHtml(db.tablas_total)} tablas (~${escapeHtml(Number(db.filas_estimadas || 0).toLocaleString())} filas)</li>
-                            <li><strong>Tamaño en Disco:</strong> <span class="fw-semibold text-dark">${escapeHtml(db.tamano_formato)}</span></li>
+                            <li class="mb-1"><strong>Tamaño en Disco:</strong> <span class="fw-semibold text-dark">${escapeHtml(db.tamano_formato)}</span></li>
+                            <li><strong>Esquema:</strong> versión ${escapeHtml(db.esquema?.version ?? 'N/D')}
+                                ${db.esquema?.pendientes?.length
+                                    ? `<span class="badge bg-warning text-dark">${escapeHtml(db.esquema.pendientes.length)} pendiente(s)</span>`
+                                    : '<span class="badge bg-success">al día</span>'}</li>
                         </ul>
                     </div>
                 </div>

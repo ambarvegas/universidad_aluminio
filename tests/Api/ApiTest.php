@@ -35,6 +35,18 @@ final class ApiTest extends BaseDatosTestCase
         $this->assertArrayNotHasKey('db', $r['json'], 'el ping no debe exponer datos de la base');
     }
 
+    /** Tras actualizar el código, la primera petición aplica las migraciones pendientes. */
+    public function testLaApiAplicaLasMigracionesPendientes(): void
+    {
+        self::$conn->query('DROP TABLE `tokens_acceso`');
+        self::$conn->query('DROP TABLE `schema_migraciones`');
+
+        // Cliente nuevo: su sesión aún no tiene el esquema verificado
+        $this->assertSame(200, self::$srv->api('recien_llegado', 'GET', 'ping')['status']);
+        $this->assertSame(1, self::$conn->query("SHOW TABLES LIKE 'tokens_acceso'")->num_rows);
+        $this->assertSame([], db_estado_migraciones(self::$conn)['pendientes']);
+    }
+
     public function testAccionDesconocidaDevuelve404(): void
     {
         $r = self::$srv->api('anon', 'GET', 'no_existe');

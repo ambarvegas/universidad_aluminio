@@ -29,10 +29,7 @@ abstract class BaseDatosTestCase extends TestCase
             $conn->query("DROP TABLE `{$t[0]}`");
         }
         $conn->query('SET FOREIGN_KEY_CHECKS=1');
-        db_create_tables($conn);
-        db_create_activity_log_table($conn);
-        db_create_rate_limit_table($conn);
-        $conn->query(DB_SQL_USUARIO_HABILITACIONES);
+        db_migrar($conn);
     }
 
     /**

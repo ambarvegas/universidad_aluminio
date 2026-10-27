@@ -461,8 +461,6 @@ function db_evaluar_modulo(mysqli $conn, string $userId, string $cursoId, int $m
  * @return array Estado resultante
  */
 function db_restablecer_progreso(mysqli $conn, string $userId, string $cursoId, ?array $modulos = null): array {
-    // Fuera de la transacción: un CREATE TABLE haría commit implícito
-    db_habilitaciones_ensure_table($conn);
     $conn->begin_transaction();
     try {
         $userId = trim($userId);
@@ -601,24 +599,10 @@ function db_restablecer_progreso(mysqli $conn, string $userId, string $cursoId, 
 }
 
 /**
- * Garantiza que exista la tabla de habilitaciones (bases desplegadas antes de esta función).
- * Se ejecuta una sola vez por petición.
- */
-function db_habilitaciones_ensure_table(mysqli $conn): void {
-    static $verificada = false;
-    if ($verificada) return;
-    if (!$conn->query(DB_SQL_USUARIO_HABILITACIONES)) {
-        throw new RuntimeException('Error creando tabla usuario_habilitaciones: ' . $conn->error);
-    }
-    $verificada = true;
-}
-
-/**
  * Devuelve las habilitaciones agrupadas: [usuario][curso] => ['intentosExtra' => [mod => n], 'habilitaciones' => [mod => [...]]].
  * Si se indica $userId, solo las de ese usuario.
  */
 function db_habilitaciones_map(mysqli $conn, ?string $userId = null): array {
-    db_habilitaciones_ensure_table($conn);
     $sql = "SELECT id, usuario_id, curso_id, modulo_num, intentos_otorgados, intentos_previos, calificacion_previa,
                    repasar_lecciones, motivo, admin_id, fecha, activo
             FROM `usuario_habilitaciones`";
@@ -672,7 +656,6 @@ function db_habilitaciones_aplicar_a_progreso($progreso, array $mapUsuario) {
  * Intentos adicionales vigentes otorgados a un usuario para un módulo.
  */
 function db_intentos_extra(mysqli $conn, string $userId, string $cursoId, string $mNumStr): int {
-    db_habilitaciones_ensure_table($conn);
     $stmt = $conn->prepare("SELECT COALESCE(SUM(intentos_otorgados), 0) AS extra FROM `usuario_habilitaciones`
                             WHERE usuario_id = ? AND curso_id = ? AND modulo_num = ? AND activo = 1");
     $stmt->bind_param('sss', $userId, $cursoId, $mNumStr);
@@ -687,7 +670,6 @@ function db_intentos_extra(mysqli $conn, string $userId, string $cursoId, string
  * Opcionalmente obliga a repasar las lecciones del módulo antes de volver a evaluar.
  */
 function db_habilitar_reintento(mysqli $conn, string $userId, string $cursoId, int $moduloIdx, int $intentosOtorgados, bool $repasarLecciones, string $motivo, string $adminId): array {
-    db_habilitaciones_ensure_table($conn);
     $userId  = trim($userId);
     $cursoId = trim($cursoId);
     $mNumStr = (string)$moduloIdx;
