@@ -46,11 +46,13 @@ function showToast(message, type = 'success', duration = 3000) {
         <div class="d-flex align-items-center">
             <div class="toast-body d-flex align-items-center">
                 <i class="bi ${icon} me-2 fs-5"></i>
-                <span>${message}</span>
+                <span class="toast-mensaje"></span>
             </div>
             <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
         </div>
     `;
+    // El mensaje puede traer títulos o errores del servidor: siempre como texto, nunca como HTML
+    toast.querySelector('.toast-mensaje').textContent = message;
 
     toastContainer.appendChild(toast);
 

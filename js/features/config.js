@@ -143,6 +143,10 @@ async function guardarNombreInstitucion(val) {
  * Aplica variables CSS de color al :root del documento.
  */
 function aplicarColoresPlataforma(primary, accent) {
+    // Solo colores #rrggbb: cualquier otro valor guardado vuelve al color original
+    const esHex = (c) => /^#[0-9a-fA-F]{6}$/.test(c || '');
+    if (!esHex(primary)) primary = DEFAULT_COLORS.primary;
+    if (!esHex(accent))  accent  = DEFAULT_COLORS.accent;
     const root = document.documentElement;
     root.style.setProperty('--primary-color', primary);
     root.style.setProperty('--primary-dark',  shadeColor(primary, -15));
@@ -496,13 +500,13 @@ async function probarConfiguracionEmail() {
             const res = await window.API.probarEmail(dest);
             if (resultDiv) {
                 resultDiv.className = 'alert alert-success py-2 px-3 small mt-2 mb-0';
-                resultDiv.innerHTML = `<i class="bi bi-check-circle-fill me-1"></i> ${res.message || 'Correo de prueba enviado satisfactoriamente.'}`;
+                resultDiv.innerHTML = `<i class="bi bi-check-circle-fill me-1"></i> ${escapeHtml(res.message || 'Correo de prueba enviado satisfactoriamente.')}`;
             }
             showToast('✅ Correo de prueba enviado con éxito.', 'success');
         } catch (e) {
             if (resultDiv) {
                 resultDiv.className = 'alert alert-danger py-2 px-3 small mt-2 mb-0';
-                resultDiv.innerHTML = `<i class="bi bi-x-circle-fill me-1"></i> ${e.message || 'Fallo en la entrega del correo.'}`;
+                resultDiv.innerHTML = `<i class="bi bi-x-circle-fill me-1"></i> ${escapeHtml(e.message || 'Fallo en la entrega del correo.')}`;
             }
             showToast(`Error al probar correo: ${e.message}`, 'danger');
         }
@@ -539,15 +543,15 @@ async function cargarListaRespaldos() {
         tbody.innerHTML = lista.map(b => `
             <tr>
                 <td class="fw-semibold text-primary">
-                    <i class="bi bi-file-earmark-zip-fill text-warning me-1"></i>${b.archivo}
+                    <i class="bi bi-file-earmark-zip-fill text-warning me-1"></i>${escapeHtml(b.archivo)}
                 </td>
-                <td class="text-muted">${b.fecha}</td>
-                <td><span class="badge bg-light text-dark border">${b.tamano}</span></td>
-                <td><span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25">${b.tipo}</span></td>
+                <td class="text-muted">${escapeHtml(b.fecha)}</td>
+                <td><span class="badge bg-light text-dark border">${escapeHtml(b.tamano)}</span></td>
+                <td><span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25">${escapeHtml(b.tipo)}</span></td>
             </tr>
         `).join('');
     } catch (e) {
-        tbody.innerHTML = `<tr><td colspan="4" class="text-center py-3 text-danger"><i class="bi bi-exclamation-triangle me-1"></i>Error al consultar respaldos: ${e.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="4" class="text-center py-3 text-danger"><i class="bi bi-exclamation-triangle me-1"></i>Error al consultar respaldos: ${escapeHtml(e.message)}</td></tr>`;
     }
 }
 
@@ -604,14 +608,14 @@ async function cargarEstadoSistemaModal() {
                 <div class="alert alert-warning mb-3">
                     <h6 class="fw-bold mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i>Recomendaciones / Alertas:</h6>
                     <ul class="mb-0 ps-3 small">
-                        ${h.warnings.map(w => `<li>${w}</li>`).join('')}
+                        ${h.warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}
                     </ul>
                 </div>`;
         }
 
         const extBadges = Object.entries(php.extensiones || {}).map(([ext, active]) => `
             <span class="badge ${active ? 'bg-success bg-opacity-10 text-success border border-success border-opacity-25' : 'bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25'} me-1 mb-1">
-                ${active ? '✓' : '✗'} ${ext}
+                ${active ? '✓' : '✗'} ${escapeHtml(ext)}
             </span>
         `).join('');
 
@@ -619,7 +623,7 @@ async function cargarEstadoSistemaModal() {
             <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom">
                 <div>
                     <h5 class="fw-bold text-primary mb-1">Diagnóstico Operativo en Tiempo Real</h5>
-                    <p class="text-muted small mb-0">Servidor: <strong>${db.host || 'N/D'}</strong> &bull; Verificado: ${new Date(h.timestamp).toLocaleTimeString()}</p>
+                    <p class="text-muted small mb-0">Servidor: <strong>${escapeHtml(db.host || 'N/D')}</strong> &bull; Verificado: ${escapeHtml(new Date(h.timestamp).toLocaleTimeString())}</p>
                 </div>
                 <div>${statusBadge}</div>
             </div>
@@ -635,11 +639,11 @@ async function cargarEstadoSistemaModal() {
                             <h6 class="fw-bold mb-0 text-dark">Base de Datos MySQL</h6>
                         </div>
                         <ul class="list-unstyled small mb-0 text-muted">
-                            <li class="mb-1"><strong>Base de Datos:</strong> <code class="text-primary">${db.name}</code></li>
-                            <li class="mb-1"><strong>Versión Motor:</strong> ${db.server_version}</li>
-                            <li class="mb-1"><strong>Latencia Ping:</strong> <span class="badge ${db.latencia_ms < 200 ? 'bg-success' : 'bg-warning'}">${db.latencia_ms} ms</span></li>
-                            <li class="mb-1"><strong>Tablas / Registros:</strong> ${db.tablas_total} tablas (~${(db.filas_estimadas || 0).toLocaleString()} filas)</li>
-                            <li><strong>Tamaño en Disco:</strong> <span class="fw-semibold text-dark">${db.tamano_formato}</span></li>
+                            <li class="mb-1"><strong>Base de Datos:</strong> <code class="text-primary">${escapeHtml(db.name)}</code></li>
+                            <li class="mb-1"><strong>Versión Motor:</strong> ${escapeHtml(db.server_version)}</li>
+                            <li class="mb-1"><strong>Latencia Ping:</strong> <span class="badge ${Number(db.latencia_ms) < 200 ? 'bg-success' : 'bg-warning'}">${escapeHtml(db.latencia_ms)} ms</span></li>
+                            <li class="mb-1"><strong>Tablas / Registros:</strong> ${escapeHtml(db.tablas_total)} tablas (~${escapeHtml(Number(db.filas_estimadas || 0).toLocaleString())} filas)</li>
+                            <li><strong>Tamaño en Disco:</strong> <span class="fw-semibold text-dark">${escapeHtml(db.tamano_formato)}</span></li>
                         </ul>
                     </div>
                 </div>
@@ -652,10 +656,10 @@ async function cargarEstadoSistemaModal() {
                             <h6 class="fw-bold mb-0 text-dark">Almacenamiento & Respaldos</h6>
                         </div>
                         <ul class="list-unstyled small mb-0 text-muted">
-                            <li class="mb-1"><strong>Espacio Libre Servidor:</strong> ${storage.disk_free_formato} / ${storage.disk_total_formato}</li>
-                            <li class="mb-1"><strong>Archivos en /uploads/:</strong> ${storage.uploads?.archivos_total || 0} (${storage.uploads?.tamano_formato || '0 B'})</li>
-                            <li class="mb-1"><strong>Respaldos Conservados:</strong> ${storage.backups?.archivos_total || 0} (${storage.backups?.tamano_formato || '0 B'})</li>
-                            <li><strong>Último Respaldo:</strong> <span class="fw-semibold text-dark">${storage.backups?.ultimo_backup || 'Sin respaldos'}</span></li>
+                            <li class="mb-1"><strong>Espacio Libre Servidor:</strong> ${escapeHtml(storage.disk_free_formato)} / ${escapeHtml(storage.disk_total_formato)}</li>
+                            <li class="mb-1"><strong>Archivos en /uploads/:</strong> ${escapeHtml(storage.uploads?.archivos_total || 0)} (${escapeHtml(storage.uploads?.tamano_formato || '0 B')})</li>
+                            <li class="mb-1"><strong>Respaldos Conservados:</strong> ${escapeHtml(storage.backups?.archivos_total || 0)} (${escapeHtml(storage.backups?.tamano_formato || '0 B')})</li>
+                            <li><strong>Último Respaldo:</strong> <span class="fw-semibold text-dark">${escapeHtml(storage.backups?.ultimo_backup || 'Sin respaldos')}</span></li>
                         </ul>
                     </div>
                 </div>
@@ -668,8 +672,8 @@ async function cargarEstadoSistemaModal() {
                             <h6 class="fw-bold mb-0 text-dark">Entorno PHP</h6>
                         </div>
                         <ul class="list-unstyled small mb-2 text-muted">
-                            <li class="mb-1"><strong>Versión PHP:</strong> ${php.version} (${php.sapi})</li>
-                            <li class="mb-1"><strong>Límites:</strong> Mem: ${php.memory_limit} &bull; Max Exec: ${php.max_execution_time}s &bull; Max Upload: ${php.upload_max_filesize}</li>
+                            <li class="mb-1"><strong>Versión PHP:</strong> ${escapeHtml(php.version)} (${escapeHtml(php.sapi)})</li>
+                            <li class="mb-1"><strong>Límites:</strong> Mem: ${escapeHtml(php.memory_limit)} &bull; Max Exec: ${escapeHtml(php.max_execution_time)}s &bull; Max Upload: ${escapeHtml(php.upload_max_filesize)}</li>
                         </ul>
                         <div class="d-flex flex-wrap">${extBadges}</div>
                     </div>
@@ -683,9 +687,9 @@ async function cargarEstadoSistemaModal() {
                             <h6 class="fw-bold mb-0 text-dark">Servicio de Correo</h6>
                         </div>
                         <ul class="list-unstyled small mb-0 text-muted">
-                            <li class="mb-1"><strong>Servidor SMTP:</strong> ${mailer.smtp_host}</li>
-                            <li class="mb-1"><strong>Puerto & Cifrado:</strong> Puerto ${mailer.smtp_port} (${mailer.smtp_secure})</li>
-                            <li class="mb-1"><strong>Correo de Alertas:</strong> <code class="text-dark">${mailer.email_admin}</code></li>
+                            <li class="mb-1"><strong>Servidor SMTP:</strong> ${escapeHtml(mailer.smtp_host)}</li>
+                            <li class="mb-1"><strong>Puerto & Cifrado:</strong> Puerto ${escapeHtml(mailer.smtp_port)} (${escapeHtml(mailer.smtp_secure)})</li>
+                            <li class="mb-1"><strong>Correo de Alertas:</strong> <code class="text-dark">${escapeHtml(mailer.email_admin)}</code></li>
                             <li><strong>Estado:</strong> <span class="badge ${mailer.smtp_configurado ? 'bg-success' : 'bg-warning'}">${mailer.smtp_configurado ? 'SMTP Configurado' : 'Fallback mail() Activo'}</span></li>
                         </ul>
                     </div>
@@ -695,7 +699,7 @@ async function cargarEstadoSistemaModal() {
     } catch (e) {
         body.innerHTML = `
             <div class="alert alert-danger">
-                <i class="bi bi-exclamation-triangle-fill me-2"></i>Error al consultar el diagnóstico de salud: ${e.message}
+                <i class="bi bi-exclamation-triangle-fill me-2"></i>Error al consultar el diagnóstico de salud: ${escapeHtml(e.message)}
             </div>`;
     }
 }

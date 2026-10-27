@@ -73,10 +73,10 @@ function renderizarGaleria() {
         if (navUserInfo) {
             navUserInfo.innerHTML = `
                 <button type="button" class="btn btn-link text-decoration-none p-0 d-flex align-items-center gap-2" onclick="abrirModalPerfil()" title="Ver Mi Perfil">
-                    <div class="user-avatar" style="width: 32px; height: 32px; font-size: 0.8rem; cursor: pointer; border: 1.5px solid rgba(255,255,255,0.4);">${typeof obtenerIniciales === 'function' ? obtenerIniciales(sesion.nombre) : 'UA'}</div>
+                    <div class="user-avatar" style="width: 32px; height: 32px; font-size: 0.8rem; cursor: pointer; border: 1.5px solid rgba(255,255,255,0.4);">${escapeHtml(typeof obtenerIniciales === 'function' ? obtenerIniciales(sesion.nombre) : 'UA')}</div>
                     <div class="d-none d-sm-block text-start lh-1 text-white">
-                        <div class="text-white small fw-bold">${sesion.nombre} <i class="bi bi-gear-fill text-white-50 ms-1" style="font-size: 0.7rem;"></i></div>
-                        <small class="text-white-50" style="font-size: 0.725rem;">${(sesion.rol || 'Estudiante').replace('_', ' ')}</small>
+                        <div class="text-white small fw-bold">${escapeHtml(sesion.nombre)} <i class="bi bi-gear-fill text-white-50 ms-1" style="font-size: 0.7rem;"></i></div>
+                        <small class="text-white-50" style="font-size: 0.725rem;">${escapeHtml((sesion.rol || 'Estudiante').replace('_', ' '))}</small>
                     </div>
                 </button>
             `;
@@ -240,28 +240,28 @@ function renderizarGaleria() {
         let btnAccion = '';
         if (c.enConstruccion) {
             btnAccion = `
-                <button class="btn btn-warning text-dark w-100 fw-bold shadow-sm" onclick="showToast('El curso &quot;${(c.titulo || '').replace(/"/g, '&quot;')}&quot; se encuentra actualmente en construcción. ¡Próximamente disponible!', 'warning')" style="font-size:0.875rem;">
+                <button class="btn btn-warning text-dark w-100 fw-bold shadow-sm" onclick="showToast(${jsArg(`El curso "${c.titulo || ''}" se encuentra actualmente en construcción. ¡Próximamente disponible!`)}, 'warning')" style="font-size:0.875rem;">
                     <i class="bi bi-cone-striped me-1"></i>En Construcción
                 </button>`;
         } else if (c.bloqueado || bloqueadoPorPrelacion) {
             btnAccion = `
-                <button class="btn btn-outline-secondary w-100" onclick="${bloqueadoPorPrelacion ? "showToast('Debes completar primero: " + mensajePrelacion.replace(/'/g, "\\'") + "', 'warning')" : "solicitarAccesoCurso('" + c.id + "')"}" style="font-size:0.875rem;">
+                <button class="btn btn-outline-secondary w-100" onclick="${bloqueadoPorPrelacion ? `showToast(${jsArg('Debes completar primero: ' + mensajePrelacion)}, 'warning')` : `solicitarAccesoCurso(${jsArg(c.id)})`}" style="font-size:0.875rem;">
                     <i class="bi ${bloqueadoPorPrelacion ? 'bi-shield-lock-fill' : 'bi-lock-fill'} me-1"></i>
-                    ${bloqueadoPorPrelacion ? mensajePrelacion : 'Solicitar Acceso'}
+                    ${bloqueadoPorPrelacion ? escapeHtml(mensajePrelacion) : 'Solicitar Acceso'}
                 </button>`;
         } else if (prog.completado) {
             btnAccion = `
-                <a href="detalle.php?id=${c.id}" class="btn btn-success w-100" style="font-size:0.875rem;">
+                <a href="detalle.php?id=${encodeURIComponent(c.id)}" class="btn btn-success w-100" style="font-size:0.875rem;">
                     <i class="bi bi-check2-circle me-1"></i>Repasar / Certificado
                 </a>`;
         } else if (prog.porcentaje > 0) {
             btnAccion = `
-                <a href="detalle.php?id=${c.id}" class="btn btn-primary w-100" style="font-size:0.875rem;">
+                <a href="detalle.php?id=${encodeURIComponent(c.id)}" class="btn btn-primary w-100" style="font-size:0.875rem;">
                     <i class="bi bi-play-circle-fill me-1"></i>Continuar (${prog.porcentaje}%)
                 </a>`;
         } else {
             btnAccion = `
-                <a href="detalle.php?id=${c.id}" class="btn btn-primary w-100" style="font-size:0.875rem;">
+                <a href="detalle.php?id=${encodeURIComponent(c.id)}" class="btn btn-primary w-100" style="font-size:0.875rem;">
                     <i class="bi bi-arrow-right-circle-fill me-1"></i>Comenzar Curso
                 </a>`;
         }
@@ -273,7 +273,7 @@ function renderizarGaleria() {
             <div class="col-sm-6 col-lg-4 mb-4">
                 <div class="course-card ${isLocked ? 'opacity-75' : ''}">
                     <div class="course-thumb-container">
-                        <img src="${typeof resolverSrcImagen === 'function' ? resolverSrcImagen(imagenUrl) : imagenUrl}" alt="${c.titulo}" style="${isLocked ? 'filter: grayscale(0.85);' : ''}">
+                        <img src="${escapeHtml(urlSegura(typeof resolverSrcImagen === 'function' ? resolverSrcImagen(imagenUrl) : imagenUrl))}" alt="${escapeHtml(c.titulo)}" style="${isLocked ? 'filter: grayscale(0.85);' : ''}">
                         <div class="course-thumb-overlay"></div>
                         <div class="course-badge-floating">${badgeEstado}</div>
                         ${isLocked ? '<div class="position-absolute top-50 start-50 translate-middle text-center"><i class="bi bi-lock-fill display-5 text-white drop-shadow"></i></div>' : ''}
@@ -286,7 +286,7 @@ function renderizarGaleria() {
                             ${c.prelacion ? '<span class="badge-soft-warning"><i class="bi bi-diagram-3-fill me-1"></i>Prelación</span>' : ''}
                         </div>
 
-                        <h5 class="course-title" title="${c.titulo}">${c.titulo}</h5>
+                        <h5 class="course-title" title="${escapeHtml(c.titulo)}">${escapeHtml(c.titulo)}</h5>
 
                         <div class="course-progress-wrapper">
                             <div class="course-progress-label">
@@ -505,7 +505,7 @@ window.renderizarCarreras = function() {
                             ${cd.aprobado ? '<i class="bi bi-check"></i>' : (idx + 1)}
                         </div>
                         <div>
-                            <div class="fw-semibold text-dark mb-0">${cd.titulo}</div>
+                            <div class="fw-semibold text-dark mb-0">${escapeHtml(cd.titulo)}</div>
                             <small class="text-muted">${cd.totalModulos} módulos formativos</small>
                         </div>
                     </div>
@@ -526,7 +526,7 @@ window.renderizarCarreras = function() {
                             <small class="text-muted">Cumpliste satisfactoriamente con la totalidad del plan de estudios.</small>
                         </div>
                     </div>
-                    <button type="button" class="btn btn-warning fw-bold text-dark shadow-sm px-4 py-2 rounded-pill" onclick="descargarDiplomaCarrera('${car.id}', '${(sesion.nombre||'').replace(/'/g, "\\'")}', '${sesion.id}')">
+                    <button type="button" class="btn btn-warning fw-bold text-dark shadow-sm px-4 py-2 rounded-pill" onclick="descargarDiplomaCarrera(${jsArg(car.id)}, ${jsArg(sesion.nombre)}, ${jsArg(sesion.id)})">
                         <i class="bi bi-award-fill me-2"></i>Descargar Diploma Oficial (PDF)
                     </button>
                 </div>
@@ -541,7 +541,7 @@ window.renderizarCarreras = function() {
                                 <span class="badge bg-white bg-opacity-20 text-white text-uppercase px-3 py-1 mb-2">
                                     <i class="bi bi-mortarboard-fill me-1"></i>Ruta Profesional
                                 </span>
-                                <h4 class="fw-bold mb-1">${car.nombre}</h4>
+                                <h4 class="fw-bold mb-1">${escapeHtml(car.nombre)}</h4>
                                 <small class="text-white-50">Especialización técnica acreditada por la Universidad del Aluminio</small>
                             </div>
                             <div class="text-end">
@@ -646,17 +646,17 @@ window.renderizarVitrinaCertificados = async function() {
                             <div class="credential-icon gold"><i class="bi bi-mortarboard-fill"></i></div>
                             <span class="badge bg-warning text-dark fw-bold px-2 py-1"><i class="bi bi-star-fill me-1"></i>CARRERA</span>
                         </div>
-                        <h5 class="fw-bold text-primary mb-1">${cred.titulo}</h5>
+                        <h5 class="fw-bold text-primary mb-1">${escapeHtml(cred.titulo)}</h5>
                         <p class="text-muted small mb-3">${cred.subtitulo}</p>
                         
                         <div class="p-2 bg-light rounded-2 mb-3 border">
                             <small class="text-muted d-block" style="font-size: 0.725rem;">CÓDIGO DE AUTENTICIDAD:</small>
-                            <span class="code-pill text-primary" style="font-size: 0.85rem;">${codigo || 'UA-VERIF'}</span>
+                            <span class="code-pill text-primary" style="font-size: 0.85rem;">${escapeHtml(codigo || 'UA-VERIF')}</span>
                         </div>
                     </div>
 
                     <div class="mt-3">
-                        <button type="button" class="btn btn-warning fw-bold text-dark w-100 shadow-sm" onclick="descargarDiplomaCarrera('${cred.id}', '${(sesion.nombre||'').replace(/'/g, "\\'")}', '${sesion.id}')">
+                        <button type="button" class="btn btn-warning fw-bold text-dark w-100 shadow-sm" onclick="descargarDiplomaCarrera(${jsArg(cred.id)}, ${jsArg(sesion.nombre)}, ${jsArg(sesion.id)})">
                             <i class="bi bi-download me-1"></i>Descargar Diploma PDF
                         </button>
                     </div>
@@ -682,17 +682,17 @@ window.renderizarVitrinaCertificados = async function() {
                             <div class="credential-icon blue"><i class="bi bi-award-fill"></i></div>
                             <span class="badge bg-primary bg-opacity-15 text-primary fw-bold px-2 py-1">CURSO</span>
                         </div>
-                        <h5 class="fw-bold text-primary mb-1">${cred.titulo}</h5>
+                        <h5 class="fw-bold text-primary mb-1">${escapeHtml(cred.titulo)}</h5>
                         <p class="text-muted small mb-3">${cred.subtitulo}</p>
                         
                         <div class="p-2 bg-light rounded-2 mb-3 border">
                             <small class="text-muted d-block" style="font-size: 0.725rem;">CÓDIGO DE AUTENTICIDAD:</small>
-                            <span class="code-pill text-primary" style="font-size: 0.85rem;">${codigo || 'UA-VERIF'}</span>
+                            <span class="code-pill text-primary" style="font-size: 0.85rem;">${escapeHtml(codigo || 'UA-VERIF')}</span>
                         </div>
                     </div>
 
                     <div class="mt-3">
-                        <button type="button" class="btn btn-primary w-100 shadow-sm" onclick="descargarCertificado('${(sesion.nombre||'').replace(/'/g, "\\'")}', '${sesion.id}', '${cred.titulo.replace(/'/g, "\\'")}', '${cred.id}')">
+                        <button type="button" class="btn btn-primary w-100 shadow-sm" onclick="descargarCertificado(${jsArg(sesion.nombre)}, ${jsArg(sesion.id)}, ${jsArg(cred.titulo)}, ${jsArg(cred.id)})">
                             <i class="bi bi-download me-1"></i>Descargar Certificado PDF
                         </button>
                     </div>
@@ -733,20 +733,20 @@ window.abrirModalPerfil = function() {
     const elResEmail = document.getElementById('perfil-resumen-email');
     if (elResEmail) {
         elResEmail.innerHTML = sesion.email
-            ? `<i class="bi bi-envelope-fill me-1 text-primary"></i>${sesion.email}`
+            ? `<i class="bi bi-envelope-fill me-1 text-primary"></i>${escapeHtml(sesion.email)}`
             : `<span class="text-muted"><i class="bi bi-envelope me-1"></i>Sin correo</span>`;
     }
     const elResTel = document.getElementById('perfil-resumen-telefono');
     if (elResTel) {
         elResTel.innerHTML = sesion.telefono
-            ? `<i class="bi bi-telephone-fill me-1 text-success"></i>${sesion.telefono}`
+            ? `<i class="bi bi-telephone-fill me-1 text-success"></i>${escapeHtml(sesion.telefono)}`
             : `<span class="text-muted"><i class="bi bi-telephone me-1"></i>Sin teléfono</span>`;
     }
     const elResNac = document.getElementById('perfil-resumen-nacimiento');
     if (elResNac) {
         const fNac = sesion.fecha_nacimiento || sesion.fechaNacimiento || '';
         elResNac.innerHTML = fNac
-            ? `<i class="bi bi-cake2-fill me-1 text-warning"></i>${fNac}`
+            ? `<i class="bi bi-cake2-fill me-1 text-warning"></i>${escapeHtml(fNac)}`
             : `<span class="text-muted"><i class="bi bi-cake2 me-1"></i>Sin fecha nac.</span>`;
     }
 
@@ -871,15 +871,15 @@ window.guardarDatosPerfil = async function(event) {
         // Actualizar badges en resumen
         const elResEmail = document.getElementById('perfil-resumen-email');
         if (elResEmail) {
-            elResEmail.innerHTML = email ? `<i class="bi bi-envelope-fill me-1 text-primary"></i>${email}` : `<span class="text-muted"><i class="bi bi-envelope me-1"></i>Sin correo</span>`;
+            elResEmail.innerHTML = email ? `<i class="bi bi-envelope-fill me-1 text-primary"></i>${escapeHtml(email)}` : `<span class="text-muted"><i class="bi bi-envelope me-1"></i>Sin correo</span>`;
         }
         const elResTel = document.getElementById('perfil-resumen-telefono');
         if (elResTel) {
-            elResTel.innerHTML = telefono ? `<i class="bi bi-telephone-fill me-1 text-success"></i>${telefono}` : `<span class="text-muted"><i class="bi bi-telephone me-1"></i>Sin teléfono</span>`;
+            elResTel.innerHTML = telefono ? `<i class="bi bi-telephone-fill me-1 text-success"></i>${escapeHtml(telefono)}` : `<span class="text-muted"><i class="bi bi-telephone me-1"></i>Sin teléfono</span>`;
         }
         const elResNac = document.getElementById('perfil-resumen-nacimiento');
         if (elResNac) {
-            elResNac.innerHTML = fechaNac ? `<i class="bi bi-cake2-fill me-1 text-warning"></i>${fechaNac}` : `<span class="text-muted"><i class="bi bi-cake2 me-1"></i>Sin fecha nac.</span>`;
+            elResNac.innerHTML = fechaNac ? `<i class="bi bi-cake2-fill me-1 text-warning"></i>${escapeHtml(fechaNac)}` : `<span class="text-muted"><i class="bi bi-cake2 me-1"></i>Sin fecha nac.</span>`;
         }
 
         if (typeof showToast === 'function') {

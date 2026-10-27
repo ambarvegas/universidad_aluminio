@@ -329,6 +329,26 @@
     window.escapeAttr = window.escapeHtml;
 
     /**
+     * Argumento de texto para un manejador en línea (onclick="fn(${jsArg(x)})"):
+     * literal JS válido y escapado para el atributo HTML.
+     */
+    window.jsArg = function (valor) {
+        return window.escapeHtml(JSON.stringify(String(valor ?? '')));
+    };
+
+    /**
+     * Devuelve la URL solo si es segura para href/src: http(s), data:, blob: o ruta relativa.
+     * Descarta javascript:, vbscript: y cualquier otro esquema. No escapa: usar con escapeHtml.
+     */
+    window.urlSegura = function (url) {
+        const u = String(url ?? '').trim();
+        if (!u) return '';
+        if (/^(https?:|data:|blob:)/i.test(u)) return u;
+        // Sin esquema (ruta relativa): no hay ":" antes del primer "/", "?" o "#"
+        return /^[^:/?#]*:/.test(u) ? '' : u;
+    };
+
+    /**
      * Retrasa la ejecución de fn hasta que pasen `wait` ms sin nuevas llamadas.
      * Útil para filtros en vivo (oninput) sobre listas grandes.
      */

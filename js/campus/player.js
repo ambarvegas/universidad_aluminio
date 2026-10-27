@@ -271,7 +271,7 @@ window.seleccionarLeccion = (mIdx, lIdx) => {
                 <div class="card border-warning bg-warning bg-opacity-10 p-5 text-center my-4 rounded-4 shadow-sm">
                     <div class="display-2 text-warning mb-3"><i class="bi bi-cone-striped"></i></div>
                     <h3 class="fw-bold text-dark mb-2">Módulo en Construcción</h3>
-                    <p class="text-muted fs-6 mb-0">El módulo <strong>"${moduloCheck.titulo}"</strong> se encuentra actualmente en desarrollo. ¡Sus lecciones estarán disponibles muy pronto!</p>
+                    <p class="text-muted fs-6 mb-0">El módulo <strong>"${escapeHtml(moduloCheck.titulo)}"</strong> se encuentra actualmente en desarrollo. ¡Sus lecciones estarán disponibles muy pronto!</p>
                 </div>
             `;
         }
@@ -320,22 +320,27 @@ window.seleccionarLeccion = (mIdx, lIdx) => {
     haySiguiente = cursoActualData.modulos[proximoM] && cursoActualData.modulos[proximoM].lecciones &&
         cursoActualData.modulos[proximoM].lecciones[proximoL];
 
-    // Parser seguro de video ID (YouTube)
+    // Parser seguro de video ID (YouTube). Una URL que no sea de YouTube solo se acepta si es https.
     let videoUrl = '';
-    const rawVideo = leccion.videoID || '';
+    const rawVideo = String(leccion.videoID || '').trim();
     if (rawVideo.includes('http') || rawVideo.includes('youtu')) {
         const parsed = typeof extraerID === 'function' ? extraerID(rawVideo) : '';
-        videoUrl = parsed ? `https://www.youtube.com/embed/${parsed}?rel=0&modestbranding=1` : rawVideo;
+        if (parsed && parsed !== rawVideo) {
+            videoUrl = `https://www.youtube.com/embed/${encodeURIComponent(parsed)}?rel=0&modestbranding=1`;
+        } else if (/^https:\/\//i.test(rawVideo)) {
+            videoUrl = rawVideo;
+        }
     } else if (rawVideo) {
-        videoUrl = `https://www.youtube.com/embed/${rawVideo}?rel=0&modestbranding=1`;
+        videoUrl = `https://www.youtube.com/embed/${encodeURIComponent(rawVideo)}?rel=0&modestbranding=1`;
     }
+    const adjuntoUrl = urlSegura(leccion.adjunto);
 
     visor.innerHTML = `
         <div class="card border-0 shadow-sm p-4 mb-4 bg-white rounded-3">
             <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 pb-2 border-bottom">
                 <div>
-                    <span class="badge-soft-primary mb-1 d-inline-block">Módulo ${mIdx + 1}: ${modulo.titulo}</span>
-                    <h3 class="fw-bold text-primary mb-0">${leccion.titulo || 'Lección sin título'}</h3>
+                    <span class="badge-soft-primary mb-1 d-inline-block">Módulo ${mIdx + 1}: ${escapeHtml(modulo.titulo)}</span>
+                    <h3 class="fw-bold text-primary mb-0">${escapeHtml(leccion.titulo || 'Lección sin título')}</h3>
                 </div>
                 <div class="d-flex align-items-center gap-2 mt-2 mt-sm-0">
                     ${estaCompletada 
@@ -347,7 +352,7 @@ window.seleccionarLeccion = (mIdx, lIdx) => {
             <!-- Reproductor de Video 16:9 -->
             ${videoUrl ? `
                 <div class="player-container mb-3 shadow-sm">
-                    <iframe src="${videoUrl}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                    <iframe src="${escapeHtml(videoUrl)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
                 </div>` : `
                 <div class="alert alert-light border text-center py-4 mb-3">
                     <i class="bi bi-film display-4 text-muted d-block mb-2"></i>
@@ -381,12 +386,12 @@ window.seleccionarLeccion = (mIdx, lIdx) => {
                     <i class="bi bi-file-text me-2 text-accent"></i>Contenido y Material de Apoyo
                 </h5>
                 <div class="text-secondary mb-3" style="white-space: pre-wrap; line-height: 1.7; font-size: 0.95rem;">
-                    ${leccion.contenido || 'No hay descripción adicional para esta lección.'}
+                    ${escapeHtml(leccion.contenido || 'No hay descripción adicional para esta lección.')}
                 </div>
-                ${leccion.adjunto ? `
+                ${adjuntoUrl ? `
                     <div class="pt-3 border-top">
-                        <a href="${leccion.adjunto}" download="${leccion.nombreAdjunto || 'recurso'}" class="btn btn-outline-primary btn-sm">
-                            <i class="bi bi-paperclip me-1"></i> Descargar Adjunto: <strong>${leccion.nombreAdjunto || 'Archivo'}</strong>
+                        <a href="${escapeHtml(adjuntoUrl)}" download="${escapeHtml(leccion.nombreAdjunto || 'recurso')}" class="btn btn-outline-primary btn-sm">
+                            <i class="bi bi-paperclip me-1"></i> Descargar Adjunto: <strong>${escapeHtml(leccion.nombreAdjunto || 'Archivo')}</strong>
                         </a>
                     </div>` : ''}
             </div>
@@ -416,10 +421,10 @@ window.mostrarEvaluacionModulo = (cursoID, mIdx) => {
         visor.innerHTML = `
             <div class="quiz-card text-center p-5">
                 <div class="quiz-score-badge pass"><i class="bi bi-award-fill"></i></div>
-                <h2 class="fw-bold text-primary mb-2">¡Módulo "${modulo.titulo}" Aprobado!</h2>
+                <h2 class="fw-bold text-primary mb-2">¡Módulo "${escapeHtml(modulo.titulo)}" Aprobado!</h2>
                 <p class="lead text-muted mb-4">Has aprobado satisfactoriamente la evaluación correspondiente a este módulo.</p>
                 <div class="d-flex justify-content-center gap-3">
-                    <button class="btn btn-outline-primary" onclick="reintentarEvaluacion('${curso.id}', ${mIdx})">
+                    <button class="btn btn-outline-primary" onclick="reintentarEvaluacion(${jsArg(curso.id)}, ${mIdx})">
                         <i class="bi bi-arrow-repeat me-1"></i>Repasar Evaluación
                     </button>
                     <button class="btn btn-primary" onclick="location.reload()">
@@ -440,7 +445,7 @@ window.mostrarEvaluacionModulo = (cursoID, mIdx) => {
             <div class="quiz-card text-center p-5 border-danger shadow-sm">
                 <div class="quiz-score-badge fail mb-3"><i class="bi bi-lock-fill"></i></div>
                 <h2 class="fw-bold text-danger mb-2">Evaluación Bloqueada</h2>
-                <p class="lead text-muted mb-3">Has alcanzado el límite máximo de <strong>${maxIntentos} ${maxIntentos === 1 ? 'intento' : 'intentos'}</strong> permitidos para el módulo "${modulo.titulo}".</p>
+                <p class="lead text-muted mb-3">Has alcanzado el límite máximo de <strong>${maxIntentos} ${maxIntentos === 1 ? 'intento' : 'intentos'}</strong> permitidos para el módulo "${escapeHtml(modulo.titulo)}".</p>
                 <div class="alert alert-warning text-start mx-auto my-4" style="max-width: 550px;">
                     <i class="bi bi-info-circle-fill me-2"></i>
                     Para solicitar una nueva oportunidad o el restablecimiento de tus intentos en este módulo, ponte en contacto con el <strong>Administrador o Tutor</strong> de la plataforma.
@@ -543,7 +548,7 @@ window.mostrarEvaluacionModulo = (cursoID, mIdx) => {
             <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom flex-wrap gap-2">
                 <div>
                     <span class="badge-soft-warning mb-1 d-inline-block">Examen de Módulo ${mIdx + 1}</span>
-                    <h3 class="fw-bold text-primary mb-0">${modulo.titulo}</h3>
+                    <h3 class="fw-bold text-primary mb-0">${escapeHtml(modulo.titulo)}</h3>
                 </div>
                 <div class="d-flex align-items-center flex-wrap gap-1">
                     ${badgeModo}
@@ -562,11 +567,11 @@ window.mostrarEvaluacionModulo = (cursoID, mIdx) => {
                     <div class="card p-3 mb-4 border bg-light shadow-sm rounded-3">
                         <h6 class="fw-bold text-primary mb-3 d-flex align-items-start gap-2">
                             <span class="badge bg-primary flex-shrink-0">${i + 1}</span>
-                            <span class="flex-grow-1">${p.enunciado}</span>
+                            <span class="flex-grow-1">${escapeHtml(p.enunciado)}</span>
                         </h6>
                         ${p.imagen ? `
                             <div class="quiz-question-img-container mb-3 text-center">
-                                <img src="${p.imagen}" alt="Ilustración de la pregunta" class="img-fluid rounded border shadow-sm quiz-question-img" style="max-height: 280px; object-fit: contain;">
+                                <img src="${escapeHtml(urlSegura(p.imagen))}" alt="Ilustración de la pregunta" class="img-fluid rounded border shadow-sm quiz-question-img" style="max-height: 280px; object-fit: contain;">
                             </div>
                         ` : ''}
                         <div class="quiz-options-list d-flex flex-column gap-2">
@@ -575,9 +580,9 @@ window.mostrarEvaluacionModulo = (cursoID, mIdx) => {
                                     <input type="radio" name="q${i}" value="${optItem.origIdx}" id="q${i}o${oIdx}" class="form-check-input mt-0 flex-shrink-0" style="width: 1.2rem; height: 1.2rem;">
                                     <div class="d-flex align-items-center gap-2 flex-grow-1">
                                         ${optItem.imagen ? `
-                                            <img src="${optItem.imagen}" alt="Opción" class="rounded border quiz-option-img" style="width: 45px; height: 45px; object-fit: cover; flex-shrink: 0;">
+                                            <img src="${escapeHtml(urlSegura(optItem.imagen))}" alt="Opción" class="rounded border quiz-option-img" style="width: 45px; height: 45px; object-fit: cover; flex-shrink: 0;">
                                         ` : ''}
-                                        <span class="quiz-option-text">${optItem.texto}</span>
+                                        <span class="quiz-option-text">${escapeHtml(optItem.texto)}</span>
                                     </div>
                                 </label>
                             `).join('')}
@@ -677,14 +682,14 @@ window.validarEvaluacionModulo = async (mIdx) => {
                 return `
                     <div class="card p-3 mb-3 border ${isCorrect ? 'border-success bg-success bg-opacity-10' : 'border-danger bg-danger bg-opacity-10'} shadow-sm rounded-3">
                         <h6 class="fw-bold d-flex justify-content-between align-items-start gap-2 mb-2">
-                            <span><span class="badge ${isCorrect ? 'bg-success' : 'bg-danger'} me-2">${i + 1}</span> ${p.enunciado}</span>
+                            <span><span class="badge ${isCorrect ? 'bg-success' : 'bg-danger'} me-2">${i + 1}</span> ${escapeHtml(p.enunciado)}</span>
                             ${isCorrect 
                                 ? '<span class="badge-soft-success flex-shrink-0"><i class="bi bi-check-circle-fill me-1"></i>Correcto</span>' 
                                 : '<span class="badge-soft-danger flex-shrink-0"><i class="bi bi-x-circle-fill me-1"></i>Incorrecto</span>'}
                         </h6>
                         ${p.imagen ? `
                             <div class="quiz-question-img-container mb-2 text-start">
-                                <img src="${p.imagen}" alt="Ilustración" class="img-fluid rounded border shadow-sm" style="max-height: 180px; object-fit: contain;">
+                                <img src="${escapeHtml(urlSegura(p.imagen))}" alt="Ilustración" class="img-fluid rounded border shadow-sm" style="max-height: 180px; object-fit: contain;">
                             </div>
                         ` : ''}
                         <div class="mt-2 d-flex flex-column gap-1">
@@ -703,8 +708,8 @@ window.validarEvaluacionModulo = async (mIdx) => {
                                 return `
                                     <div class="py-1 px-2 rounded small d-flex align-items-center gap-2 ${labelStyle}">
                                         <span class="fw-bold">${icon}</span>
-                                        ${optImg ? `<img src="${optImg}" class="rounded border flex-shrink-0" style="width: 32px; height: 32px; object-fit: cover;">` : ''}
-                                        <span>${optText}</span>
+                                        ${optImg ? `<img src="${escapeHtml(urlSegura(optImg))}" class="rounded border flex-shrink-0" style="width: 32px; height: 32px; object-fit: cover;">` : ''}
+                                        <span>${escapeHtml(optText)}</span>
                                     </div>`;
                             }).join('')}
                         </div>
@@ -775,7 +780,7 @@ window.validarEvaluacionModulo = async (mIdx) => {
                             <p class="text-muted mb-2">Obtuviste <strong>${aciertos} de ${total}</strong> aciertos. Se requiere al menos un <strong>${min}%</strong> para aprobar.</p>
                             ${maxIntentos > 0 ? `<p class="badge bg-warning text-dark px-3 py-2 mb-3"><i class="bi bi-arrow-repeat me-1"></i>Intento ${numIntentos} de ${maxIntentos} — Te ${intentosRestantes === 1 ? 'queda' : 'quedan'} ${intentosRestantes} ${intentosRestantes === 1 ? 'intento' : 'intentos'}</p>` : ''}
                             <div class="d-flex justify-content-center gap-3">
-                                <button class="btn btn-warning px-4" onclick="reintentarEvaluacion('${cursoActualData.id}', ${mIdx})">
+                                <button class="btn btn-warning px-4" onclick="reintentarEvaluacion(${jsArg(cursoActualData.id)}, ${mIdx})">
                                     <i class="bi bi-arrow-counterclockwise me-1"></i>Reintentar Evaluación
                                 </button>
                                 <button class="btn btn-outline-secondary" onclick="window.location.reload()">
@@ -809,7 +814,7 @@ function renderizarCursoTeachlr(curso) {
             <div class="card border-warning bg-warning bg-opacity-10 p-5 text-center my-4 rounded-4 shadow-sm">
                 <div class="display-1 text-warning mb-3"><i class="bi bi-cone-striped"></i></div>
                 <h2 class="fw-bold text-dark mb-2">Curso en Construcción</h2>
-                <p class="text-muted fs-5 mb-4">El curso <strong>"${curso.titulo}"</strong> se encuentra actualmente en desarrollo y afinamiento. ¡Estará disponible para ti muy pronto!</p>
+                <p class="text-muted fs-5 mb-4">El curso <strong>"${escapeHtml(curso.titulo)}"</strong> se encuentra actualmente en desarrollo y afinamiento. ¡Estará disponible para ti muy pronto!</p>
                 <div>
                     <a href="index.php" class="btn btn-primary px-4 shadow-sm">
                         <i class="bi bi-arrow-left me-1"></i>Volver a Mis Cursos
@@ -882,7 +887,7 @@ function renderizarCursoTeachlr(curso) {
                     ${curso.tipo === 'pruebas'
                         ? '<span class="badge text-white mb-2 align-self-start" style="background:#7c3aed"><i class="bi bi-flask me-1"></i>Modo de Pruebas (Admin)</span>'
                         : '<span class="badge-soft-primary mb-2 align-self-start"><i class="bi bi-mortarboard-fill me-1"></i>Programa Académico</span>'}
-                    <h5 class="fw-bold text-primary mb-2">${curso.titulo}</h5>
+                    <h5 class="fw-bold text-primary mb-2">${escapeHtml(curso.titulo)}</h5>
                     
                     <div class="d-flex justify-content-between align-items-center mb-1">
                         <small class="text-muted fw-semibold">Progreso general</small>
@@ -903,7 +908,7 @@ function renderizarCursoTeachlr(curso) {
                                 const modIndex = parseInt(m);
                                 const moduloNombre = curso.modulos[modIndex] ? curso.modulos[modIndex].titulo : `Módulo ${modIndex + 1}`;
                                 return `
-                                    <span class="badge bg-warning bg-opacity-25 text-dark border border-warning px-2 py-1 d-inline-flex align-items-center" title="${moduloNombre}">
+                                    <span class="badge bg-warning bg-opacity-25 text-dark border border-warning px-2 py-1 d-inline-flex align-items-center" title="${escapeHtml(moduloNombre)}">
                                         <span class="me-1">🏆</span> <span class="text-truncate" style="max-width: 120px;">M${modIndex + 1}</span>
                                     </span>`;
                             }).join('') : '<small class="text-muted fst-italic">Completa las evaluaciones para desbloquear medallas.</small>'}
@@ -912,7 +917,7 @@ function renderizarCursoTeachlr(curso) {
 
                     ${yaTieneCertificado ? `
                         <div class="mt-3 pt-3 border-top">
-                            <button class="btn btn-gold w-100 shadow-sm py-2" onclick="descargarCertificado('${(sesion.nombre||'').replace(/'/g, "\\'")}', '${sesion.id}', '${(curso.titulo||'').replace(/'/g, "\\'")}')">
+                            <button class="btn btn-gold w-100 shadow-sm py-2" onclick="descargarCertificado(${jsArg(sesion.nombre)}, ${jsArg(sesion.id)}, ${jsArg(curso.titulo)})">
                                 <i class="bi bi-award-fill me-1"></i> Descargar Certificado
                             </button>
                         </div>
@@ -933,8 +938,9 @@ function renderizarCursoTeachlr(curso) {
                             leccionesCompletadas.includes(`${idx}-${lIdx}`)
                         ) && !moduloAprobado;
 
-                        const intentosRealizados = progreso.intentos ? (parseInt(progreso.intentos[idx]) || 0) : 0;
-                        const intentosMaximos = obtenerMaxIntentosEfectivo(mod, progreso, idx);
+                        const progCurso = sesion.progreso[curso.id];
+                        const intentosRealizados = progCurso.intentos ? (parseInt(progCurso.intentos[idx]) || 0) : 0;
+                        const intentosMaximos = obtenerMaxIntentosEfectivo(mod, progCurso, idx);
                         const intentosAgotados = (intentosMaximos > 0 && intentosRealizados >= intentosMaximos && !moduloAprobado);
 
                         let estadoEvaluacion = 'pendiente';
@@ -954,7 +960,7 @@ function renderizarCursoTeachlr(curso) {
                                             ? '<i class="bi bi-check-circle-fill text-success me-2 fs-5"></i>' 
                                             : (estaEnCurso ? '<i class="bi bi-play-circle-fill text-primary me-2 fs-5"></i>' : '<i class="bi bi-folder2 text-secondary me-2 fs-5"></i>'))} 
                                     <div class="text-truncate">
-                                        Módulo ${idx + 1}: ${mod.titulo}
+                                        Módulo ${idx + 1}: ${escapeHtml(mod.titulo)}
                                         ${modEnConstruccion ? '<span class="badge bg-warning text-dark ms-1" style="font-size:0.65rem;"><i class="bi bi-cone-striped me-1"></i>En Construcción</span>' : ''}
                                     </div>
                                 </button>
@@ -977,7 +983,7 @@ function renderizarCursoTeachlr(curso) {
                                                 <div class="d-flex align-items-center gap-2 w-100 justify-content-between">
                                                     <div class="d-flex align-items-center gap-2 text-truncate">
                                                         <i class="bi ${estaCompletada ? 'bi-check-circle-fill text-success' : (estaBloqueada ? 'bi-lock-fill text-muted' : 'bi-play-circle text-primary')}"></i>
-                                                        <span class="text-truncate">${lIdx + 1}. ${lec.titulo}</span>
+                                                        <span class="text-truncate">${lIdx + 1}. ${escapeHtml(lec.titulo)}</span>
                                                     </div>
                                                     ${estaBloqueada ? '<i class="bi bi-lock-fill text-muted small"></i>' : ''}
                                                 </div>
@@ -996,7 +1002,7 @@ function renderizarCursoTeachlr(curso) {
                                             estadoEvaluacion === 'agotado' ? 'btn-outline-danger' :
                                             'btn-light text-muted disabled'
                                         }"
-                                        onclick="${estadoEvaluacion === 'disponible' || estadoEvaluacion === 'aprobado' || estadoEvaluacion === 'agotado' ? `mostrarEvaluacionModulo('${curso.id}', ${idx})` : 'return false'}"
+                                        onclick="${estadoEvaluacion === 'disponible' || estadoEvaluacion === 'aprobado' || estadoEvaluacion === 'agotado' ? `mostrarEvaluacionModulo(${jsArg(curso.id)}, ${idx})` : 'return false'}"
                                         ${estadoEvaluacion === 'bloqueado' || (estadoEvaluacion === 'pendiente' && !tieneEvaluacion) ? 'disabled' : ''}>
                                             <i class="bi ${
                                                 estadoEvaluacion === 'aprobado' ? 'bi-check-circle-fill text-success' :
@@ -1104,7 +1110,7 @@ async function mostrarDetalleCurso(cursoId) {
             contenidoCursoDiv.innerHTML = `
                 <div class="alert alert-danger text-center" role="alert">
                     <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                    Error al cargar el curso: ${error.message}
+                    Error al cargar el curso: ${escapeHtml(error.message)}
                 </div>
             `;
         }

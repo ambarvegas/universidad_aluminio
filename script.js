@@ -6,7 +6,7 @@
 // ============================================================
 // GESTIÓN DE VERSIONES Y HARD RESET AUTOMÁTICO
 // ============================================================
-const APP_CLIENT_VERSION = '2026.10.26.v8';
+const APP_CLIENT_VERSION = '2026.10.27.v9';
 
 (function verificarVersionCliente() {
     try {
