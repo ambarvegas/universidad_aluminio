@@ -1,4 +1,4 @@
-// Escape de HTML en el campus (player.js, campus.js) y en la configuración (config.js):
+// Escape de HTML en el campus (player.js, evaluacion.js, campus.js, carreras.js, perfil.js) y en la configuración (config.js):
 // los textos de cursos, lecciones, preguntas, usuarios y respuestas del servidor se dibujan
 // como texto, y las URLs con esquemas peligrosos (javascript:, etc.) se descartan.
 import { test } from 'node:test';
@@ -9,7 +9,8 @@ const MALO = '<img src=x onerror=alert(1)>';
 const COMILLAS = `x'"); alert(1); //`;
 
 function preparar() {
-    const ctx = cargarScripts(['js/core/state.js', 'js/campus/player.js', 'js/campus/campus.js', 'js/features/config.js']);
+    const ctx = cargarScripts(['js/core/state.js', 'js/campus/player.js', 'js/campus/evaluacion.js', 'js/campus/campus.js',
+        'js/campus/carreras.js', 'js/campus/perfil.js', 'js/features/config.js']);
     ctx.showToast = () => {};
     return ctx;
 }

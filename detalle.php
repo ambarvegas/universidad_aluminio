@@ -81,6 +81,7 @@ if (!function_exists('v_asset')) {
     <script src="<?= v_asset('js/features/solicitudes.js') ?>"></script>
     <script src="<?= v_asset('js/campus/diploma.js') ?>"></script>
     <script src="<?= v_asset('js/campus/player.js') ?>"></script>
+    <script src="<?= v_asset('js/campus/evaluacion.js') ?>"></script>
     <script src="<?= v_asset('script.js') ?>"></script>
 </body>
 </html>

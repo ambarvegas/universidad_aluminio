@@ -1420,8 +1420,11 @@ if (!function_exists('v_asset')) {
     <script src="<?= v_asset('js/features/config.js') ?>"></script>
     <script src="<?= v_asset('js/features/solicitudes.js') ?>"></script>
     <script src="<?= v_asset('js/features/reports.js') ?>"></script>
+    <script src="<?= v_asset('js/features/reportes-evaluaciones.js') ?>"></script>
+    <script src="<?= v_asset('js/features/reportes-evaluaciones-exportar.js') ?>"></script>
     <script src="<?= v_asset('js/admin/admin-courses.js') ?>"></script>
     <script src="<?= v_asset('js/admin/admin-users.js') ?>"></script>
+    <script src="<?= v_asset('js/admin/admin-avance.js') ?>"></script>
     <script src="<?= v_asset('js/admin/admin-careers-roles.js') ?>"></script>
     <script src="<?= v_asset('js/admin/admin-dashboard.js') ?>"></script>
     <script src="<?= v_asset('js/campus/diploma.js') ?>"></script>

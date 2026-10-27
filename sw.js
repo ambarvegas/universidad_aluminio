@@ -4,7 +4,7 @@
  * se reflejen de inmediato mientras se mantiene la capacidad offline.
  */
 
-const CACHE_NAME    = 'unialuminio-v38';
+const CACHE_NAME    = 'unialuminio-v39';
 const CACHE_DYNAMIC = 'unialuminio-dynamic-v35';
 
 // Assets estáticos que se cachean al instalar el SW
@@ -24,13 +24,19 @@ const STATIC_ASSETS = [
     './js/features/config.js',
     './js/features/images.js',
     './js/features/reports.js',
+    './js/features/reportes-evaluaciones.js',
+    './js/features/reportes-evaluaciones-exportar.js',
     './js/features/solicitudes.js',
     './js/admin/admin-courses.js',
     './js/admin/admin-users.js',
+    './js/admin/admin-avance.js',
     './js/admin/admin-careers-roles.js',
     './js/admin/admin-dashboard.js',
     './js/campus/campus.js',
+    './js/campus/carreras.js',
+    './js/campus/perfil.js',
     './js/campus/player.js',
+    './js/campus/evaluacion.js',
     './js/campus/diploma.js',
     // Bootstrap y fuentes CDN
     'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css',

@@ -1,4 +1,4 @@
-// Reporte de evaluaciones en el navegador (js/features/reports.js). El cálculo, los filtros y
+// Reporte de evaluaciones en el navegador (js/features/reportes-evaluaciones*.js). El cálculo, los filtros y
 // la paginación se prueban en PHP (tests/Integracion/ReporteEvaluacionesTest.php); aquí se
 // prueba que la pantalla pida lo correcto al servidor y dibuje su respuesta de forma segura.
 import { test } from 'node:test';
@@ -27,7 +27,8 @@ function respuesta(modo, filas) {
 }
 
 function preparar() {
-    const ctx = cargarScripts(['js/core/state.js', 'js/features/reports.js']);
+    const ctx = cargarScripts(['js/core/state.js', 'js/features/reports.js', 'js/features/reportes-evaluaciones.js',
+        'js/features/reportes-evaluaciones-exportar.js']);
     const pedidos = [];
     const filas = [fila(), fila({ moduloNum: 1, calificacion: 100, aprobado: true, bloqueado: false, puedeHabilitar: false,
         vecesReprobado: 0, marcadoManual: true, habilitaciones: [] })];
