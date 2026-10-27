@@ -5,6 +5,7 @@ db.json.tmp
 db.json.migrated
 db_*.json
 *.sql
+!migraciones/*.sql
 *.xlsx
 ~$*.xlsx
 db.lock
