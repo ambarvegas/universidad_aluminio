@@ -4,7 +4,7 @@
  * se reflejen de inmediato mientras se mantiene la capacidad offline.
  */
 
-const CACHE_NAME    = 'unialuminio-v41';
+const CACHE_NAME    = 'unialuminio-v42';
 const CACHE_DYNAMIC = 'unialuminio-dynamic-v35';
 
 // Assets estáticos que se cachean al instalar el SW
@@ -39,12 +39,15 @@ const STATIC_ASSETS = [
     './js/campus/player.js',
     './js/campus/evaluacion.js',
     './js/campus/diploma.js',
-    // Bootstrap y fuentes CDN
-    'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css',
-    'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js',
-    'https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css',
-    'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
-    'https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js'
+    // Librerías y fuentes servidas desde libs/ (los archivos de fuente se guardan al usarse)
+    './libs/bootstrap-5.3.2/css/bootstrap.min.css',
+    './libs/bootstrap-5.3.2/js/bootstrap.bundle.min.js',
+    './libs/bootstrap-icons-1.11.0/bootstrap-icons.css',
+    './libs/jspdf-2.5.1/jspdf.umd.min.js',
+    './libs/qrious-4.0.2/qrious.min.js',
+    './libs/xlsx-0.18.5/xlsx.full.min.js',
+    './libs/fuentes/fuentes.css',
+    './img/curso-por-defecto.jpg'
 ];
 
 // ============================================================

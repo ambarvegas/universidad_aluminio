@@ -18,14 +18,12 @@ if (!function_exists('v_asset')) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aula Virtual — Universidad del Aluminio</title>
     <!-- Google Fonts & Icons -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="libs/fuentes/fuentes.css" rel="stylesheet">
+    <link href="libs/bootstrap-5.3.2/css/bootstrap.min.css" rel="stylesheet">
+    <link href="libs/bootstrap-icons-1.11.0/bootstrap-icons.css" rel="stylesheet">
     <link rel="stylesheet" href="<?= v_asset('style.css') ?>">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+    <script src="libs/jspdf-2.5.1/jspdf.umd.min.js"></script>
+    <script src="libs/qrious-4.0.2/qrious.min.js"></script>
 </head>
 <body class="bg-body">
 
@@ -69,7 +67,7 @@ if (!function_exists('v_asset')) {
     </footer>
 
     <!-- Scripts Esenciales -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="libs/bootstrap-5.3.2/js/bootstrap.bundle.min.js"></script>
     <script src="<?= v_asset('js/core/errores.js') ?>"></script>
     <script src="<?= v_asset('js/ui/modal.js') ?>"></script>
     <script src="<?= v_asset('js/ui/toast.js') ?>"></script>

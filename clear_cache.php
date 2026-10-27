@@ -14,8 +14,8 @@ if (!in_array($destino, ['admin.php', 'index.php', 'login.php'], true)) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Actualización Integral del Sistema — Universidad del Aluminio</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="libs/bootstrap-5.3.2/css/bootstrap.min.css" rel="stylesheet">
+    <link href="libs/bootstrap-icons-1.11.0/bootstrap-icons.css" rel="stylesheet">
     <style>
         body {
             background: linear-gradient(135deg, #0f2b48 0%, #1a4971 100%);

@@ -2,7 +2,7 @@
    UNIVERSIDAD DEL ALUMINIO — SISTEMA DE DISEÑO MODERNO (LMS PRO)
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
+/* Fuentes Inter y Plus Jakarta Sans: libs/fuentes/fuentes.css (servidas localmente, enlazadas en cada página) */
 
 :root {
     /* Paleta Institucional Aluminio & Azul Profundo */
@@ -1857,4 +1857,4 @@ details[open] .brecha-summary-icon { transform: rotate(90deg); }
     opacity: 0.5;
 }
 
-
+

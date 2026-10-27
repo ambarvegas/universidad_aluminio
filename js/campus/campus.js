@@ -267,7 +267,8 @@ function renderizarGaleria() {
                 </a>`;
         }
 
-        const imagenUrl = c.imagen || 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=600&auto=format&fit=crop&q=80';
+        // Portada por defecto: foto de Unsplash (licencia Unsplash) guardada en el servidor
+        const imagenUrl = c.imagen || 'img/curso-por-defecto.jpg';
         const isLocked = c.bloqueado || bloqueadoPorPrelacion;
 
         galeriaHTML += `
