@@ -96,6 +96,7 @@ switch ($action) {
             http_response_code(400);
             echo json_encode(['error' => $e->getMessage()]);
         } catch (Throwable $e) {
+            api_registrar_excepcion($e);
             http_response_code(500);
             echo json_encode(['error' => 'Error al cambiar contraseña: ' . $e->getMessage()]);
         }
@@ -118,6 +119,7 @@ switch ($action) {
             http_response_code(400);
             echo json_encode(['error' => $e->getMessage()]);
         } catch (Throwable $e) {
+            api_registrar_excepcion($e);
             http_response_code(500);
             echo json_encode(['error' => 'Error al actualizar datos de perfil: ' . $e->getMessage()]);
         }
@@ -128,7 +130,7 @@ switch ($action) {
         require_admin();
         if (($_GET['key'] ?? '') !== 'HASH2026') { http_response_code(403); echo json_encode(['error' => 'Acceso denegado']); break; }
         try { $n = db_hash_all_passwords($conn); echo json_encode(['message' => "Hasheadas: $n contrasenas"]); }
-        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        catch (Throwable $e) { api_registrar_excepcion($e); http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 
     // ------ RECUPERACION DE CONTRASEÑA (PÚBLICO) ----------------
@@ -189,6 +191,7 @@ switch ($action) {
                 'message'        => "Hemos enviado un enlace seguro para restablecer tu contraseña al correo $ofuscado. El enlace es válido por 2 horas."
             ], JSON_UNESCAPED_UNICODE);
         } catch (Throwable $e) {
+            api_registrar_excepcion($e);
             http_response_code(500);
             echo json_encode(['error' => 'Error al procesar la solicitud de recuperación: ' . $e->getMessage()]);
         }
@@ -209,6 +212,7 @@ switch ($action) {
             }
             echo json_encode($info, JSON_UNESCAPED_UNICODE);
         } catch (Throwable $e) {
+            api_registrar_excepcion($e);
             http_response_code(500);
             echo json_encode(['valid' => false, 'error' => 'Error al validar el enlace: ' . $e->getMessage()]);
         }
@@ -234,6 +238,7 @@ switch ($action) {
             http_response_code(400);
             echo json_encode(['error' => $e->getMessage()]);
         } catch (Throwable $e) {
+            api_registrar_excepcion($e);
             http_response_code(500);
             echo json_encode(['error' => 'Error al restablecer la contraseña: ' . $e->getMessage()]);
         }
@@ -300,6 +305,7 @@ switch ($action) {
                     : ($userEmail ? "Enlace generado. No se pudo enviar el correo automático por configuración SMTP del servidor, pero puedes copiar el enlace directamente." : "Enlace generado. El usuario no tiene correo registrado en su perfil, puedes copiar el enlace para enviárselo directamente.")
             ], JSON_UNESCAPED_UNICODE);
         } catch (Throwable $e) {
+            api_registrar_excepcion($e);
             http_response_code(500);
             echo json_encode(['error' => 'Error al generar enlace de acceso: ' . $e->getMessage()]);
         }

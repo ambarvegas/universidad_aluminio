@@ -338,6 +338,16 @@ window.API = (() => {
             return _get('health');
         },
 
+        /** Errores de PHP y del navegador registrados (diagnóstico). */
+        async obtenerErrores(limit = 50) {
+            return _get('errores_recientes&limit=' + encodeURIComponent(limit));
+        },
+
+        /** Marca como revisados (borra) los errores indicados, o todos si no se indican. */
+        async limpiarErrores(ids = null) {
+            return _post('errores_limpiar', ids ? { ids } : {});
+        },
+
         async probarEmail(email) {
             return _post('test_email', { email });
         },

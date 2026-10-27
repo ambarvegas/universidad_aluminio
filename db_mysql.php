@@ -24,5 +24,6 @@ require_once __DIR__ . '/lib/habilitaciones.php'; // reintentos habilitados por 
 require_once __DIR__ . '/lib/reportes.php';      // reporte de evaluaciones (filtros y paginación)
 require_once __DIR__ . '/lib/catalogo.php';      // cursos, carreras, roles, configuración, solicitudes
 require_once __DIR__ . '/lib/seguridad.php';     // log de actividad y rate limiting
+require_once __DIR__ . '/lib/errores.php';       // registro de errores PHP y JavaScript
 require_once __DIR__ . '/lib/certificados.php';  // códigos y verificación de certificados
 require_once __DIR__ . '/lib/sistema.php';       // diagnóstico de salud

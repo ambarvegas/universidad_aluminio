@@ -47,6 +47,48 @@ final class ApiTest extends BaseDatosTestCase
         $this->assertSame([], db_estado_migraciones(self::$conn)['pendientes']);
     }
 
+    public function testElNavegadorRegistraErroresConOSinSesion(): void
+    {
+        $r = self::$srv->api('anon', 'POST', 'registrar_error', [
+            'mensaje' => 'TypeError: a', 'detalle' => 'x', 'url' => '/universidad/recuperar.php?token=SECRETO', 'version' => 'v1']);
+        $this->assertSame(204, $r['status']);
+        self::$srv->login('ana', '2000');
+        self::$srv->api('ana', 'POST', 'registrar_error', ['mensaje' => 'TypeError: b', 'url' => '/universidad/index.php']);
+
+        $filas = self::$conn->query('SELECT mensaje, ubicacion, usuario_id, version, ip FROM errores_log ORDER BY id')->fetch_all(MYSQLI_ASSOC);
+        $this->assertSame(['TypeError: a', '/universidad/recuperar.php', '', 'v1'], array_slice(array_values($filas[0]), 0, 4));
+        $this->assertSame('2000', $filas[1]['usuario_id']);
+        $this->assertNotSame('', $filas[0]['ip']);
+        $this->assertSame(405, self::$srv->api('anon', 'GET', 'registrar_error')['status']);
+    }
+
+    public function testSoloElAdminConsultaYLimpiaLosErrores(): void
+    {
+        db_registrar_error(self::$conn, ['origen' => 'js', 'mensaje' => 'boom']);
+        self::$srv->login('ana', '2000');
+        $this->assertSame(403, self::$srv->api('ana', 'GET', 'errores_recientes')['status']);
+        $this->assertSame(403, self::$srv->api('ana', 'POST', 'errores_limpiar', [])['status']);
+
+        self::$srv->login('admin', '1000');
+        $r = self::$srv->api('admin', 'GET', 'errores_recientes');
+        $this->assertSame(200, $r['status']);
+        $this->assertSame('boom', $r['json']['errores'][0]['mensaje']);
+        $this->assertSame(1, self::$srv->api('admin', 'POST', 'errores_limpiar', [])['json']['borrados']);
+    }
+
+    public function testUnErrorDelServidorQuedaRegistradoConSuAccion(): void
+    {
+        self::$srv->login('admin', '1000');
+        self::$conn->query('DROP TABLE `configuracion`');   // fuerza un fallo de SQL en el endpoint
+        $this->assertSame(500, self::$srv->api('admin', 'GET', 'config')['status']);
+
+        $fila = self::$conn->query("SELECT * FROM errores_log WHERE origen = 'php'")->fetch_assoc();
+        $this->assertNotNull($fila);
+        $this->assertSame('api:config', $fila['ubicacion']);
+        $this->assertSame('1000', $fila['usuario_id']);
+        $this->assertStringContainsString('configuracion', $fila['mensaje']);
+    }
+
     public function testAccionDesconocidaDevuelve404(): void
     {
         $r = self::$srv->api('anon', 'GET', 'no_existe');

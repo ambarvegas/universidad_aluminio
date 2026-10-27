@@ -6,7 +6,7 @@
 // ============================================================
 // GESTIÓN DE VERSIONES Y HARD RESET AUTOMÁTICO
 // ============================================================
-const APP_CLIENT_VERSION = '2026.10.27.v11';
+const APP_CLIENT_VERSION = '2026.10.27.v12';
 
 (function verificarVersionCliente() {
     try {
@@ -19,7 +19,8 @@ const APP_CLIENT_VERSION = '2026.10.27.v11';
             }
             if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.getRegistrations().then(regs => {
-                    regs.forEach(r => r.update());
+                    // Sin conexión la búsqueda de actualización falla: no es un error de la app
+                    regs.forEach(r => r.update().catch(() => {}));
                 });
             }
         } else if (!storedVersion) {
@@ -92,7 +93,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // 7. Registrar Service Worker para soporte PWA offline con auto-update
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js').then(reg => {
-                reg.update();
+                reg.update().catch(() => {});
                 reg.addEventListener('updatefound', () => {
                     const newWorker = reg.installing;
                     if (newWorker) {

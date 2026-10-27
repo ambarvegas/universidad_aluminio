@@ -18,6 +18,7 @@ switch ($action) {
             $data = db_read_catalogo($conn, $_SESSION['user_id'], $_SESSION['user_rol']);
             echo json_encode($data, JSON_UNESCAPED_UNICODE);
         } catch (Throwable $e) {
+            api_registrar_excepcion($e);
             http_response_code(500); echo json_encode(['error' => $e->getMessage()]);
         }
         break;
@@ -38,6 +39,7 @@ switch ($action) {
             }
             echo json_encode(['curso' => $curso], JSON_UNESCAPED_UNICODE);
         } catch (Throwable $e) {
+            api_registrar_excepcion($e);
             http_response_code(500); echo json_encode(['error' => $e->getMessage()]);
         }
         break;
@@ -58,6 +60,7 @@ switch ($action) {
                     echo json_encode($data, JSON_UNESCAPED_UNICODE);
                 }
             } catch (Throwable $e) {
+                api_registrar_excepcion($e);
                 http_response_code(500); echo json_encode(['error' => $e->getMessage()]);
             }
             break;
@@ -76,7 +79,7 @@ switch ($action) {
                 db_write_all($conn, $body);
                 echo json_encode(['message' => 'Base de datos restaurada y sincronizada en MySQL']);
             }
-            catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+            catch (Throwable $e) { api_registrar_excepcion($e); http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
             break;
         }
         http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break;
@@ -103,6 +106,7 @@ switch ($action) {
             }
             echo json_encode(['progreso' => (object)$progreso], JSON_UNESCAPED_UNICODE);
         } catch (Throwable $e) {
+            api_registrar_excepcion($e);
             http_response_code(500); echo json_encode(['error' => $e->getMessage()]);
         }
         break;
@@ -112,21 +116,21 @@ switch ($action) {
         require_admin();
         if ($method !== 'GET') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
         try { $d = db_read_safe($conn); echo json_encode(['usuarios' => $d['usuarios']], JSON_UNESCAPED_UNICODE); }
-        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        catch (Throwable $e) { api_registrar_excepcion($e); http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 
     case 'cursos':
         require_session();
         if ($method !== 'GET') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
         try { $d = db_read_safe($conn); echo json_encode(['cursos' => $d['cursos']], JSON_UNESCAPED_UNICODE); }
-        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        catch (Throwable $e) { api_registrar_excepcion($e); http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 
     case 'carreras':
         require_session();
         if ($method !== 'GET') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
         try { $d = db_read_safe($conn); echo json_encode(['carreras' => $d['carreras']], JSON_UNESCAPED_UNICODE); }
-        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        catch (Throwable $e) { api_registrar_excepcion($e); http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 
     case 'config':
@@ -137,6 +141,6 @@ switch ($action) {
             $cfg = is_admin() ? $d['configuracion'] : db_config_publica($d['configuracion']);
             echo json_encode(['configuracion' => $cfg], JSON_UNESCAPED_UNICODE);
         }
-        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        catch (Throwable $e) { api_registrar_excepcion($e); http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 }

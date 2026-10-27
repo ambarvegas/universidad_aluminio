@@ -20,6 +20,7 @@ switch ($action) {
             $filtros = array_intersect_key($_GET, array_flip(['search', 'usuario', 'curso', 'estado', 'orden', 'modo', 'page', 'limit', 'todo']));
             echo json_encode(db_reporte_evaluaciones($conn, $filtros), JSON_UNESCAPED_UNICODE);
         } catch (Throwable $e) {
+            api_registrar_excepcion($e);
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
         }
@@ -50,6 +51,7 @@ switch ($action) {
             try {
                 $perfil = perfil_usuario_firebase($idToken, $fb['firebase_project_id'], $claims['sub'], $fb['firestore_emulador_host']);
             } catch (Throwable $e) {
+                api_registrar_excepcion($e);
                 http_response_code(502);
                 echo json_encode(['error' => 'No se pudo leer tu perfil'], JSON_UNESCAPED_UNICODE);
                 break;
@@ -112,6 +114,7 @@ switch ($action) {
                 'en_progreso' => (int)($r['en_progreso'] ?? 0),
             ], JSON_UNESCAPED_UNICODE);
         } catch (Throwable $e) {
+            api_registrar_excepcion($e);
             http_response_code(500);
             echo json_encode(['error' => 'Error al calcular KPI']);
         }

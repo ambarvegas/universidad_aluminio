@@ -85,6 +85,7 @@ switch ($action) {
             http_response_code(400);
             echo json_encode(['error' => $e->getMessage()]);
         } catch (Throwable $e) {
+            api_registrar_excepcion($e);
             http_response_code(500);
             echo json_encode(['error' => 'Error al evaluar módulo: ' . $e->getMessage()]);
         }
@@ -164,7 +165,7 @@ switch ($action) {
                 }
             }
             echo json_encode(['message' => 'Progreso guardado']);
-        } catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        } catch (Throwable $e) { api_registrar_excepcion($e); http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 
     // ------ RESTABLECER PROGRESO (atómico) ----------------------
@@ -185,6 +186,7 @@ switch ($action) {
             db_log_activity($conn, $_SESSION['user_id'] ?? 'admin', 'RESTABLECER_PROGRESO', "Usuario: $uid, Curso: $cid", $_SERVER['REMOTE_ADDR'] ?? '');
             echo json_encode($res, JSON_UNESCAPED_UNICODE);
         } catch (Throwable $e) {
+            api_registrar_excepcion($e);
             http_response_code(500);
             echo json_encode(['error' => 'Error al restablecer progreso: ' . $e->getMessage()]);
         }
@@ -219,6 +221,7 @@ switch ($action) {
             http_response_code(400);
             echo json_encode(['error' => $e->getMessage()]);
         } catch (Throwable $e) {
+            api_registrar_excepcion($e);
             http_response_code(500);
             echo json_encode(['error' => 'Error al habilitar reintento: ' . $e->getMessage()]);
         }

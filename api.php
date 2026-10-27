@@ -81,6 +81,27 @@ try {
     exit;
 }
 
+// Registro de errores del servidor (diagnóstico del panel): los catch de endpoints/ llaman a
+// api_registrar_excepcion(); lo que se escape de ellos lo recogen estos manejadores globales.
+function api_registrar_excepcion(Throwable $e): void {
+    global $conn, $action;
+    error_log('[api.php] ' . ($action ?? '') . ': ' . $e->getMessage());
+    if ($conn instanceof mysqli) {
+        db_registrar_excepcion($conn, $e, ['ubicacion' => 'api:' . ($action ?? ''), 'usuario_id' => $_SESSION['user_id'] ?? '']);
+    }
+}
+set_exception_handler(function (Throwable $e) {
+    api_registrar_excepcion($e);
+    if (!headers_sent()) http_response_code(500);
+    echo json_encode(['error' => 'Error interno del servidor.']);
+});
+register_shutdown_function(function () {
+    $err = error_get_last();
+    if ($err && in_array($err['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+        api_registrar_excepcion(new ErrorException($err['message'], 0, $err['type'], $err['file'], $err['line']));
+    }
+});
+
 // Esquema al día: tras un "Update from Remote" la primera petición aplica las migraciones pendientes.
 // Si una falla, se registra y se reintenta en la siguiente petición sin bloquear el resto de la API.
 try {
@@ -222,6 +243,9 @@ const API_RUTAS = [
     'trigger_backup'             => 'sistema',
     'lista_respaldos'            => 'sistema',
     'ping'                       => 'sistema',
+    'registrar_error'            => 'sistema',
+    'errores_recientes'          => 'sistema',
+    'errores_limpiar'            => 'sistema',
 ];
 
 if (isset(API_RUTAS[$action])) {

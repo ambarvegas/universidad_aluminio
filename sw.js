@@ -4,7 +4,7 @@
  * se reflejen de inmediato mientras se mantiene la capacidad offline.
  */
 
-const CACHE_NAME    = 'unialuminio-v39';
+const CACHE_NAME    = 'unialuminio-v40';
 const CACHE_DYNAMIC = 'unialuminio-dynamic-v35';
 
 // Assets estáticos que se cachean al instalar el SW
@@ -18,6 +18,7 @@ const STATIC_ASSETS = [
     './icon-512.png',
     './js/api.js',
     './js/auth.js',
+    './js/core/errores.js',
     './js/core/state.js',
     './js/ui/modal.js',
     './js/ui/toast.js',

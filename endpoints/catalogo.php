@@ -86,7 +86,7 @@ switch ($action) {
         $body = jsonBody();
         if (empty($body['id'])) { http_response_code(400); echo json_encode(['error' => 'Campo requerido: id']); break; }
         try { db_upsert_curso($conn, $body); echo json_encode(['message' => 'Curso guardado']); }
-        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        catch (Throwable $e) { api_registrar_excepcion($e); http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 
     case 'eliminar_curso':
@@ -95,7 +95,7 @@ switch ($action) {
         $body = jsonBody(); $id = trim($body['id'] ?? '');
         if (!$id) { http_response_code(400); echo json_encode(['error' => 'Campo requerido: id']); break; }
         try { db_delete_curso($conn, $id); echo json_encode(['message' => 'Curso eliminado']); }
-        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        catch (Throwable $e) { api_registrar_excepcion($e); http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 
     // ------ CARRERAS ---------------------------------------------
@@ -105,7 +105,7 @@ switch ($action) {
         $body = jsonBody();
         if (empty($body['id'])) { http_response_code(400); echo json_encode(['error' => 'Campo requerido: id']); break; }
         try { db_upsert_carrera($conn, $body); echo json_encode(['message' => 'Carrera guardada']); }
-        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        catch (Throwable $e) { api_registrar_excepcion($e); http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 
     case 'eliminar_carrera':
@@ -114,7 +114,7 @@ switch ($action) {
         $body = jsonBody(); $id = trim($body['id'] ?? '');
         if (!$id) { http_response_code(400); echo json_encode(['error' => 'Campo requerido: id']); break; }
         try { db_delete_carrera($conn, $id); echo json_encode(['message' => 'Carrera eliminada']); }
-        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        catch (Throwable $e) { api_registrar_excepcion($e); http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 
     // ------ ROLES ------------------------------------------------
@@ -124,7 +124,7 @@ switch ($action) {
         $body = jsonBody();
         if (empty($body['id'])) { http_response_code(400); echo json_encode(['error' => 'Campo requerido: id']); break; }
         try { db_upsert_rol($conn, $body); echo json_encode(['message' => 'Rol guardado']); }
-        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        catch (Throwable $e) { api_registrar_excepcion($e); http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 
     case 'eliminar_rol':
@@ -133,7 +133,7 @@ switch ($action) {
         $body = jsonBody(); $id = trim($body['id'] ?? '');
         if (!$id) { http_response_code(400); echo json_encode(['error' => 'Campo requerido: id']); break; }
         try { db_delete_rol($conn, $id); echo json_encode(['message' => 'Rol eliminado']); }
-        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        catch (Throwable $e) { api_registrar_excepcion($e); http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 
     // ------ CONFIGURACION ----------------------------------------
@@ -145,7 +145,7 @@ switch ($action) {
             http_response_code(400); echo json_encode(['error' => 'Se requieren clave y valor']); break;
         }
         try { db_upsert_config($conn, $clave, $body['valor']); echo json_encode(['message' => 'Configuracion guardada']); }
-        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        catch (Throwable $e) { api_registrar_excepcion($e); http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 
     case 'guardar_config_batch':
@@ -160,6 +160,7 @@ switch ($action) {
             db_upsert_config_batch($conn, $configs);
             echo json_encode(['message' => 'Configuraciones guardadas']);
         } catch (Throwable $e) {
+            api_registrar_excepcion($e);
             http_response_code(500); echo json_encode(['error' => $e->getMessage()]);
         }
         break;

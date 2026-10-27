@@ -42,6 +42,16 @@ function db_get_health_status(mysqli $conn): array {
         $warnings[] = "Latencia MySQL elevada ({$latenciaMs} ms). Verifique la conectividad de red.";
     }
 
+    // Errores registrados en las últimas 24 h (PHP y navegador)
+    try {
+        $errores24h = db_errores_ultimas_24h($conn);
+        if ($errores24h > 0) {
+            $warnings[] = "Se registraron $errores24h error(es) distinto(s) en las últimas 24 h. Revise la sección «Errores recientes».";
+        }
+    } catch (Throwable $e) {
+        $errores24h = null;
+    }
+
     // Versión del esquema (migraciones aplicadas / disponibles)
     try {
         $esquema = db_estado_migraciones($conn);
@@ -163,6 +173,7 @@ function db_get_health_status(mysqli $conn): array {
             'tamano_bytes'    => $tamanoDbBytes,
             'tamano_formato'  => db_format_bytes($tamanoDbBytes),
             'esquema'         => $esquema,
+            'errores_24h'     => $errores24h,
         ],
         'storage'        => [
             'disk_free_bytes'    => $diskFree !== false ? (int)$diskFree : null,

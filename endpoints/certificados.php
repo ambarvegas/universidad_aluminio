@@ -101,6 +101,7 @@ switch ($action) {
                 echo json_encode(['success' => false, 'error' => "No se pudo entregar el correo con el certificado a $userEmail"]);
             }
         } catch (Throwable $e) {
+            api_registrar_excepcion($e);
             http_response_code(500);
             echo json_encode(['error' => 'Error al procesar el envío del certificado: ' . $e->getMessage()]);
         }

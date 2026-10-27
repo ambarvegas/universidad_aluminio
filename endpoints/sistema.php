@@ -1,7 +1,7 @@
 <?php
 /**
  * endpoints/sistema.php — Sistema
- * Diagnóstico, prueba de correo, respaldos y latido de sesión.
+ * Diagnóstico, prueba de correo, respaldos, latido de sesión y registro de errores.
  *
  * Lo incluye el router de api.php según la acción: comparte su ámbito ($conn, $method,
  * $action y los helpers jsonBody(), require_session(), require_admin(), is_admin(),
@@ -18,6 +18,7 @@ switch ($action) {
             $health = db_get_health_status($conn);
             echo json_encode($health, JSON_UNESCAPED_UNICODE);
         } catch (Throwable $e) {
+            api_registrar_excepcion($e);
             http_response_code(500);
             echo json_encode(['error' => 'Error al obtener estado de salud: ' . $e->getMessage()]);
         }
@@ -62,6 +63,7 @@ switch ($action) {
                 echo json_encode(['success' => false, 'error' => "No se pudo entregar el correo a $destinatario. Verifique los parámetros SMTP o la conectividad del servidor."]);
             }
         } catch (Throwable $e) {
+            api_registrar_excepcion($e);
             http_response_code(500);
             echo json_encode(['success' => false, 'error' => 'Excepción durante el envío: ' . $e->getMessage()]);
         }
@@ -77,6 +79,7 @@ switch ($action) {
             db_log_activity($conn, $_SESSION['user_id'] ?? 'admin', 'BACKUP_MANUAL', "Generado respaldo: " . $resultado['archivo'], $_SERVER['REMOTE_ADDR'] ?? '');
             echo json_encode($resultado, JSON_UNESCAPED_UNICODE);
         } catch (Throwable $e) {
+            api_registrar_excepcion($e);
             http_response_code(500);
             echo json_encode(['error' => 'Error al generar respaldo: ' . $e->getMessage()]);
         }
@@ -119,5 +122,59 @@ switch ($action) {
             'user_id'      => $_SESSION['user_id'] ?? null,
             'user_rol'     => $_SESSION['user_rol'] ?? null,
         ]);
+        break;
+
+    // ------ REGISTRO DE ERRORES DEL NAVEGADOR -------------------
+    // Sin sesión obligatoria (también se registran errores de login.php); límite por IP en
+    // db_registrar_error(). Siempre responde 204: el cliente no debe reaccionar a esto.
+    case 'registrar_error':
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body = jsonBody();
+        try {
+            db_registrar_error($conn, [
+                'origen'     => 'js',
+                'mensaje'    => $body['mensaje'] ?? '',
+                'detalle'    => $body['detalle'] ?? '',
+                'ubicacion'  => errores_ruta((string)($body['url'] ?? '')),
+                'usuario_id' => $_SESSION['user_id'] ?? '',
+                'navegador'  => $_SERVER['HTTP_USER_AGENT'] ?? '',
+                'version'    => $body['version'] ?? '',
+                'ip'         => $_SERVER['REMOTE_ADDR'] ?? '',
+            ]);
+        } catch (Throwable $e) {
+            error_log('[errores] no se pudo registrar un error del navegador: ' . $e->getMessage());
+        }
+        http_response_code(204);
+        break;
+
+    // ------ ERRORES RECIENTES (DIAGNÓSTICO) ----------------------
+    case 'errores_recientes':
+        require_admin();
+        if ($method !== 'GET') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        try {
+            echo json_encode(db_errores_recientes($conn, (int)($_GET['limit'] ?? 50)), JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $e) {
+            api_registrar_excepcion($e);
+            http_response_code(500);
+            echo json_encode(['error' => 'Error al consultar los errores: ' . $e->getMessage()]);
+        }
+        break;
+
+    // ------ MARCAR ERRORES COMO REVISADOS ------------------------
+    // Body: { ids: [1,2,...] } para unos concretos, o {} para todos.
+    case 'errores_limpiar':
+        require_admin();
+        if ($method !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
+        $body = jsonBody();
+        $ids = isset($body['ids']) && is_array($body['ids']) ? $body['ids'] : null;
+        try {
+            $borrados = db_errores_limpiar($conn, $ids);
+            db_log_activity($conn, $_SESSION['user_id'], 'ERRORES_REVISADOS', $ids === null ? 'todos' : implode(',', array_map('intval', $ids)));
+            echo json_encode(['borrados' => $borrados]);
+        } catch (Throwable $e) {
+            api_registrar_excepcion($e);
+            http_response_code(500);
+            echo json_encode(['error' => 'Error al limpiar los errores: ' . $e->getMessage()]);
+        }
         break;
 }

@@ -32,7 +32,7 @@ switch ($action) {
             @notificarAdminNuevaSolicitud($conn, 'Registro de Nuevo Usuario', $sol['nombre'], $sol['id']);
             echo json_encode(['message' => 'Solicitud enviada']); 
         }
-        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        catch (Throwable $e) { api_registrar_excepcion($e); http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 
     // ------ SOLICITUDES ------------------------------------------
@@ -58,7 +58,7 @@ switch ($action) {
             @notificarAdminNuevaSolicitud($conn, 'Acceso a Curso Especializado', $body['userName'] ?? $body['user_name'] ?? $_SESSION['user_id'], $body['cursoId'] ?? $body['curso_id'] ?? '');
             echo json_encode(['message' => 'Solicitud enviada']); 
         }
-        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        catch (Throwable $e) { api_registrar_excepcion($e); http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 
     case 'eliminar_solicitud_registro':
@@ -67,7 +67,7 @@ switch ($action) {
         $body = jsonBody(); $id = trim($body['id'] ?? '');
         if (!$id) { http_response_code(400); echo json_encode(['error' => 'Campo requerido: id']); break; }
         try { db_delete_solicitud_registro($conn, $id); echo json_encode(['message' => 'Solicitud eliminada']); }
-        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        catch (Throwable $e) { api_registrar_excepcion($e); http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 
     case 'eliminar_solicitud_curso':
@@ -77,6 +77,6 @@ switch ($action) {
         $uid = trim($body['usuario_id'] ?? ''); $cid = trim($body['curso_id'] ?? '');
         if (!$uid || !$cid) { http_response_code(400); echo json_encode(['error' => 'Se requieren usuario_id y curso_id']); break; }
         try { db_delete_solicitud_curso($conn, $uid, $cid); echo json_encode(['message' => 'Solicitud de curso eliminada']); }
-        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        catch (Throwable $e) { api_registrar_excepcion($e); http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 }

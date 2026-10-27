@@ -699,13 +699,101 @@ async function cargarEstadoSistemaModal() {
                     </div>
                 </div>
             </div>
+
+            <div class="mt-4" id="diagnostico-errores">
+                <div class="text-center py-3 text-muted small"><span class="spinner-border spinner-border-sm me-2"></span>Cargando errores recientes...</div>
+            </div>
         `;
+        cargarErroresRecientes();
     } catch (e) {
         body.innerHTML = `
             <div class="alert alert-danger">
                 <i class="bi bi-exclamation-triangle-fill me-2"></i>Error al consultar el diagnóstico de salud: ${escapeHtml(e.message)}
             </div>`;
     }
+}
+
+// -------------------------------------------------------
+// ERRORES RECIENTES (PHP y navegador)
+// -------------------------------------------------------
+
+/**
+ * Dibuja en el diagnóstico los errores registrados por lib/errores.php y js/core/errores.js.
+ */
+async function cargarErroresRecientes() {
+    const cont = document.getElementById('diagnostico-errores');
+    if (!cont) return;
+    try {
+        const data = await window.API.obtenerErrores(50);
+        const lista = data.errores || [];
+        const cabecera = `
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                <h6 class="fw-bold text-dark mb-0"><i class="bi bi-bug-fill text-danger me-2"></i>Errores recientes
+                    <span class="badge bg-light text-dark border ms-1">${escapeHtml(data.total)}</span>
+                    ${data.ultimas24h ? `<span class="badge bg-danger ms-1">${escapeHtml(data.ultimas24h)} en 24 h</span>` : ''}
+                </h6>
+                ${lista.length ? `
+                    <div class="d-flex gap-2" id="errores-acciones">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="confirmarLimpiarErrores()">
+                            <i class="bi bi-check2-all me-1"></i>Marcar todos como revisados
+                        </button>
+                    </div>` : ''}
+            </div>`;
+
+        if (lista.length === 0) {
+            cont.innerHTML = cabecera + `
+                <div class="p-3 bg-light rounded-3 border text-center text-muted small">
+                    <i class="bi bi-check-circle-fill text-success me-1"></i>No hay errores registrados.
+                </div>`;
+            return;
+        }
+
+        cont.innerHTML = cabecera + `
+            <div class="list-group small">
+                ${lista.map(e => `
+                    <details class="list-group-item">
+                        <summary class="d-flex justify-content-between align-items-start gap-2" style="cursor: pointer;">
+                            <span class="text-break">
+                                <span class="badge ${e.origen === 'php' ? 'bg-primary' : 'bg-warning text-dark'} me-1">${e.origen === 'php' ? 'Servidor' : 'Navegador'}</span>
+                                ${escapeHtml(e.mensaje)}
+                            </span>
+                            <span class="text-nowrap text-muted">
+                                ${e.veces > 1 ? `<span class="badge bg-secondary me-1">×${escapeHtml(e.veces)}</span>` : ''}${escapeHtml(e.ultima_vez)}
+                            </span>
+                        </summary>
+                        <div class="mt-2 text-muted">
+                            <div><strong>Dónde:</strong> ${escapeHtml(e.ubicacion || 'N/D')}
+                                ${e.usuario_id ? ` &bull; <strong>Usuario:</strong> ${escapeHtml(e.usuario_id)}` : ''}
+                                ${e.version ? ` &bull; <strong>Versión:</strong> ${escapeHtml(e.version)}` : ''}</div>
+                            <div><strong>Primera vez:</strong> ${escapeHtml(e.primera_vez)}</div>
+                            ${e.navegador ? `<div class="text-truncate" title="${escapeHtml(e.navegador)}"><strong>Navegador:</strong> ${escapeHtml(e.navegador)}</div>` : ''}
+                            ${e.detalle ? `<pre class="bg-light border rounded p-2 mt-2 mb-0 small" style="white-space: pre-wrap; max-height: 220px; overflow: auto;">${escapeHtml(e.detalle)}</pre>` : ''}
+                        </div>
+                    </details>`).join('')}
+            </div>`;
+    } catch (e) {
+        cont.innerHTML = `<div class="alert alert-warning small mb-0"><i class="bi bi-exclamation-triangle me-1"></i>No se pudieron cargar los errores: ${escapeHtml(e.message)}</div>`;
+    }
+}
+
+/** Confirmación en línea (el diagnóstico ya es un modal) antes de borrar el registro. */
+function confirmarLimpiarErrores() {
+    const acciones = document.getElementById('errores-acciones');
+    if (!acciones) return;
+    acciones.innerHTML = `
+        <span class="small text-muted align-self-center">¿Borrar todos del registro?</span>
+        <button type="button" class="btn btn-sm btn-danger" onclick="limpiarErroresRegistrados()">Sí, marcar revisados</button>
+        <button type="button" class="btn btn-sm btn-light border" onclick="cargarErroresRecientes()">Cancelar</button>`;
+}
+
+async function limpiarErroresRegistrados() {
+    try {
+        const res = await window.API.limpiarErrores();
+        showToast(`${res.borrados} error(es) marcados como revisados.`, 'success');
+    } catch (e) {
+        showToast(`Error al limpiar el registro: ${e.message}`, 'danger');
+    }
+    await cargarErroresRecientes();
 }
 
 // -------------------------------------------------------
@@ -754,5 +842,8 @@ window.cargarListaRespaldos        = cargarListaRespaldos;
 window.ejecutarBackupManual        = ejecutarBackupManual;
 window.abrirModalDiagnostico       = abrirModalDiagnostico;
 window.cargarEstadoSistemaModal    = cargarEstadoSistemaModal;
+window.cargarErroresRecientes      = cargarErroresRecientes;
+window.confirmarLimpiarErrores     = confirmarLimpiarErrores;
+window.limpiarErroresRegistrados   = limpiarErroresRegistrados;
 
 

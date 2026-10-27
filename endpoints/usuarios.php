@@ -24,6 +24,7 @@ switch ($action) {
             $data = db_read_usuarios_paginados($conn, $page, $limit, $search, $rol, $estado);
             echo json_encode($data, JSON_UNESCAPED_UNICODE);
         } catch (Throwable $e) {
+            api_registrar_excepcion($e);
             http_response_code(500);
             echo json_encode(['error' => 'Error al consultar usuarios: ' . $e->getMessage()]);
         }
@@ -35,7 +36,7 @@ switch ($action) {
         $body = jsonBody();
         if (empty($body['id'])) { http_response_code(400); echo json_encode(['error' => 'Campo requerido: id']); break; }
         try { db_upsert_usuario($conn, $body); echo json_encode(['message' => 'Usuario guardado']); }
-        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        catch (Throwable $e) { api_registrar_excepcion($e); http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 
     case 'eliminar_usuario':
@@ -45,7 +46,7 @@ switch ($action) {
         if (!$id) { http_response_code(400); echo json_encode(['error' => 'Campo requerido: id']); break; }
         if ($id === '25482938') { http_response_code(403); echo json_encode(['error' => 'No se puede eliminar al admin principal']); break; }
         try { db_delete_usuario($conn, $id); echo json_encode(['message' => 'Usuario eliminado']); }
-        catch (Throwable $e) { http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
+        catch (Throwable $e) { api_registrar_excepcion($e); http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 
     // ------ NOTIFICAR USUARIO (MANUAL O APROBACION) --------------
@@ -83,6 +84,7 @@ switch ($action) {
                 echo json_encode(['success' => false, 'error' => "No se pudo entregar el correo a $email"]);
             }
         } catch (Throwable $e) {
+            api_registrar_excepcion($e);
             http_response_code(500);
             echo json_encode(['error' => 'Error al enviar notificación: ' . $e->getMessage()]);
         }
