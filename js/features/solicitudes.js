@@ -4,19 +4,9 @@
  */
 
 async function solicitarRegistro(id, nombre, clave, perfilDeseado) {
-    const autoAssignCareerMap = {
-        "asesor_ventas": "CAR-ASESOR-VENTAS",
-        "retail": "CAR-RETAIL",
-        "almacenista_retail": "CAR-ALMACENISTA",
-        "coordinador_retail": "CAR-COORD-RETAIL",
-        "cristalero": "CAR-CRISTALERO"
-    };
-
+    // Las carreras se asignan al aprobar, según la configuración del rol (carrerasDelRol)
     try {
-        await window.API.solicitarRegistro({
-            id, nombre, clave, perfilDeseado,
-            autoAssignCareerId: autoAssignCareerMap[perfilDeseado] || null
-        });
+        await window.API.solicitarRegistro({ id, nombre, clave, perfilDeseado });
         showToast("Solicitud enviada. Un administrador revisará su acceso pronto.", "success");
         setTimeout(() => location.reload(), 1500);
     } catch (err) {
@@ -33,13 +23,7 @@ async function gestionarSolicitudRegistro(id, aprobado) {
         const sol = solicitudesRegistro[idx];
 
         if (aprobado && sol) {
-            const userCareers = [];
-            const autoAssignCareerId = getCareerIdFromRole(sol.perfilDeseado);
-            if (autoAssignCareerId) {
-                if (carreras.some(c => c.id === autoAssignCareerId)) {
-                    userCareers.push({ id: autoAssignCareerId, estado: "Incompleta" });
-                }
-            }
+            const userCareers = carrerasDelRol(sol.perfilDeseado).map(carId => ({ id: carId, estado: "Incompleta" }));
 
             const nuevoUsuario = crearEstructuraUsuario({
                 id: sol.id,

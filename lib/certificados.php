@@ -5,6 +5,11 @@
  * Se carga desde db_mysql.php.
  */
 
+// No cambiar nunca este valor: los códigos ya emitidos están impresos en PDFs y QR y dejarían
+// de verificarse (tests/Unidad/FuncionesPurasTest.php lo vigila). No es un secreto, porque
+// está en el historial de git, y no necesita serlo: verificar un código consulta en la base
+// que el certificado exista de verdad (db_verificar_certificado), así que conocer la sal no
+// permite falsificar un certificado.
 if (!defined('CERT_SALT')) {
     define('CERT_SALT', 'ALU_CERT_SECRET_SALT_2026');
 }

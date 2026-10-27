@@ -230,15 +230,14 @@
     // MODELOS Y MAPEO DE CARRERAS
     // ------------------------------------------------------------
 
-    window.getCareerIdFromRole = function (roleId) {
-        const careerMap = {
-            "asesor_ventas": "CAR-ASESOR-VENTAS",
-            "retail": "CAR-RETAIL",
-            "almacenista_retail": "CAR-ALMACENISTA",
-            "coordinador_retail": "CAR-COORD-RETAIL",
-            "cristalero": "CAR-CRISTALERO"
-        };
-        return careerMap[roleId] || null;
+    /**
+     * Carreras de un rol según su configuración (Roles en el panel, tabla rol_carreras),
+     * solo las que existen. Sustituye al antiguo mapa fijo getCareerIdFromRole.
+     */
+    window.carrerasDelRol = function (roleId) {
+        const rol = (window.rolesConfig || []).find(r => r.id === roleId);
+        const ids = (rol && Array.isArray(rol.carreras)) ? rol.carreras : [];
+        return ids.filter(id => (window.carreras || []).some(c => c.id === id));
     };
 
     window.crearEstructuraUsuario = function (u) {
@@ -272,13 +271,7 @@
             usuario.progreso = {};
         }
 
-        const userRoleConfig = (window.rolesConfig || []).find(r => r.id === usuario.rol);
-        const roleCareerIds = (userRoleConfig && Array.isArray(userRoleConfig.carreras)) ? userRoleConfig.carreras : [];
-        const autoCareerId = window.getCareerIdFromRole(usuario.rol);
-        const todasCarrerasIds = new Set([...roleCareerIds]);
-        if (autoCareerId) todasCarrerasIds.add(autoCareerId);
-
-        todasCarrerasIds.forEach(carId => {
+        window.carrerasDelRol(usuario.rol).forEach(carId => {
             if ((window.carreras || []).some(c => c.id === carId)) {
                 if (!usuario.carrerasAsignadas.some(ca => ca.id === carId)) {
                     usuario.carrerasAsignadas.push({ id: carId, estado: "Incompleta" });

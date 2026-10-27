@@ -117,6 +117,20 @@ final class MigracionesTest extends BaseDatosTestCase
         $this->assertSame(0, self::$conn->query("SHOW TABLES LIKE 'prueba_migr'")->num_rows);
     }
 
+    /** 0003: el antiguo mapa fijo rol → carrera pasa a rol_carreras solo si ambos existen. */
+    public function testElMapaFijoDeCarrerasPasaARolCarreras(): void
+    {
+        self::$conn->query("INSERT INTO roles_config (id, nombre) VALUES ('asesor_ventas','Asesor'),('retail','Retail'),('cristalero','Cristalero')");
+        self::$conn->query("INSERT INTO carreras (id, nombre) VALUES ('CAR-ASESOR-VENTAS','A'),('CAR-RETAIL','R'),('CAR-ALMACENISTA','Al')");
+        self::$conn->query("INSERT INTO rol_carreras (rol_id, carrera_id) VALUES ('retail','CAR-RETAIL')");   // ya estaba
+        self::$conn->query('DELETE FROM schema_migraciones WHERE version = 3');
+
+        $this->assertSame(['0003_rol_carreras_desde_mapa_fijo.sql'], db_migrar(self::$conn));
+        $pares = self::$conn->query("SELECT CONCAT(rol_id, '>', carrera_id) FROM rol_carreras ORDER BY 1")->fetch_all();
+        // cristalero sin su carrera y almacenista_retail sin rol: no se agregan
+        $this->assertSame(['asesor_ventas>CAR-ASESOR-VENTAS', 'retail>CAR-RETAIL'], array_column($pares, 0));
+    }
+
     public function testNumerosRepetidosSonUnError(): void
     {
         $this->archivo('0001_a.sql', 'SELECT 1;');

@@ -80,18 +80,7 @@ function _obtenerCursosDelRol(usuario) {
         }
     }
 
-    // 2. Carrera asociada automáticamente según el rol (getCareerIdFromRole)
-    if (typeof getCareerIdFromRole === 'function') {
-        const autoCareerId = getCareerIdFromRole(usuario.rol);
-        if (autoCareerId) {
-            const carreraAuto = (carreras || []).find(c => c.id === autoCareerId);
-            if (carreraAuto && Array.isArray(carreraAuto.cursos)) {
-                carreraAuto.cursos.forEach(cid => { if (cid) cursosSet.add(cid); });
-            }
-        }
-    }
-
-    // 3. Carreras asignadas expresamente en el perfil del usuario
+    // 2. Carreras asignadas expresamente en el perfil del usuario
     if (Array.isArray(usuario.carrerasAsignadas)) {
         usuario.carrerasAsignadas.forEach(ca => {
             const caId = typeof ca === 'string' ? ca : (ca.id || '');
@@ -102,7 +91,7 @@ function _obtenerCursosDelRol(usuario) {
         });
     }
 
-    // 4. Asignaciones directas del usuario
+    // 3. Asignaciones directas del usuario
     if (Array.isArray(usuario.asignados)) {
         usuario.asignados.forEach(cid => { if (cid) cursosSet.add(cid); });
     }

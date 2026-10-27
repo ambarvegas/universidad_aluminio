@@ -33,3 +33,16 @@ test('extraerID obtiene el ID de YouTube y tolera vacíos', () => {
 test('normalizar quita acentos y pasa a minúsculas', () => {
     assert.equal(ctx.normalizar('José PÉREZ'), 'jose perez');
 });
+
+test('carrerasDelRol sale de la configuración del rol (ya no de un mapa fijo)', () => {
+    const c = cargarScripts(['js/core/state.js']);
+    c.rolesConfig = [{ id: 'retail', carreras: ['CAR-RETAIL', 'CAR-BORRADA'] }, { id: 'asesor_ventas', carreras: [] }];
+    c.carreras = [{ id: 'CAR-RETAIL', cursos: ['C1'] }, { id: 'CAR-ASESOR-VENTAS', cursos: ['C2'] }];
+    assert.deepEqual([...c.carrerasDelRol('retail')], ['CAR-RETAIL'], 'omite carreras que no existen');
+    assert.deepEqual([...c.carrerasDelRol('asesor_ventas')], [], 'sin configuración no hay carrera, aunque el mapa viejo la diera');
+    assert.equal(c.getCareerIdFromRole, undefined);
+
+    const u = { id: 'U', rol: 'retail', progreso: {}, carrerasAsignadas: [] };
+    c.actualizarEstadoCarrerasUsuario(u);
+    assert.deepEqual(u.carrerasAsignadas.map(ca => ca.id), ['CAR-RETAIL']);
+});

@@ -212,13 +212,8 @@ window.guardarUsuario = async (e) => {
             throw new Error("El formato del correo electrónico es inválido.");
         }
 
-        const autoAssignCareerId = getCareerIdFromRole(rol);
-        const userCareers = [];
-        if (autoAssignCareerId) {
-            if (carreras.some(c => c.id === autoAssignCareerId)) {
-                userCareers.push({ id: autoAssignCareerId, estado: "Incompleta" });
-            }
-        }
+        const carrerasRol = carrerasDelRol(rol);
+        const userCareers = carrerasRol.map(id => ({ id, estado: "Incompleta" }));
 
         const idx = usuarios.findIndex(u => String(u.id) === String(id));
         let userToSave = null;
@@ -235,9 +230,11 @@ window.guardarUsuario = async (e) => {
             } else {
                 delete usuarios[idx].clave;
             }
-            if (autoAssignCareerId && !usuarios[idx].carrerasAsignadas.some(ca => ca.id === autoAssignCareerId)) {
-                usuarios[idx].carrerasAsignadas.push({ id: autoAssignCareerId, estado: "Incompleta" });
-            }
+            carrerasRol.forEach(carId => {
+                if (!usuarios[idx].carrerasAsignadas.some(ca => ca.id === carId)) {
+                    usuarios[idx].carrerasAsignadas.push({ id: carId, estado: "Incompleta" });
+                }
+            });
             usuarios[idx] = crearEstructuraUsuario(usuarios[idx]);
             userToSave = usuarios[idx];
         } else {
