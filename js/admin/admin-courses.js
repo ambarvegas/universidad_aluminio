@@ -372,6 +372,8 @@
                 enunciado: p.enunciado || '',
                 imagen: p.imagen || '',
                 correcta: parseInt(p.correcta) || 0,
+                retroCorrecta: p.retroCorrecta || '',
+                retroIncorrecta: p.retroIncorrecta || '',
                 opciones: (p.opciones || []).map(opt => {
                     if (typeof opt === 'object' && opt !== null) {
                         return { texto: opt.texto || '', imagen: opt.imagen || '' };
@@ -410,7 +412,9 @@
                 { texto: "Opción A", imagen: "" },
                 { texto: "Opción B", imagen: "" }
             ],
-            correcta: 0
+            correcta: 0,
+            retroCorrecta: "",
+            retroIncorrecta: ""
         });
         window.renderPreguntasModuloEditor();
         window.actualizarInfoBanco();
@@ -530,7 +534,7 @@
                 <!-- Enunciado -->
                 <div class="mb-2">
                     <label class="form-label small fw-bold text-muted">Enunciado de la pregunta:</label>
-                    <textarea class="form-control" rows="2" placeholder="Escribe el enunciado de la pregunta..." oninput="window.tempModuloEvaluacion.preguntas[${pIdx}].enunciado = this.value">${p.enunciado || ''}</textarea>
+                    <textarea class="form-control" rows="2" placeholder="Escribe el enunciado de la pregunta..." oninput="window.tempModuloEvaluacion.preguntas[${pIdx}].enunciado = this.value">${escapeAttr(p.enunciado || '')}</textarea>
                 </div>
 
                 <!-- Imagen Ilustrativa de la Pregunta -->
@@ -600,6 +604,25 @@
                     <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="agregarOpcionPreguntaModulo(${pIdx})">
                         <i class="bi bi-plus-circle me-1"></i>Añadir Opción
                     </button>
+                </div>
+
+                <!-- Retroalimentación opcional (se muestra al participante después de calificar) -->
+                <div class="mt-3 pt-2 border-top">
+                    <label class="form-label small fw-bold text-muted mb-1">
+                        <i class="bi bi-chat-left-text me-1"></i>Retroalimentación <span class="fw-normal">(opcional; se muestra al calificar)</span>
+                    </label>
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <textarea class="form-control form-control-sm border-success" rows="2" maxlength="2000"
+                                placeholder="Mensaje si responde bien. Ej.: ¡Correcto! Este perfil se usa porque…"
+                                oninput="window.tempModuloEvaluacion.preguntas[${pIdx}].retroCorrecta = this.value">${escapeAttr(p.retroCorrecta || '')}</textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <textarea class="form-control form-control-sm border-danger" rows="2" maxlength="2000"
+                                placeholder="Mensaje si responde mal. Ej.: Repasa la lección 3: el perfil adecuado es…"
+                                oninput="window.tempModuloEvaluacion.preguntas[${pIdx}].retroIncorrecta = this.value">${escapeAttr(p.retroIncorrecta || '')}</textarea>
+                        </div>
+                    </div>
                 </div>
             </div>`;
         }).join('') + `<button type="button" class="btn btn-primary w-100 mt-2 py-2 fw-bold" onclick="agregarPreguntaModulo()"><i class="bi bi-plus-circle me-1"></i>Añadir Nueva Pregunta al Banco</button>`;

@@ -6,6 +6,16 @@
  */
 
 /**
+ * Valor SQL de un mensaje de retroalimentación de pregunta (retroCorrecta / retroIncorrecta):
+ * texto recortado y escapado, o NULL si viene vacío.
+ */
+function db_retro_sql(mysqli $conn, array $preg, string $campo): string {
+    $texto = trim((string)($preg[$campo] ?? ''));
+    if ($texto === '') return 'NULL';
+    return "'" . $conn->real_escape_string(mb_substr($texto, 0, 2000)) . "'";
+}
+
+/**
  * Si la imagen viene como cadena data:image/... en Base64,
  * la extrae, la guarda como archivo JPG optimizado en uploads/ y retorna la ruta relativa.
  * Si ya es una ruta relativa o URL, la retorna sin modificar.
@@ -129,7 +139,9 @@ function db_upsert_curso(mysqli $conn, array $c): void {
             }
             $pOpc  = $conn->real_escape_string(json_encode($rawOpc, JSON_UNESCAPED_UNICODE));
             $pCorr = (int)($preg['correcta'] ?? 0);
-            $conn->query("INSERT INTO `curso_preguntas` (modulo_id, curso_id, orden, enunciado, imagen, opciones, correcta) VALUES ($modId, '$safeId', $preOrd, '$pEnun', $pImg, '$pOpc', $pCorr)");
+            $pRetC = db_retro_sql($conn, $preg, 'retroCorrecta');
+            $pRetI = db_retro_sql($conn, $preg, 'retroIncorrecta');
+            $conn->query("INSERT INTO `curso_preguntas` (modulo_id, curso_id, orden, enunciado, imagen, opciones, correcta, retro_correcta, retro_incorrecta) VALUES ($modId, '$safeId', $preOrd, '$pEnun', $pImg, '$pOpc', $pCorr, $pRetC, $pRetI)");
             $preOrd++;
         }
     }

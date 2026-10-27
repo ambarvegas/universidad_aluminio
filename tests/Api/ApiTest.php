@@ -89,6 +89,21 @@ final class ApiTest extends BaseDatosTestCase
         $this->assertStringContainsString('configuracion', $fila['mensaje']);
     }
 
+    /** La acción "cursos" devolvía la respuesta correcta de cada pregunta a cualquier usuario con sesión. */
+    public function testLaAccionCursosNoRevelaRespuestasAlParticipante(): void
+    {
+        self::$conn->query("UPDATE curso_preguntas SET retro_correcta = 'bien', retro_incorrecta = 'mal'");
+        self::$srv->login('ana', '2000');
+        $texto = self::$srv->api('ana', 'GET', 'cursos')['texto'];
+        $this->assertStringContainsString('enunciado', $texto);
+        foreach (['"correcta"', 'retroCorrecta', 'retroIncorrecta'] as $campo) {
+            $this->assertStringNotContainsString($campo, $texto);
+        }
+
+        self::$srv->login('admin', '1000');
+        $this->assertStringContainsString('"retroIncorrecta":"mal"', self::$srv->api('admin', 'GET', 'cursos')['texto']);
+    }
+
     public function testAccionDesconocidaDevuelve404(): void
     {
         $r = self::$srv->api('anon', 'GET', 'no_existe');

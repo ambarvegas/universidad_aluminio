@@ -337,7 +337,9 @@ function db_write_all(mysqli $conn, array $data): void {
                     }
                     $pOpc  = $conn->real_escape_string(json_encode($rawOpc, JSON_UNESCAPED_UNICODE));
                     $pCorr = (int)($preg['correcta'] ?? 0);
-                    $conn->query("INSERT INTO `curso_preguntas` (modulo_id, curso_id, orden, enunciado, imagen, opciones, correcta) VALUES ($modId, '$safeCId', $preOrd, '$pEnun', $pImg, '$pOpc', $pCorr)");
+                    $pRetC = db_retro_sql($conn, $preg, 'retroCorrecta');
+                    $pRetI = db_retro_sql($conn, $preg, 'retroIncorrecta');
+                    $conn->query("INSERT INTO `curso_preguntas` (modulo_id, curso_id, orden, enunciado, imagen, opciones, correcta, retro_correcta, retro_incorrecta) VALUES ($modId, '$safeCId', $preOrd, '$pEnun', $pImg, '$pOpc', $pCorr, $pRetC, $pRetI)");
                     $preOrd++;
                 }
             }

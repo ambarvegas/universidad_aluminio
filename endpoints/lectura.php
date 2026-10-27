@@ -122,7 +122,12 @@ switch ($action) {
     case 'cursos':
         require_session();
         if ($method !== 'GET') { http_response_code(405); echo json_encode(['error' => 'Metodo no permitido']); break; }
-        try { $d = db_read_safe($conn); echo json_encode(['cursos' => $d['cursos']], JSON_UNESCAPED_UNICODE); }
+        try {
+            $d = db_read_safe($conn);
+            // Solo el administrador ve la respuesta correcta y la retroalimentación de las preguntas
+            $cursosResp = is_admin() ? $d['cursos'] : db_ocultar_respuestas($d['cursos']);
+            echo json_encode(['cursos' => $cursosResp], JSON_UNESCAPED_UNICODE);
+        }
         catch (Throwable $e) { api_registrar_excepcion($e); http_response_code(500); echo json_encode(['error' => $e->getMessage()]); }
         break;
 

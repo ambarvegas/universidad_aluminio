@@ -318,6 +318,9 @@ window.validarEvaluacionModulo = async (mIdx) => {
                                     </div>`;
                             }).join('')}
                         </div>
+                        ${p.retroalimentacion ? `
+                            <div class="quiz-retro mt-2 p-2 px-3 rounded-2 small bg-white border-start border-4 ${isCorrect ? 'border-success' : 'border-danger'}" style="white-space: pre-wrap;"><i class="bi ${isCorrect ? 'bi-lightbulb-fill text-success' : 'bi-info-circle-fill text-danger'} me-1"></i>${escapeHtml(p.retroalimentacion)}</div>
+                        ` : ''}
                     </div>`;
             }).join('');
         }

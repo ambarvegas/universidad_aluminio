@@ -157,7 +157,7 @@ function db_evaluar_modulo(mysqli $conn, string $userId, string $cursoId, int $m
     }
 
     // 3. Obtener el banco de preguntas del módulo en orden
-    $stmtQ = $conn->prepare("SELECT id, orden, enunciado, imagen, opciones, correcta FROM `curso_preguntas` WHERE modulo_id = ? ORDER BY orden ASC");
+    $stmtQ = $conn->prepare("SELECT id, orden, enunciado, imagen, opciones, correcta, retro_correcta, retro_incorrecta FROM `curso_preguntas` WHERE modulo_id = ? ORDER BY orden ASC");
     $stmtQ->bind_param('i', $moduloId);
     $stmtQ->execute();
     $resQ = $stmtQ->get_result();
@@ -246,6 +246,8 @@ function db_evaluar_modulo(mysqli $conn, string $userId, string $cursoId, int $m
             'seleccionada' => $userSelected,
             'correcta'     => $correcta,
             'esCorrecta'   => $esCorrecta,
+            // Solo el mensaje del resultado obtenido (null si la pregunta no tiene)
+            'retroalimentacion' => trim((string)($esCorrecta ? ($p['retro_correcta'] ?? '') : ($p['retro_incorrecta'] ?? ''))) ?: null,
         ];
     }
 

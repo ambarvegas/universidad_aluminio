@@ -5,6 +5,27 @@
  * Se carga desde db_mysql.php.
  */
 
+/** Campos de una pregunta que solo ve el administrador (o el participante tras calificar). */
+const DB_CAMPOS_PREGUNTA_PRIVADOS = ['correcta', 'retroCorrecta', 'retroIncorrecta'];
+
+/**
+ * Quita de las preguntas de una lista de cursos la respuesta correcta y la retroalimentación,
+ * que delatarían la respuesta antes de enviar la evaluación.
+ */
+function db_ocultar_respuestas(array $cursos): array {
+    foreach ($cursos as &$c) {
+        foreach ($c['modulos'] ?? [] as $mi => $m) {
+            foreach ($m['evaluacion']['preguntas'] ?? [] as $pi => $p) {
+                foreach (DB_CAMPOS_PREGUNTA_PRIVADOS as $campo) {
+                    unset($c['modulos'][$mi]['evaluacion']['preguntas'][$pi][$campo]);
+                }
+            }
+        }
+    }
+    unset($c);
+    return $cursos;
+}
+
 /**
  * Construye la DB filtrada para un participante.
  * Solo recibe: sus propios datos + cursos y carreras accesibles + su rol config.
@@ -52,21 +73,8 @@ function db_read_for_participant(mysqli $conn, string $userId, string $userRol):
         }
     }
 
-    // Sanitizar preguntas: los participantes no deben recibir el campo 'correcta'
-    foreach ($cursosFiltrados as &$c) {
-        if (!empty($c['modulos']) && is_array($c['modulos'])) {
-            foreach ($c['modulos'] as &$m) {
-                if (!empty($m['evaluacion']['preguntas']) && is_array($m['evaluacion']['preguntas'])) {
-                    foreach ($m['evaluacion']['preguntas'] as &$p) {
-                        unset($p['correcta']);
-                    }
-                    unset($p);
-                }
-            }
-            unset($m);
-        }
-    }
-    unset($c);
+    // Los participantes no reciben la respuesta correcta ni la retroalimentación
+    $cursosFiltrados = db_ocultar_respuestas($cursosFiltrados);
 
     return [
         'usuarios'            => $miUsuario ? [$miUsuario] : [],
@@ -382,7 +390,7 @@ function db_read_curso_detalle(mysqli $conn, string $cursoId, bool $esAdmin): ?a
     }
 
     // Preguntas
-    $stmtP = $conn->prepare("SELECT id, modulo_id, orden, enunciado, imagen, opciones, correcta FROM `curso_preguntas` WHERE curso_id = ? ORDER BY modulo_id, orden ASC");
+    $stmtP = $conn->prepare("SELECT id, modulo_id, orden, enunciado, imagen, opciones, correcta, retro_correcta, retro_incorrecta FROM `curso_preguntas` WHERE curso_id = ? ORDER BY modulo_id, orden ASC");
     $stmtP->bind_param('s', $cursoId);
     $stmtP->execute();
     $resP = $stmtP->get_result();
@@ -398,6 +406,8 @@ function db_read_curso_detalle(mysqli $conn, string $cursoId, bool $esAdmin): ?a
             ];
             if ($esAdmin) {
                 $pItem['correcta'] = (int)$pRow['correcta'];
+                $pItem['retroCorrecta'] = $pRow['retro_correcta'] ?? '';
+                $pItem['retroIncorrecta'] = $pRow['retro_incorrecta'] ?? '';
             }
             $modulosMap[$mid]['evaluacion']['preguntas'][] = $pItem;
         }

@@ -198,7 +198,7 @@ function db_read_all(mysqli $conn, bool $conProgreso = true): array {
     }
 
     // Pre-cargar preguntas
-    $resCP = $conn->query("SELECT id, modulo_id, orden, enunciado, imagen, opciones, correcta FROM `curso_preguntas` ORDER BY modulo_id, orden ASC");
+    $resCP = $conn->query("SELECT id, modulo_id, orden, enunciado, imagen, opciones, correcta, retro_correcta, retro_incorrecta FROM `curso_preguntas` ORDER BY modulo_id, orden ASC");
     if ($resCP) {
         while ($r = $resCP->fetch_assoc()) {
             $mid = (int)$r['modulo_id'];
@@ -210,6 +210,8 @@ function db_read_all(mysqli $conn, bool $conProgreso = true): array {
                     'imagen'    => $r['imagen'] ?? '',
                     'opciones'  => json_decode($r['opciones'] ?? '[]', true) ?? [],
                     'correcta'  => (int)$r['correcta'],
+                    'retroCorrecta'   => $r['retro_correcta'] ?? '',
+                    'retroIncorrecta' => $r['retro_incorrecta'] ?? '',
                 ];
             }
         }
